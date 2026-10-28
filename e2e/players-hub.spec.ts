@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures';
 
-import { LEAGUE, overflowingElements, signIn } from './helpers';
+import { LEAGUE, overflowingElements, signIn, wheel } from './helpers';
 
 /** The Office League: offers both ways, a trade in a league vote. */
 const OFFICE = '/leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd0';
@@ -355,9 +355,8 @@ test.describe('players list (phone 390)', () => {
     // Scroll the screen towards its end, as a finger or wheel would: the next page loads.
     const scroller = visible(page, 'screen-scroll');
     const box = (await scroller.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     for (let i = 0; i < 8 && (await rows(page).count()) === before; i++) {
-      await page.mouse.wheel(0, 2000);
+      await wheel(page, box.x + box.width / 2, box.y + box.height / 2, 0, 2000);
       await page.waitForTimeout(200);
     }
     await expect.poll(() => rows(page).count()).toBeGreaterThan(before);

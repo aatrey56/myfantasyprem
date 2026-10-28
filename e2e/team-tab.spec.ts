@@ -94,7 +94,11 @@ for (const vp of [
       await page.getByTestId('view-list').click();
       const starters = page.getByTestId('list-starters');
       await expect(starters.locator('[data-testid^="lineup-row-"]')).toHaveCount(11);
-      const style = await starters.evaluate((el) => getComputedStyle(el));
+      // Copy the fields out: WebKit returns a CSSStyleDeclaration as {}.
+      const style = await starters.evaluate((el) => {
+        const { borderTopWidth, backgroundColor } = getComputedStyle(el);
+        return { borderTopWidth, backgroundColor };
+      });
       expect(style.borderTopWidth).toBe('0px');
       expect(style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
       const rows = page.locator('[data-testid^="lineup-row-"]');

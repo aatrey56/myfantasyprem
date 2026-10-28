@@ -1,6 +1,13 @@
 import { expect, test, type Page } from './fixtures';
 
-import { expectLeagueTab, LEAGUE, overflowingElements, signIn, startWithScenario } from './helpers';
+import {
+  expectLeagueTab,
+  LEAGUE,
+  overflowingElements,
+  signIn,
+  startWithScenario,
+  wheel,
+} from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -99,9 +106,19 @@ test('my team lists next-gameweek fixtures for the whole squad', async ({ page }
   await page.goto(`${LEAGUE}/team`);
   await page.getByTestId('view-list').click();
   // Tabs keep earlier screens mounted (hidden), so only look at visible rows.
-  const chips = page.locator('[data-testid="next-fixtures"]:visible');
-  await expect(chips).toHaveCount(15);
-  for (const text of await chips.allTextContents()) {
+  // On a phone the league pager also lays the neighbouring tabs out beside
+  // this one, off-screen: only rows inside the viewport's width are Team's.
+  const chips = () =>
+    page.locator('[data-testid="next-fixtures"]:visible').evaluateAll((els) =>
+      els
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.left >= 0 && r.right <= window.innerWidth + 1;
+        })
+        .map((el) => el.textContent ?? ''),
+    );
+  await expect.poll(async () => (await chips()).length).toBe(15);
+  for (const text of await chips()) {
     // One fixture, two in a double gameweek ("v ABC Sat 15:00@ DEF Sun 14:00"), or a blank.
     // Kickoffs six days or more away add the date: "Tue 20 Oct, 16:30". A fixture
     // still to play ends with its difficulty rank: "(18th)" (ADR 0014).
@@ -168,8 +185,7 @@ for (const width of [768, 1280]) {
       await page.goto(`${LEAGUE}/league`);
       const top = page.getByTestId('league-matchups-header');
       await expect(top).toBeVisible();
-      await page.mouse.move(width / 2, 500);
-      await page.mouse.wheel(0, 2000);
+      await wheel(page, width / 2, 500, 0, 2000);
       await expect.poll(async () => (await top.boundingBox())?.y ?? 0).toBeLessThan(0);
       expect((await page.getByTestId('top-nav').boundingBox())!.y).toBe(0);
       await expect(nav(page).getByRole('tab', { name: 'Players' })).toBeInViewport();

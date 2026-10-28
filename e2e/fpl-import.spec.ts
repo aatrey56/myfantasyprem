@@ -102,8 +102,25 @@ test.describe('signed in', () => {
     context,
     browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'clipboard permissions are chromium only');
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // Only chromium can grant clipboard-read; WebKit refuses readText() outside
+    // a real paste. There the test reads back what the app wrote through the
+    // real navigator.clipboard.writeText, after it resolved.
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    } else {
+      await page.addInitScript(() => {
+        const clip = navigator.clipboard;
+        const write = clip.writeText.bind(clip);
+        clip.writeText = (text: string) =>
+          write(text).then(() => {
+            (window as unknown as { __copied: string }).__copied = text;
+          });
+      });
+    }
+    const copied = (chromium: boolean) =>
+      chromium
+        ? navigator.clipboard.readText()
+        : (window as unknown as { __copied: string }).__copied;
     await page.goto(`${IMPORTED}/settings`);
     const links = page.getByTestId('claim-links');
     await expect(links).toContainText('not claimed yet');
@@ -112,7 +129,7 @@ test.describe('signed in', () => {
     expect(url).toMatch(/\/join\/[2-9A-HJKMNP-TV-Z]{10}$/);
     await links.getByTestId('claim-copy').first().click();
     await expect(page.getByTestId('toast')).toContainText('Claim link copied');
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+    expect(await page.evaluate(copied, browserName === 'chromium')).toBe(url);
 
     await links.getByTestId('claim-resend').first().click();
     await page.getByRole('button', { name: 'Make a new link' }).click();

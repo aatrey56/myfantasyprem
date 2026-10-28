@@ -96,7 +96,10 @@ test.describe('league home failures (MSW overrides)', () => {
 test.describe('phone 375px', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test('the bottom bar pads for the bottom safe-area inset', async ({ page }) => {
+  test('the bottom bar pads for the bottom safe-area inset', async ({ page, browserName }) => {
+    // Playwright can only fake safe-area insets through Chromium's CDP
+    // (Emulation.setSafeAreaInsetsOverride); WebKit has no way to set them.
+    test.skip(browserName !== 'chromium', 'safe-area inset emulation is CDP only');
     // Emulate a notched phone. env(safe-area-inset-*) is only non-zero with
     // viewport-fit=cover, so this also checks public/index.html.
     const cdp = await page.context().newCDPSession(page);

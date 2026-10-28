@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures';
 
-import { LEAGUE, overflowingElements, signIn } from './helpers';
+import { LEAGUE, overflowingElements, signIn, wheel } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -194,8 +194,7 @@ for (const vp of [
       // A long wheel flick back moves exactly one card, never between cards.
       await row.scrollIntoViewIfNeeded();
       const b = (await row.boundingBox())!;
-      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-      await page.mouse.wheel(-1.5 * step, 0);
+      await wheel(page, b.x + b.width / 2, b.y + b.height / 2, -1.5 * step, 0);
       await expect.poll(() => potwShown(page)).toEqual(start.map((gw) => gw - 1));
       await expect.poll(aligned).toBeLessThan(0.02);
       await expect(visible(page, 'potw-next')).toBeEnabled();
