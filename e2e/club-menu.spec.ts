@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from './fixtures';
 import { LEAGUE, signIn } from './helpers';
 
 // Every Sheet is a centred dialog from 768px up and a (centred) bottom sheet on
-// phones. Runs on chromium, webkit and firefox (see playwright.config.ts).
+// phones. Runs on chromium and webkit (see playwright.config.ts).
 test.beforeEach(async ({ page }) => signIn(page));
 
 const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);

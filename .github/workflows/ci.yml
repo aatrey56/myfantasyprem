@@ -113,7 +113,7 @@ jobs:
       - name: Build web with mocks enabled (for Playwright, into apps/app/dist-mocks)
         run: npm run build:web:mocks
 
-      - run: npx playwright install --with-deps chromium webkit firefox
+      - run: npx playwright install --with-deps chromium webkit
 
       - run: npm run test:e2e
 
