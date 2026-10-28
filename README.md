@@ -98,9 +98,9 @@ deploy/               production compose stack, VM bootstrap, backups, deploy sc
 Prerequisites: Node 26 (`.nvmrc`; `engines` says >= 24) with plain npm, Go
 (version in `server/go.mod`), and Docker for the full stack (the local
 Postgres for `npm run dev:stack` and `npm run test:go:db`). Playwright
-browsers for e2e: `npx playwright install chromium webkit` (most
-specs run on Chromium; the keyboard and branded-image specs also run on
-WebKit).
+browsers for e2e: `npx playwright install chromium webkit` (every spec
+runs on Chromium, Desktop Safari and an iPhone 15 profile; see
+[docs/testing.md](docs/testing.md#browsers)).
 
 ### A. UI only, on mock data
 
