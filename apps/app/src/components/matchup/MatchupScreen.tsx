@@ -105,11 +105,22 @@ export function MatchupScreen({ leagueId, gameweek, matchupId, onChangeGameweek 
       void queryClient.prefetchQuery(matchupQuery(leagueId, settledGw, order[p].id));
   }, [queryClient, leagueId, settledGw, order, page]);
   const scrollRef = useRef<ScrollView>(null);
+  const toTopPending = useRef(false);
   const select = (id: string, toTop = false) => {
     if (gw === undefined) return;
     setPicked({ gw, id });
-    if (toTop) scrollRef.current?.scrollTo({ y: 0, animated: true });
+    if (!toTop) return;
+    toTopPending.current = true;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
+  // Safari drops a smooth scroll when the content resizes under it: the
+  // placeholder swaps for the chosen matchup mid-scroll and the screen stayed
+  // scrolled down at the list. Scroll again once the chosen one has rendered.
+  useEffect(() => {
+    if (!toTopPending.current || otherMatchup) return;
+    toTopPending.current = false;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [otherMatchup, detail.data]);
   // A future gameweek: the schedule's pairings in the carousel, and the
   // open one's squads and fixtures (no scores).
   const week = upcoming ? schedule.data?.data.find((w) => w.gameweek === gw) : undefined;
