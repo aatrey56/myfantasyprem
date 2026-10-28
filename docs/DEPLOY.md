@@ -302,7 +302,7 @@ is still in `compose.prod.yml` behind the `tunnel` profile.
 
 Replace `example.com` with your domain throughout. Files: `deploy/`
 (compose, scripts, config), `server/Dockerfile`,
-`.github/workflows/deploy.yml`, `scripts/pages-files.mjs`.
+`scripts/pages-files.mjs`.
 
 ## What costs money
 
@@ -476,25 +476,17 @@ status sshd` shows the jail.
 
 ## 7. API image (GitHub Container Registry)
 
-The image is built for arm64 and amd64 by `.github/workflows/deploy.yml`
-(free on GitHub-hosted runners; GHCR storage is free for public packages
-and within the plan's allowance for private ones).
+The image is built and pushed from a laptop with `deploy/deploy.sh push`
+(arm64 and amd64); there is no GitHub Actions deploy workflow. The Oracle VM
+setup at the top of this file is the current path.
 
-1. GitHub repo > **Settings > Secrets and variables > Actions > Variables**:
-   `DEPLOY_ENABLED` = `true`, `API_BASE_URL` = `https://api.example.com`,
-   `PAGES_PROJECT` = `myfantasyprem`.
-2. **Secrets**: `CLOUDFLARE_API_TOKEN` (My Profile > API Tokens > Create >
-   template "Edit Cloudflare Workers", or a custom token with **Account >
-   Cloudflare Pages > Edit**) and `CLOUDFLARE_ACCOUNT_ID` (dashboard URL or
-   the account home's sidebar).
-3. Release: `git tag v0.1.0 && git push origin v0.1.0` (or Actions > deploy >
-   Run workflow). The run summary prints the image tag.
-4. Let the VM pull it, either:
-   - make the package public (GitHub > your profile > Packages >
-     `myfantasyprem-api` > Package settings > Change visibility; it holds
-     binaries only, no secrets), or
-   - on the VM: `docker login ghcr.io -u <you>` with a classic personal
-     access token that has only `read:packages`.
+Let the VM pull it, either:
+
+- make the package public (GitHub > your profile > Packages >
+  `myfantasyprem-api` > Package settings > Change visibility; it holds
+  binaries only, no secrets), or
+- on the VM: `docker login ghcr.io -u <you>` with a classic personal
+  access token that has only `read:packages`.
 
 No registry? Build on the VM (native ARM, about 2 minutes): set
 `API_IMAGE=myfantasyprem-api` in `deploy/.env`, then
