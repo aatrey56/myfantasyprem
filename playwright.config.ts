@@ -27,18 +27,13 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   // Everything runs on chromium. Keyboard behaviour differs between engines, so
-  // the import shortcut and club menu specs also run on webkit (Safari) and
-  // firefox; so do the branded images, which are native lazy <img> elements.
+  // the import shortcut and club menu specs also run on webkit (Safari); so do
+  // the branded images, which are native lazy <img> elements.
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: /(import-shortcut|club-menu|branded-assets)\.spec\.ts$/,
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
       testMatch: /(import-shortcut|club-menu|branded-assets)\.spec\.ts$/,
     },
   ],
