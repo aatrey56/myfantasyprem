@@ -89,8 +89,7 @@ codebase.
 
 ## Running locally
 
-Prerequisites: Node 26 (see `.nvmrc`), Go 1.27 (see `server/go.mod`) and
-Docker.
+Prerequisites: Node 26, Go 1.27 and Docker.
 
 ```bash
 npm ci
