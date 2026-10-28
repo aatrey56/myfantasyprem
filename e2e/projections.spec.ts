@@ -17,7 +17,8 @@ const HIDDEN = 'Expected and the win chance are hidden (EXPO_PUBLIC_SHOW_PROJECT
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 const CHIP = /^\((\d|1\d|20)(st|nd|rd|th)\)$/;
 const PERCENT = /^(\d{1,3}%|<1%|>99%)$/;
@@ -52,7 +53,9 @@ for (const vp of [
       await expect(page.locator('[data-testid="lineup-expected"]')).toHaveCount(0);
 
       await page.goto(`${LEAGUE}/league`);
-      await expect(page.locator('[data-testid^="matchup-row-mu_"]:visible').first()).toBeVisible();
+      await expect(
+        page.locator('[data-testid^="matchup-row-mu_"]:visible:not([inert] *)').first(),
+      ).toBeVisible();
       await expect(page.locator('[data-testid^="win-chance-mu_"]')).toHaveCount(0);
 
       await page.goto(`${LEAGUE}/matchup`);
@@ -81,7 +84,7 @@ for (const vp of [
           (await header.getByTestId('points-split').getByText(/%/).count()),
       );
       await page.goto(`${LEAGUE}/league`);
-      const rows = page.locator('[data-testid^="matchup-row-mu_"]:visible');
+      const rows = page.locator('[data-testid^="matchup-row-mu_"]:visible:not([inert] *)');
       await expect(rows.first()).toBeVisible();
       await expect(rows.getByText(/%/)).toHaveCount(0);
     });
@@ -118,7 +121,7 @@ for (const vp of [
       await expect(visible(page, 'lineup-expected')).toHaveText(`Exp ${(tenths / 10).toFixed(1)}`);
 
       // A blank gameweek is 0 Expected; fixtures still to play carry a rank chip.
-      const lineupRows = page.locator('[data-testid^="lineup-row-"]:visible');
+      const lineupRows = page.locator('[data-testid^="lineup-row-"]:visible:not([inert] *)');
       const n = await lineupRows.count();
       let blanks = 0;
       let chips = 0;
@@ -172,11 +175,13 @@ for (const vp of [
       page,
     }) => {
       await page.goto(`${LEAGUE}/league`);
-      const cards = page.locator('[data-testid^="matchup-row-mu_"]:visible');
+      const cards = page.locator('[data-testid^="matchup-row-mu_"]:visible:not([inert] *)');
       await expect(cards.first()).toBeVisible();
       const count = await cards.count();
       // One win chance per card, each with its label.
-      const basis = page.locator('[data-testid^="win-chance-mu_"][data-testid$="-basis"]:visible');
+      const basis = page.locator(
+        '[data-testid^="win-chance-mu_"][data-testid$="-basis"]:visible:not([inert] *)',
+      );
       await expect(basis).toHaveCount(SHOWN ? count : 0);
       for (let i = 0; i < (SHOWN ? count : 0); i++) {
         await expect(basis.nth(i)).toContainText('Based on recent scores');
@@ -219,10 +224,10 @@ for (const vp of [
 
     test('players: rank chips on the rows and on the card', async ({ page }) => {
       await page.goto(`${LEAGUE}/players`);
-      const chips = page.locator('[data-testid="fixture-difficulty"]:visible');
+      const chips = page.locator('[data-testid="fixture-difficulty"]:visible:not([inert] *)');
       await expect(chips.first()).toBeVisible();
       for (const t of (await chips.allTextContents()).slice(0, 10)) expect(t).toMatch(CHIP);
-      await page.locator('[data-testid^="player-plr_"]:visible').first().click();
+      await page.locator('[data-testid^="player-plr_"]:visible:not([inert] *)').first().click();
       const card = visible(page, 'player-card');
       await expect(card).toBeVisible();
       const next = card.getByTestId('card-next');

@@ -21,7 +21,7 @@ for (const vp of [
       page,
     }) => {
       await page.goto(`${LEAGUE}/team`);
-      const card = page.locator('[data-testid="team-card"]:visible');
+      const card = page.locator('[data-testid="team-card"]:visible:not([inert] *)');
       await expect(card).toBeVisible();
       // Directly under the league tabs (the screen padding only): no title, eyebrow or back link.
       const tabs = await box(page.getByRole('tablist').first());

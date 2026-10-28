@@ -66,38 +66,53 @@ for (const vp of VIEWPORTS) {
       await page.getByTestId(vp.nav).getByText('Match', { exact: true }).click();
       await expect(page).toHaveURL(/\/matchup$/);
       // My matchup opens by default: two real teams head to head.
-      await expect(page.locator('[data-testid="score-header"]:visible')).toBeVisible();
-      await expect(page.locator('[data-testid="score-state"]:visible')).toHaveText('Live');
-      await expect(page.locator('[data-testid="h2h-starters"]:visible')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="score-header"]:visible:not([inert] *)'),
+      ).toBeVisible();
+      await expect(page.locator('[data-testid="score-state"]:visible:not([inert] *)')).toHaveText(
+        'Live',
+      );
+      await expect(
+        page.locator('[data-testid="h2h-starters"]:visible:not([inert] *)'),
+      ).toBeVisible();
       // Another matchup from the gameweek list, without the league average:
       // the header carousel moves to it in place.
       await page
-        .locator('[data-testid^="matchup-row-"]:visible')
+        .locator('[data-testid^="matchup-row-"]:visible:not([inert] *)')
         .filter({ hasNotText: 'League average' })
         .nth(1)
         .click();
       await expect(page).toHaveURL(/\/matchup$/);
-      await expect(page.locator('[data-testid="carousel-dot-0"]:visible')).not.toHaveAttribute(
-        'aria-current',
-        'true',
-      );
-      await expect(page.locator('[data-testid="score-left-points"]:visible')).toHaveText(/^\d+$/);
-      await expect(page.locator('[data-testid="h2h-lineups"]:visible')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="carousel-dot-0"]:visible:not([inert] *)'),
+      ).not.toHaveAttribute('aria-current', 'true');
+      await expect(
+        page.locator('[data-testid="score-left-points"]:visible:not([inert] *)'),
+      ).toHaveText(/^\d+$/);
+      await expect(
+        page.locator('[data-testid="h2h-lineups"]:visible:not([inert] *)'),
+      ).toBeVisible();
       expect(await overflowingElements(page)).toEqual([]);
     });
 
     test('the league-average matchup shows a score and no lineup', async ({ page }) => {
       await page.goto(`${LEAGUE}/matchup`);
       await page
-        .locator('[data-testid^="matchup-row-"]:visible')
+        .locator('[data-testid^="matchup-row-"]:visible:not([inert] *)')
         .filter({ hasText: 'League average' })
         .click();
-      const average = page.locator('[data-testid="average-opponent"]:visible');
+      const average = page.locator('[data-testid="average-opponent"]:visible:not([inert] *)');
       await expect(average).toBeVisible();
       await expect(average).toContainText('League average');
-      await expect(page.locator('[data-testid="average-points"]:visible')).toHaveText(/^\d+$/);
-      await expect(page.locator('[data-testid="team-lineup"]:visible')).toHaveCount(1);
-      await expect(page.locator('[data-testid="h2h-lineups"]:visible')).toHaveCount(0);
+      await expect(
+        page.locator('[data-testid="average-points"]:visible:not([inert] *)'),
+      ).toHaveText(/^\d+$/);
+      await expect(page.locator('[data-testid="team-lineup"]:visible:not([inert] *)')).toHaveCount(
+        1,
+      );
+      await expect(page.locator('[data-testid="h2h-lineups"]:visible:not([inert] *)')).toHaveCount(
+        0,
+      );
     });
   });
 }
@@ -109,7 +124,7 @@ test('my team lists next-gameweek fixtures for the whole squad', async ({ page }
   // On a phone the league pager also lays the neighbouring tabs out beside
   // this one, off-screen: only rows inside the viewport's width are Team's.
   const chips = () =>
-    page.locator('[data-testid="next-fixtures"]:visible').evaluateAll((els) =>
+    page.locator('[data-testid="next-fixtures"]:visible:not([inert] *)').evaluateAll((els) =>
       els
         .filter((el) => {
           const r = el.getBoundingClientRect();

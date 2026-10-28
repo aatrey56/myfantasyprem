@@ -8,7 +8,8 @@ import { LEAGUE, pageOverflow, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Sections keep earlier screens mounted but hidden: only match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const LEAGUE_ID = LEAGUE.split('/').pop()!;
 const LABELS: Record<string, string> = {
   player_goal: 'My players: goals',

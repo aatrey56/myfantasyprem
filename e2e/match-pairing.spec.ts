@@ -11,7 +11,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 test('MATCH (phone): 11 starter rows, a player on both sides of every row', async ({ page }) => {
   await page.goto(`${LEAGUE}/matchup`);
-  const starters = page.locator('[data-testid="h2h-starters"]:visible');
+  const starters = page.locator('[data-testid="h2h-starters"]:visible:not([inert] *)');
   await expect(starters).toBeVisible();
   const rows = starters.locator('> *');
   await expect(rows).toHaveCount(11);

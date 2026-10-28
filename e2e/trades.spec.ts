@@ -20,7 +20,7 @@ for (const vp of [
       await page.goto(`${OFFICE}/players/trades`);
       // One Active list: the trade in review sits among the open offers.
       const card = page
-        .locator('[data-testid^="trade-trd_"]:visible')
+        .locator('[data-testid^="trade-trd_"]:visible:not([inert] *)')
         .filter({ has: page.getByTestId('trade-review') })
         .first();
       await expect(card.getByTestId('trade-review')).toContainText('1 uphold');

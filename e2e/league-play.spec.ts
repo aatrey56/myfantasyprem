@@ -5,9 +5,10 @@ import { LEAGUE, overflowingElements, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 const VIEWPORTS = [
   { name: 'phone', width: 375, height: 812, nav: 'league-tabs' },
@@ -75,7 +76,9 @@ for (const vp of VIEWPORTS) {
     test('adds a free agent, dropping a player of the same position', async ({ page }) => {
       await page.goto(`${LEAGUE}/players`);
       // Available is on by default: free agents and players on waivers.
-      const add = page.locator('[data-testid^="move-"]:visible[aria-label^="Add "]').first();
+      const add = page
+        .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Add "]')
+        .first();
       await expect(add).toHaveAccessibleName(/^Add /);
       await add.click();
       await expect(visible(page, 'drop-step')).toBeVisible();
@@ -91,7 +94,9 @@ for (const vp of VIEWPORTS) {
       await visible(page, 'view-menu').click();
       await visible(page, 'view-pos-MID').click();
       await expect(visible(page, 'view-sheet')).toHaveCount(0);
-      const claim = page.locator('[data-testid^="move-"]:visible[aria-label^="Claim "]').first();
+      const claim = page
+        .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Claim "]')
+        .first();
       await expect(claim).toHaveAccessibleName(/^Claim /);
       await claim.click();
       await visibleStarting(page, 'drop-plr_').last().click();

@@ -56,9 +56,9 @@ for (const vp of [
 
       // In-app navigation: a reload would reset the mocks.
       await page.getByTestId(vp.width < 768 ? 'back-to-leagues' : 'nav-home').click();
-      await expect(page.locator('[data-testid="league-list"]:visible')).toContainText(
-        PUB_LEAGUE_NAME,
-      );
+      await expect(
+        page.locator('[data-testid="league-list"]:visible:not([inert] *)'),
+      ).toContainText(PUB_LEAGUE_NAME);
     });
   });
 }
@@ -70,14 +70,14 @@ test('an invite link previews the league before sign-in', async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=/);
   await page.getByTestId('sign-in-google').click();
   await expect(page).toHaveURL(new RegExp(`/join/${PUB_INVITE_CODE}$`));
-  await expect(page.locator('[data-testid="join-submit"]:visible')).toBeVisible();
+  await expect(page.locator('[data-testid="join-submit"]:visible:not([inert] *)')).toBeVisible();
 });
 
 test('an invite to a league I am already in opens that league', async ({ page }) => {
   await signIn(page);
   // Five-a-side Friends' code; the demo user is its commissioner.
   await page.goto('/join/K7QM2XRP4D');
-  await page.locator('[data-testid="join-open-league"]:visible').click();
+  await page.locator('[data-testid="join-open-league"]:visible:not([inert] *)').click();
   await expect(page).toHaveURL(/\/leagues\/lg_01k7m2xq8rfv3c9a4t6wbn5hd2$/);
 });
 
@@ -105,5 +105,7 @@ test('an invite link opened directly while signed in suggests a team name', asyn
   await signIn(page);
   await page.goto(`/join/${PUB_INVITE_CODE}`);
   await expect(page.getByTestId('invite-league-name')).toHaveText(PUB_LEAGUE_NAME);
-  await expect(page.locator('[data-testid="join-team-name"]:visible')).toHaveValue('Sam FC');
+  await expect(page.locator('[data-testid="join-team-name"]:visible:not([inert] *)')).toHaveValue(
+    'Sam FC',
+  );
 });

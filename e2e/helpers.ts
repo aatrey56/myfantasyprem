@@ -129,10 +129,12 @@ declare global {
  * above the tabs.
  */
 export async function expectLeagueTab(page: Page) {
-  await expect(page.locator('[data-testid="league-matchups-header"]:visible')).toBeVisible();
-  await expect(page.locator('[data-testid="league-switcher-name"]:visible')).toHaveText(
-    LEAGUE_NAME,
-  );
+  await expect(
+    page.locator('[data-testid="league-matchups-header"]:visible:not([inert] *)'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-testid="league-switcher-name"]:visible:not([inert] *)'),
+  ).toHaveText(LEAGUE_NAME);
 }
 
 /**
