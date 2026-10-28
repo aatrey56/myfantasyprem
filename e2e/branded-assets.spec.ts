@@ -8,7 +8,7 @@ import { LEAGUE, signIn, startWithScenario } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
-const PITCH = '[data-testid="pitch-xi"]:visible';
+const PITCH = '[data-testid="pitch-xi"]:visible:not([inert] *)';
 const branded = (page: Page, scope: string, kind: string) =>
   page.locator(`${scope} [data-testid="branded-image"][data-kind="${kind}"]`);
 
@@ -41,7 +41,9 @@ async function openPitch(page: Page) {
   // The lineup has loaded (pitch or list) before the toggle is used.
   await expect(
     page
-      .locator('[data-testid^="lineup-player-"]:visible, [data-testid^="lineup-row-"]:visible')
+      .locator(
+        '[data-testid^="lineup-player-"]:visible:not([inert] *), [data-testid^="lineup-row-"]:visible:not([inert] *)',
+      )
       .first(),
   ).toBeVisible();
   await page.getByTestId('view-pitch').click();
@@ -84,7 +86,7 @@ test.describe('branded images on', () => {
     // Images load lazily: check the first row, which is on screen: the
     // player's photo, the club crest beside the club code and each
     // remaining opponent's crest in the fixture strip.
-    const row = '[data-testid^="player-plr_"]:visible >> nth=0';
+    const row = '[data-testid^="player-plr_"]:visible:not([inert] *) >> nth=0';
     await expect(
       page.locator(`${row} >> [data-testid="fixture-strip-item"]`).first(),
     ).toBeVisible();
@@ -99,16 +101,19 @@ test.describe('branded images on', () => {
     await expectLoaded(page, `${row} >> [data-testid="branded-image"]`);
 
     await page.goto(LEAGUE);
-    const photos = branded(page, '[data-testid="potw"]:visible', 'photo');
+    const photos = branded(page, '[data-testid="potw"]:visible:not([inert] *)', 'photo');
     await expect(photos.first()).toBeVisible();
     await expect(photos.first()).toHaveAttribute(
       'src',
       /\/v1\/assets\/players\/plr_[0-9a-z]{26}\/photo$/,
     );
-    await expectLoaded(page, '[data-testid="potw"]:visible [data-testid="branded-image"]');
     await expectLoaded(
       page,
-      '[data-testid="totw"]:visible [data-testid="branded-image"][data-kind="shirt"]',
+      '[data-testid="potw"]:visible:not([inert] *) [data-testid="branded-image"]',
+    );
+    await expectLoaded(
+      page,
+      '[data-testid="totw"]:visible:not([inert] *) [data-testid="branded-image"][data-kind="shirt"]',
     );
   });
 
@@ -117,11 +122,13 @@ test.describe('branded images on', () => {
     await page.getByTestId('view-list').click();
     // The list: 15 rows, each with the player's photo.
     const rows =
-      '[data-testid="list-view"]:visible [data-testid="branded-image"][data-kind="photo"]';
+      '[data-testid="list-view"]:visible:not([inert] *) [data-testid="branded-image"][data-kind="photo"]';
     await expect(page.locator(rows)).toHaveCount(15);
     await expectLoaded(page, rows);
     await expect(
-      page.locator('[data-testid="list-view"]:visible [data-testid="generic-shirt"]'),
+      page.locator(
+        '[data-testid="list-view"]:visible:not([inert] *) [data-testid="generic-shirt"]',
+      ),
     ).toHaveCount(0);
     // The swap sheet's rows too.
     await page.locator('[data-testid^="lineup-swap-"]').first().click();
@@ -137,7 +144,7 @@ test.describe('branded images on', () => {
       .first()
       .getByRole('button', { name: /^Player card for / })
       .click();
-    const hero = '[data-testid="player-card"]:visible [data-testid="card-hero"]';
+    const hero = '[data-testid="player-card"]:visible:not([inert] *) [data-testid="card-hero"]';
     await expect(branded(page, hero, 'photo')).toHaveCount(1);
     await expect(branded(page, hero, 'photo')).toHaveAttribute(
       'src',
@@ -150,7 +157,7 @@ test.describe('branded images on', () => {
   test('matchup lineups show club crests', async ({ page }) => {
     await page.goto(`${LEAGUE}/matchup`);
     const crests =
-      '[data-testid="h2h-starters"]:visible [data-testid="branded-image"][data-kind="crest"]';
+      '[data-testid="h2h-starters"]:visible:not([inert] *) [data-testid="branded-image"][data-kind="crest"]';
     // One per starter, both sides.
     await expect(page.locator(crests)).toHaveCount(22);
     await expectLoaded(page, crests);
@@ -172,7 +179,9 @@ test.describe('branded images off', () => {
     await page.goto(`${LEAGUE}/team`);
     await page.getByTestId('view-list').click();
     await expect(
-      page.locator('[data-testid="list-view"]:visible [data-testid="generic-shirt"]'),
+      page.locator(
+        '[data-testid="list-view"]:visible:not([inert] *) [data-testid="generic-shirt"]',
+      ),
     ).toHaveCount(15);
     await page
       .locator('[data-testid^="lineup-row-"]')
@@ -181,19 +190,23 @@ test.describe('branded images off', () => {
       .click();
     await expect(
       page.locator(
-        '[data-testid="player-card"]:visible [data-testid="card-hero"] [data-testid="generic-shirt"]',
+        '[data-testid="player-card"]:visible:not([inert] *) [data-testid="card-hero"] [data-testid="generic-shirt"]',
       ),
     ).toHaveCount(1);
-    await page.locator('[data-testid="sheet-close"]:visible').click();
+    await page.locator('[data-testid="sheet-close"]:visible:not([inert] *)').click();
     await openPitch(page);
     await expect(page.locator(`${PITCH} [data-testid="generic-shirt"]`)).toHaveCount(11);
     await page.goto(`${LEAGUE}/matchup`);
-    await expect(page.locator('[data-testid="h2h-starters"]:visible')).toBeVisible();
+    await expect(page.locator('[data-testid="h2h-starters"]:visible:not([inert] *)')).toBeVisible();
     await page.goto(`${LEAGUE}/players`);
-    await expect(page.locator('[data-testid="generic-shirt"]:visible').first()).toBeVisible();
+    await expect(
+      page.locator('[data-testid="generic-shirt"]:visible:not([inert] *)').first(),
+    ).toBeVisible();
     await page.goto(LEAGUE);
     await expect(
-      page.locator('[data-testid="potw"]:visible [data-testid="generic-shirt"]').first(),
+      page
+        .locator('[data-testid="potw"]:visible:not([inert] *) [data-testid="generic-shirt"]')
+        .first(),
     ).toBeVisible();
     await expect(page.locator('[data-testid="branded-image"]')).toHaveCount(0);
     expect(requests).toEqual([]);

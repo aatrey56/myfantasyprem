@@ -100,9 +100,27 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://myfantasyprem:myfantasyprem@localhost:5432/myfantasyprem?sslmode=disable
 
+  # One job per browser group, so adding Safari does not add to wall time:
+  # chromium runs every spec once; webkit runs every spec on Desktop Safari
+  # and on the iPhone 15 profile (twice the tests), split into two shards.
+  # Each job installs only its own browser.
   e2e:
+    name: e2e (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: chromium
+            browser: chromium
+            args: --project=chromium
+          - name: webkit 1/2
+            browser: webkit
+            args: --project=webkit --project=iphone --shard=1/2
+          - name: webkit 2/2
+            browser: webkit
+            args: --project=webkit --project=iphone --shard=2/2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -116,14 +134,15 @@ jobs:
       - name: Build web with mocks enabled (for Playwright, into apps/app/dist-mocks)
         run: npm run build:web:mocks
 
-      - run: npx playwright install --with-deps chromium webkit
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- ${{ matrix.args }}
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
-          name: playwright-report
+          # Artifact names must be unique per run and cannot contain '/'.
+          name: playwright-report-${{ matrix.browser }}-${{ strategy.job-index }}
           path: |
             playwright-report/
             test-results/

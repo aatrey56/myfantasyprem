@@ -5,7 +5,8 @@ import { LEAGUE, signIn, useScenario } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 // Touch: the pager keeps the tabs either side of the visible one mounted, so
 // going back to one does not remount it (and refetchOnMount never fires).

@@ -77,11 +77,13 @@ for (const vp of [
       await card.click();
       await expect(page).toHaveURL(/\/import$/);
       await expect(page.getByTestId('league-input')).toBeVisible();
-      const back = page.locator('[data-testid="back-link"]:visible');
+      const back = page.locator('[data-testid="back-link"]:visible:not([inert] *)');
       await expect(back).toHaveText('Leagues');
       await back.click();
       await expect(page).toHaveURL(/\/leagues$/);
-      await expect(page.locator('[data-testid="import-league-card"]:visible')).toHaveCount(1);
+      await expect(
+        page.locator('[data-testid="import-league-card"]:visible:not([inert] *)'),
+      ).toHaveCount(1);
     });
   });
 }

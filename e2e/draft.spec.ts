@@ -7,6 +7,7 @@ import {
   pageOverflow,
   signIn,
   startWithScenario,
+  wheel,
 } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
@@ -107,8 +108,8 @@ test.describe('draft room, phone 390', () => {
     await expect(page.locator('[data-testid^="draft-player-plr_"]').first()).toBeVisible();
 
     // Scroll the list well past the controls (the phone room scrolls as one page).
-    await list.hover();
-    await page.mouse.wheel(0, 600);
+    const lb = (await list.boundingBox())!;
+    await wheel(page, lb.x + lb.width / 2, Math.min(lb.y + lb.height / 2, 800), 0, 600);
     await expect
       .poll(() =>
         list.evaluate((el) => {
@@ -167,8 +168,7 @@ test.describe('draft room, phone 390', () => {
     expect(await top()).toBeGreaterThan(100);
 
     // The header and the ticker scroll away; the tabs stop at the top.
-    await page.mouse.move(195, 700);
-    await page.mouse.wheel(0, 500);
+    await wheel(page, 195, 700, 0, 500);
     await expect.poll(top).toBeLessThanOrEqual(12);
     await expect(page.getByTestId('draft-back')).not.toBeInViewport();
     // The page is the only scroller: no inner box around the rows.
@@ -187,7 +187,7 @@ test.describe('draft room, phone 390', () => {
     // More scrolling moves the rows, not the sticky parts.
     const clockY = (await page.getByTestId('pick-timer').boundingBox())!.y;
     const firstRow = await rows.first().evaluate((el) => el.getBoundingClientRect().top);
-    await page.mouse.wheel(0, 600);
+    await wheel(page, 195, 700, 0, 600);
     await expect
       .poll(() => rows.first().evaluate((el) => el.getBoundingClientRect().top))
       .toBeLessThan(firstRow - 300);

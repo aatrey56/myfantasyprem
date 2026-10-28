@@ -16,7 +16,8 @@ const CLAIM_CODE = 'SEATCHKX42';
 const CLAIM_TEAM = 'Away End Allstars';
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 test.describe('signed in', () => {
   test.beforeEach(async ({ page }) => signIn(page));
@@ -102,8 +103,25 @@ test.describe('signed in', () => {
     context,
     browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'clipboard permissions are chromium only');
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // Only chromium can grant clipboard-read; WebKit refuses readText() outside
+    // a real paste. There the test reads back what the app wrote through the
+    // real navigator.clipboard.writeText, after it resolved.
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    } else {
+      await page.addInitScript(() => {
+        const clip = navigator.clipboard;
+        const write = clip.writeText.bind(clip);
+        clip.writeText = (text: string) =>
+          write(text).then(() => {
+            (window as unknown as { __copied: string }).__copied = text;
+          });
+      });
+    }
+    const copied = (chromium: boolean) =>
+      chromium
+        ? navigator.clipboard.readText()
+        : (window as unknown as { __copied: string }).__copied;
     await page.goto(`${IMPORTED}/settings`);
     const links = page.getByTestId('claim-links');
     await expect(links).toContainText('not claimed yet');
@@ -112,7 +130,7 @@ test.describe('signed in', () => {
     expect(url).toMatch(/\/join\/[2-9A-HJKMNP-TV-Z]{10}$/);
     await links.getByTestId('claim-copy').first().click();
     await expect(page.getByTestId('toast')).toContainText('Claim link copied');
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+    expect(await page.evaluate(copied, browserName === 'chromium')).toBe(url);
 
     await links.getByTestId('claim-resend').first().click();
     await page.getByRole('button', { name: 'Make a new link' }).click();
@@ -125,15 +143,17 @@ test.describe('signed in', () => {
     await expect(page.getByText(/Synced from FPL|switch-over|Make this change in FPL/)).toHaveCount(
       0,
     );
-    const add = page.locator('[data-testid^="move-"]:visible[aria-label^="Add "]').first();
+    const add = page
+      .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Add "]')
+      .first();
     await expect(add).toBeVisible();
     const faId = (await add.getAttribute('data-testid'))!.replace('move-', '');
-    await page.locator(`[data-testid="player-${faId}"]:visible`).click();
+    await page.locator(`[data-testid="player-${faId}"]:visible:not([inert] *)`).click();
     const card = visible(page, 'player-card');
     await expect(card.getByTestId('card-add')).toHaveText('Sign');
     await card.getByTestId('card-add').click();
     await expect(visible(page, 'drop-step')).toBeVisible();
-    await page.locator('[data-testid^="drop-plr_"]:visible').first().click();
+    await page.locator('[data-testid^="drop-plr_"]:visible:not([inert] *)').first().click();
     await visible(page, 'drop-confirm').click();
     await expect(page.getByTestId('toast')).toContainText(/^Added .+, dropped .+/);
   });
@@ -159,7 +179,9 @@ test.describe('signed in', () => {
 
     // The commissioner's check: pending on FPL, not a mismatch.
     await page
-      .locator('[data-testid="top-bar-settings"]:visible, [data-testid="nav-settings"]:visible')
+      .locator(
+        '[data-testid="top-bar-settings"]:visible:not([inert] *), [data-testid="nav-settings"]:visible:not([inert] *)',
+      )
       .first()
       .click();
     await expect(page).toHaveURL(new RegExp(`${PENDING}/settings$`));
@@ -186,10 +208,12 @@ test.describe('signed in', () => {
     await visible(page, 'view-menu').click();
     await visible(page, 'view-pos-MID').click();
     await expect(visible(page, 'view-sheet')).toHaveCount(0);
-    const claim = page.locator('[data-testid^="move-"]:visible[aria-label^="Claim "]').first();
+    const claim = page
+      .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Claim "]')
+      .first();
     await expect(claim).toHaveAccessibleName(/^Claim /);
     await claim.click();
-    await page.locator('[data-testid^="drop-plr_"]:visible').last().click();
+    await page.locator('[data-testid^="drop-plr_"]:visible:not([inert] *)').last().click();
     await visible(page, 'drop-confirm').click();
     await expect(page.getByTestId('toast')).toContainText('Claim placed');
     await expect(page).toHaveURL(/\/players\/waivers$/);
@@ -197,16 +221,16 @@ test.describe('signed in', () => {
     await page.goto(`${IMPORTED}/players/trades`);
     await expect(visible(page, 'new-trade')).toBeEnabled();
     await visible(page, 'new-trade').click();
-    await page.locator('[data-testid^="trade-team-"]:visible').first().click();
+    await page.locator('[data-testid^="trade-team-"]:visible:not([inert] *)').first().click();
     // The + beside a row adds the player (the row itself opens the card).
     await page
-      .locator('[data-testid^="give-plr_"]:visible')
+      .locator('[data-testid^="give-plr_"]:visible:not([inert] *)')
       .filter({ hasText: 'MID' })
       .first()
       .getByTestId(/^give-toggle-/)
       .click();
     await page
-      .locator('[data-testid^="get-plr_"]:visible')
+      .locator('[data-testid^="get-plr_"]:visible:not([inert] *)')
       .filter({ hasText: 'MID' })
       .first()
       .getByTestId(/^get-toggle-/)
@@ -233,7 +257,9 @@ test.describe('signed in', () => {
     await page.goto(IMPORTED);
     // In-app navigation: a reload would reset the mocks.
     await page
-      .locator('[data-testid="top-bar-settings"]:visible, [data-testid="nav-settings"]:visible')
+      .locator(
+        '[data-testid="top-bar-settings"]:visible:not([inert] *), [data-testid="nav-settings"]:visible:not([inert] *)',
+      )
       .first()
       .click();
     await expect(page).toHaveURL(new RegExp(`${IMPORTED}/settings$`));

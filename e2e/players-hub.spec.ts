@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures';
 
-import { LEAGUE, overflowingElements, signIn } from './helpers';
+import { LEAGUE, overflowingElements, signIn, wheel } from './helpers';
 
 /** The Office League: offers both ways, a trade in a league vote. */
 const OFFICE = '/leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd0';
@@ -8,15 +8,16 @@ const OFFICE = '/leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd0';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 const rows = (page: Page) => visibleStarting(page, 'player-plr_');
 
 /** The numbers in the rows' boxes, top to bottom. */
 async function boxValues(page: Page): Promise<number[]> {
   const texts = await page
-    .locator('[data-testid="player-list"]:visible [data-testid="player-points"]')
+    .locator('[data-testid="player-list"]:visible:not([inert] *) [data-testid="player-points"]')
     .allTextContents();
   return texts.map((t) => Number(t.replace('+', '')));
 }
@@ -99,7 +100,9 @@ for (const vp of [
       await expect(link).toContainText(/next run (Mon|Tue|Wed|Thu|Fri|Sat|Sun) /);
       const day = /next run (\w{3}) /.exec((await link.textContent())!)![1]!;
       await expect(visible(page, 'players-scope-title')).toHaveText('Available');
-      const claim = page.locator('[data-testid^="move-"]:visible[aria-label^="Claim "]').first();
+      const claim = page
+        .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Claim "]')
+        .first();
       await expect(claim).toHaveAccessibleName(new RegExp(`^Claim .+, waivers run ${day}$`));
       await expect(claim.getByTestId('waiver-day')).toHaveText(`(${day})`);
       expect(await overflowingElements(page)).toEqual([]);
@@ -355,9 +358,8 @@ test.describe('players list (phone 390)', () => {
     // Scroll the screen towards its end, as a finger or wheel would: the next page loads.
     const scroller = visible(page, 'screen-scroll');
     const box = (await scroller.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     for (let i = 0; i < 8 && (await rows(page).count()) === before; i++) {
-      await page.mouse.wheel(0, 2000);
+      await wheel(page, box.x + box.width / 2, box.y + box.height / 2, 0, 2000);
       await page.waitForTimeout(200);
     }
     await expect.poll(() => rows(page).count()).toBeGreaterThan(before);

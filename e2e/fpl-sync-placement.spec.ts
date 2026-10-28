@@ -24,11 +24,13 @@ for (const vp of [
           await expect(
             page
               .locator(
-                '[data-testid="top-bar-settings"]:visible, [data-testid="nav-settings"]:visible',
+                '[data-testid="top-bar-settings"]:visible:not([inert] *), [data-testid="nav-settings"]:visible:not([inert] *)',
               )
               .first(),
           ).toBeVisible();
-          await expect(page.locator('[data-testid^="sync-"]:visible')).toHaveCount(0);
+          await expect(page.locator('[data-testid^="sync-"]:visible:not([inert] *)')).toHaveCount(
+            0,
+          );
           await expect(page.getByText(FPL_TEXT)).toHaveCount(0);
         }
       });

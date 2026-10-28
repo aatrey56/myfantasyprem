@@ -129,8 +129,47 @@ declare global {
  * above the tabs.
  */
 export async function expectLeagueTab(page: Page) {
-  await expect(page.locator('[data-testid="league-matchups-header"]:visible')).toBeVisible();
-  await expect(page.locator('[data-testid="league-switcher-name"]:visible')).toHaveText(
-    LEAGUE_NAME,
+  await expect(
+    page.locator('[data-testid="league-matchups-header"]:visible:not([inert] *)'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-testid="league-switcher-name"]:visible:not([inert] *)'),
+  ).toHaveText(LEAGUE_NAME);
+}
+
+/**
+ * A mouse wheel at (x, y). Mobile WebKit (the iphone project) has no wheel,
+ * so there it scrolls what a finger drag at that point would: the nearest
+ * ancestor that scrolls on that axis, else the page.
+ */
+export async function wheel(page: Page, x: number, y: number, dx: number, dy: number) {
+  await page.mouse.move(x, y);
+  try {
+    await page.mouse.wheel(dx, dy);
+    return;
+  } catch (e) {
+    if (!String(e).includes('not supported in mobile WebKit')) throw e;
+  }
+  await page.evaluate(
+    ([x, y, dx, dy]) => {
+      const scrolls = (el: Element) => {
+        const s = getComputedStyle(el);
+        return dy
+          ? /auto|scroll/.test(s.overflowY) && el.scrollHeight > el.clientHeight
+          : /auto|scroll/.test(s.overflowX) && el.scrollWidth > el.clientWidth;
+      };
+      let el = document.elementFromPoint(x!, y!);
+      while (el && !scrolls(el)) el = el.parentElement;
+      (el ?? document.scrollingElement!).scrollBy({ left: dx!, top: dy! });
+    },
+    [x, y, dx, dy],
   );
 }
+
+/**
+ * The element with this test id on the page the user sees. On touch screens
+ * the league pager keeps the neighbouring tabs rendered off-screen and
+ * inert, and `:visible` alone still matches them.
+ */
+export const onScreen = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);

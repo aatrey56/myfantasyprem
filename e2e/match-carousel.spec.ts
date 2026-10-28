@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => signIn(page));
 
 const starterIds = (page: Page) =>
   page
-    .locator('[data-testid="h2h-starters"]:visible [data-testid^="open-card-"]')
+    .locator('[data-testid="h2h-starters"]:visible:not([inert] *) [data-testid^="open-card-"]')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
 
 /** The names on the header now on screen. */
@@ -34,7 +34,7 @@ test.describe('phone', () => {
   test('swipe to the 2nd matchup, dots follow, a list card jumps back', async ({ page }) => {
     await page.goto(`${LEAGUE}/matchup`);
     await expect(page.getByTestId('matchup-carousel')).toBeVisible();
-    await expect(page.locator('[data-testid="h2h-starters"]:visible')).toBeVisible();
+    await expect(page.locator('[data-testid="h2h-starters"]:visible:not([inert] *)')).toBeVisible();
     const before = await starterIds(page);
     const mine = await headerNames(page);
     const dots = await selectedDot(page);
@@ -119,7 +119,7 @@ test.describe('desktop', () => {
     await page.goto(`${LEAGUE}/matchup`);
     await page.getByTestId('carousel-next').click();
     await expect.poll(async () => (await selectedDot(page)).on).toEqual([1]);
-    await page.locator('[data-testid="gw-prev"]:visible').click();
+    await page.locator('[data-testid="gw-prev"]:visible:not([inert] *)').click();
     await expect.poll(async () => (await selectedDot(page)).on).toEqual([0]);
   });
 });

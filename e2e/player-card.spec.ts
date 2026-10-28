@@ -5,15 +5,18 @@ import { LEAGUE, overflowingElements, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 /** Opens the card of the first free agent on the Players tab. */
 async function openFreeAgent(page: Page) {
   await page.goto(`${LEAGUE}/players`);
-  const add = page.locator('[data-testid^="move-"]:visible[aria-label^="Add "]').first();
+  const add = page
+    .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Add "]')
+    .first();
   await expect(add).toBeVisible();
   const faId = (await add.getAttribute('data-testid'))!.replace('move-', '');
-  await page.locator(`[data-testid="player-${faId}"]:visible`).click();
+  await page.locator(`[data-testid="player-${faId}"]:visible:not([inert] *)`).click();
   const card = visible(page, 'player-card');
   await expect(card).toBeVisible();
   await expect(card.getByTestId('card-name')).toBeVisible();
@@ -25,7 +28,9 @@ const settled = (card: Locator) =>
   expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(20);
 
 const headers = (page: Page) =>
-  page.locator('[data-testid="player-card"]:visible [data-testid^="log-head-"]').allTextContents();
+  page
+    .locator('[data-testid="player-card"]:visible:not([inert] *) [data-testid^="log-head-"]')
+    .allTextContents();
 
 test.describe('player card (desktop)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });

@@ -8,7 +8,8 @@ import { LEAGUE, pageOverflow, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Sections keep earlier screens mounted but hidden: only match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const LEAGUE_ID = LEAGUE.split('/').pop()!;
 const LABELS: Record<string, string> = {
   player_goal: 'My players: goals',
@@ -27,15 +28,24 @@ for (const vp of [
     test('Account opens the settings; a switch, All off and All on flip the switches', async ({
       page,
     }) => {
+      // Browser push, blocked for this site: headless Chromium reports that by
+      // default, WebKit reports "default" (not asked yet), so pin it.
+      await page.addInitScript(() =>
+        Object.defineProperty(Notification, 'permission', { get: () => 'denied' }),
+      );
       await page.goto('/account');
       await visible(page, 'account-notifications').click();
       await expect(page).toHaveURL(/\/account\/notifications$/);
       await expect(visible(page, 'notification-group-personal')).toContainText('Personal');
       await expect(visible(page, 'notification-group-league')).toContainText('League');
-      // Browser push: headless Chromium reports notifications as blocked,
-      // so the card says how to allow them rather than offering the button.
       await expect(visible(page, 'push-prompt')).toContainText('Push notifications on this device');
-      await expect(visible(page, 'push-denied')).toContainText('site settings');
+      if (/iPhone|iPad/.test(await page.evaluate(() => navigator.userAgent))) {
+        // iOS Safari has web push only for a Home Screen app.
+        await expect(visible(page, 'push-unavailable')).toContainText('Home Screen');
+      } else {
+        // Blocked: the card says how to allow them rather than offering the button.
+        await expect(visible(page, 'push-denied')).toContainText('site settings');
+      }
 
       await visible(page, `notification-league-${LEAGUE_ID}`).click();
       const goal = switchFor(page, 'player_goal');
