@@ -57,7 +57,7 @@ afterEach(() => {
 describe('import example shortcut', () => {
   // The Tab shortcut itself is a native DOM keydown listener (react-native-web's
   // onKeyPress preventDefault does not stop Safari's focus move), so it is
-  // covered by e2e/import-shortcut.spec.ts on chromium, webkit and firefox.
+  // covered by e2e/import-shortcut.spec.ts on chromium and webkit.
   it('web: shows the Tab hint and focuses the input on open', async () => {
     const input = await open('web');
     expect(screen.getByTestId('example-hint')).toHaveTextContent(
