@@ -27,8 +27,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   // Everything runs on chromium. Keyboard behaviour differs between engines, so
-  // the import shortcut and club menu specs also run on webkit (Safari); so do the branded images, which are native lazy <img>
-  // elements.
+  // the import shortcut and club menu specs also run on webkit (Safari); so do
+  // the branded images, which are native lazy <img> elements.
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
