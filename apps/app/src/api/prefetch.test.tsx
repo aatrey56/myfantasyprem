@@ -48,14 +48,20 @@ type Home = Schemas['LeagueHome'];
 let requests: string[];
 /** Requests whose path matches wait here until the test releases them. */
 let held: { match: (path: string) => boolean; released: Promise<void> } | null;
+let releaseHeld: (() => void) | null = null;
 function hold(match: (path: string) => boolean): () => void {
   let release!: () => void;
   held = { match, released: new Promise<void>((r) => (release = r)) };
-  return () => {
+  releaseHeld = () => {
     held = null;
+    releaseHeld = null;
     release();
   };
+  return releaseHeld;
 }
+// A failed assertion skips the test's release: let the held fetch finish
+// anyway so no request (or its timeout) outlives the test.
+afterEach(() => releaseHeld?.());
 const realFetch = globalThis.fetch;
 beforeAll(() => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
