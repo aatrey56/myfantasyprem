@@ -201,7 +201,7 @@ describe('a gameweek step keeps the last answer on screen', () => {
     await waitFor(() => expect(result.current.data?.data.id).toBe(a.id));
 
     // Hold the next answer so the stand-in can be seen before it lands.
-    const release = hold((path) => path.includes(`/matchups/${b.id}`));
+    const release = hold((path) => path.split('?')[0]!.endsWith(`/matchups/${b.id}`));
     await rerender({ g: gw - 1, m: b.id });
     // Still the last matchup, flagged as a stand-in, until the next lands.
     expect(result.current.data?.data.id).toBe(a.id);
