@@ -14,7 +14,7 @@ const branded = (page: Page, scope: string, kind: string) =>
 
 /**
  * Every matched <img> finished loading with real pixels. They load lazily,
- * and WebKit and Firefox (unlike Chromium) leave an image a screen below the
+ * and WebKit (unlike Chromium) leave an image a screen below the
  * fold unloaded, so each is scrolled into view and waited for in turn:
  * scrolling them all first could carry an image back out of view before
  * the engine's lazy-load check saw it, and its request would never start.

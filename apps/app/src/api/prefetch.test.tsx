@@ -46,12 +46,29 @@ type Home = Schemas['LeagueHome'];
 
 /** Paths the fake server was asked for, with their query string. */
 let requests: string[];
+/** Requests whose path matches wait here until the test releases them. */
+let held: { match: (path: string) => boolean; released: Promise<void> } | null;
+let releaseHeld: (() => void) | null = null;
+function hold(match: (path: string) => boolean): () => void {
+  let release!: () => void;
+  held = { match, released: new Promise<void>((r) => (release = r)) };
+  releaseHeld = () => {
+    held = null;
+    releaseHeld = null;
+    release();
+  };
+  return releaseHeld;
+}
+// A failed assertion skips the test's release: let the held fetch finish
+// anyway so no request (or its timeout) outlives the test.
+afterEach(() => releaseHeld?.());
 const realFetch = globalThis.fetch;
 beforeAll(() => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
     requests.push(url.pathname + url.search);
+    if (held?.match(url.pathname + url.search)) await held.released;
     const response = await getResponse(handlers, request);
     if (!response) throw new Error(`No mock handler for ${request.url}`);
     return response;
@@ -67,6 +84,7 @@ beforeEach(async () => {
   resetMocks();
   tokens.set(SESSION);
   requests = [];
+  held = null;
   // No gc timers: a prefetch landing after the test would keep Jest alive.
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
@@ -182,10 +200,13 @@ describe('a gameweek step keeps the last answer on screen', () => {
     );
     await waitFor(() => expect(result.current.data?.data.id).toBe(a.id));
 
+    // Hold the next answer so the stand-in can be seen before it lands.
+    const release = hold((path) => path.split('?')[0]!.endsWith(`/matchups/${b.id}`));
     await rerender({ g: gw - 1, m: b.id });
     // Still the last matchup, flagged as a stand-in, until the next lands.
     expect(result.current.data?.data.id).toBe(a.id);
     expect(result.current.isPlaceholderData).toBe(true);
+    release();
     await waitFor(() => expect(result.current.data?.data.id).toBe(b.id));
     expect(result.current.isPlaceholderData).toBe(false);
   });
@@ -202,9 +223,11 @@ describe('a gameweek step keeps the last answer on screen', () => {
     );
     await waitFor(() => expect(result.current.data?.data.gameweek).toBe(gw));
 
+    const release = hold((path) => path.includes(`/lineup?gameweek=${gw - 1}`));
     await rerender({ g: gw - 1 });
     expect(result.current.data?.data.gameweek).toBe(gw);
     expect(result.current.isPlaceholderData).toBe(true);
+    release();
     await waitFor(() => expect(result.current.data?.data.gameweek).toBe(gw - 1));
   });
 });

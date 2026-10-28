@@ -2,7 +2,7 @@ import { expect, test } from './fixtures';
 
 import { signIn } from './helpers';
 
-// Runs on chromium, webkit and firefox (see playwright.config.ts): Tab handling
+// Runs on chromium and webkit (see playwright.config.ts): Tab handling
 // differs between engines, and Safari once moved focus instead of filling.
 test.beforeEach(async ({ page }) => signIn(page));
 test.use({ viewport: { width: 1280, height: 800 } });
