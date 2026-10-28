@@ -1,0 +1,214 @@
+# The API build against a local API on the demo world (npm run test:ios --
+# --api; docs/IOS.md). Signs in as the demo user with the code the API
+# logged, then walks the hub, Status, Team, Players, a waiver claim (a
+# free-agent pickup in the day before a deadline, when nobody is on
+# waivers), a trade offer, Activity and the draft room of a new league.
+# Changes the demo data (lineup, claim, offer, a new league): run it on a freshly
+# seeded database.
+appId: ${APP_ID}
+name: Real API walkthrough
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-email'
+    timeout: 30000
+- tapOn:
+    id: 'sign-in-email'
+- inputText: 'demo@myfantasyprem.test'
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-code-input'
+    timeout: 15000
+- runScript: ../subflows/dev-code.js
+- inputText: ${output.code}
+
+# Leagues hub: both demo leagues from the server.
+- extendedWaitUntil:
+    visible: 'The Sunday Draft'
+    timeout: 20000
+- assertVisible: 'Late Kickoff'
+- takeScreenshot: api-hub
+
+# Status.
+- tapOn: 'The Sunday Draft'
+- extendedWaitUntil:
+    visible:
+      id: 'status-loaded'
+    timeout: 20000
+- takeScreenshot: api-status
+
+# Team: swap the starting keeper with the bench keeper (the demo team's).
+- tapOn:
+    id: 'tab-team'
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 15000
+# The list is the default view; swap on the pitch.
+- tapOn:
+    id: 'view-pitch'
+- scrollUntilVisible:
+    element:
+      id: 'bench-row'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Swap .*Ivanek'
+- tapOn: 'Swap .*Quinlan'
+- extendedWaitUntil:
+    visible: 'Lineup saved'
+    timeout: 15000
+- takeScreenshot: api-lineup-saved
+
+# Players: a player card from the server, swiped away.
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 15000
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: api-player-card
+# Phones close the full-height card with the floating round button.
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+
+# A claim or an add with a drop. Available is on by default and lists only
+# unowned players (waivers and free agents). The demo world's dates are fixed:
+# between a gameweek's waiver run and its deadline nobody is on waivers, so the
+# first row is then a free agent to add; either way the drop step follows.
+- extendedWaitUntil:
+    visible:
+      id: 'move-.*'
+    timeout: 15000
+- tapOn:
+    id: 'move-.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'drop-step'
+    timeout: 10000
+- tapOn:
+    id: 'drop-plr_.*'
+    index: 0
+- tapOn:
+    id: 'drop-confirm'
+# The card closes on success. Its 4-second toast comes up while the sheet is
+# still dismissing, and Maestro's first look after a dismissal can come too
+# late for it, so check the card closed instead.
+- extendedWaitUntil:
+    notVisible:
+      id: 'drop-step'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 15000
+- takeScreenshot: api-claim-or-add
+
+# A trade offer: our first player (a keeper) for theirs.
+- tapOn:
+    id: 'tab-players'
+- tapOn:
+    id: 'open-trades'
+- tapOn:
+    id: 'new-trade'
+- tapOn:
+    id: 'trade-team-.*'
+    index: 0
+- tapOn:
+    id: 'give-toggle-.*'
+    index: 0
+# Trades sit under the Players tab, above the app's bottom bar: centre the
+# rows so a tap never lands on the bar.
+- scrollUntilVisible:
+    element:
+      id: 'get-toggle-.*'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'get-toggle-.*'
+    index: 0
+- scrollUntilVisible:
+    element:
+      id: 'trade-check'
+    direction: DOWN
+    centerElement: true
+- assertVisible: '.*a legal trade.*'
+- tapOn:
+    id: 'trade-next'
+- tapOn:
+    id: 'trade-message'
+- inputText: 'Fancy a swap?'
+- hideKeyboard
+- tapOn:
+    id: 'trade-send'
+- extendedWaitUntil:
+    visible: 'Offer sent.*'
+    timeout: 15000
+- extendedWaitUntil:
+    visible: '.*Fancy a swap\?.*'
+    timeout: 15000
+- takeScreenshot: api-trade-sent
+
+# Activity, from the foot of the League tab (under the matchups and standings).
+- tapOn:
+    id: 'tab-league'
+- extendedWaitUntil:
+    visible:
+      id: 'league-matchups-header'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: 'link-activity'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'link-activity'
+- extendedWaitUntil:
+    visible:
+      id: 'activity-feed'
+    timeout: 15000
+- assertVisible: 'Draft completed'
+- takeScreenshot: api-activity
+
+# The draft room. Its link shows only before and during a draft, and the
+# demo leagues are past theirs, so create a league and open its room.
+- openLink: ${APP_SCHEME}://leagues
+- tapOn:
+    id: 'create-league'
+- tapOn:
+    id: 'league-name-input'
+- inputText: 'Native Draft Test'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'create-league-submit'
+    direction: DOWN
+- tapOn:
+    id: 'create-league-submit'
+- extendedWaitUntil:
+    visible:
+      id: 'invite-code'
+    timeout: 15000
+- tapOn:
+    id: 'go-to-league'
+- tapOn:
+    id: 'enter-draft-room'
+- extendedWaitUntil:
+    visible: 'Draft not scheduled'
+    timeout: 15000
+- takeScreenshot: api-draft-room

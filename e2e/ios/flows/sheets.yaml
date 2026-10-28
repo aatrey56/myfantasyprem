@@ -1,0 +1,191 @@
+# Sheets, long lists and the saved query cache on the mock build
+# (npm run test:ios -- sheets): the full-height player card closed by a pull
+# down and by its one floating ✕, the club pop-up as a centred dialog, the
+# Players list (FlashList) scrolled far down and back with rows drawn, and a
+# relaunch that paints the Team tab from the saved cache.
+appId: ${APP_ID}
+name: Sheets
+---
+- runFlow: ../subflows/sign-in.yaml
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players
+- extendedWaitUntil:
+    visible:
+      id: 'player-plr_.*'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-waveb-players
+
+# The player card: a pull down from the top of its content closes it.
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: ios-waveb-player-card
+# Phones have one close: the floating round button.
+- assertVisible:
+    id: 'sheet-close'
+- assertNotVisible:
+    id: 'sheet-close'
+    index: 1
+- swipe:
+    start: 50%, 30%
+    end: 50%, 95%
+    duration: 400
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+
+# Open it again; the ✕ closes it.
+- tapOn:
+    id: 'player-plr_.*'
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+
+# The club pop-up is a centred dialog on phones; a tap on the backdrop closes it.
+# Its chip sits at the end of the filter row (after the tag and position
+# chips): scroll the row, not the tabs, until it shows.
+- repeat:
+    while:
+      notVisible:
+        id: 'view-menu'
+    times: 4
+    commands:
+      - swipe:
+          from:
+            id: 'player-filters'
+          direction: LEFT
+          duration: 400
+- tapOn:
+    id: 'view-menu'
+- extendedWaitUntil:
+    visible:
+      id: 'view-all'
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: ios-waveb-snapped-sheet
+- assertNotVisible:
+    id: 'sheet-handle'
+- tapOn:
+    point: 50%, 95%
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'view-all'
+
+# FlashList: fling well down the list and back; every stop shows rows.
+- repeat:
+    times: 6
+    commands:
+      - swipe:
+          start: 50%, 85%
+          end: 50%, 25%
+          duration: 150
+      - waitForAnimationToEnd
+      - assertVisible:
+          id: 'player-plr_.*'
+- takeScreenshot: ios-waveb-players-scrolled
+- repeat:
+    times: 10
+    commands:
+      - swipe:
+          start: 50%, 25%
+          end: 50%, 85%
+          duration: 150
+      - waitForAnimationToEnd
+      - assertVisible:
+          id: 'player-plr_.*'
+- assertVisible:
+    id: 'open-waivers'
+
+# The saved cache: swap the keepers, quit and relaunch. The mock world is
+# rebuilt on launch (the swap is gone there), so a swapped lineup on screen
+# right after the relaunch can only come from the saved cache.
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 10000
+- tapOn:
+    id: 'view-pitch'
+- scrollUntilVisible:
+    element:
+      id: 'bench-row'
+    direction: DOWN
+    centerElement: true
+- tapOn: 'Swap .*Gustavsen'
+- tapOn: 'Swap .*Bernardi'
+- extendedWaitUntil:
+    visible: 'Lineup saved'
+    timeout: 10000
+# Bernardi (the bench keeper before the swap) now starts, above the bench.
+- assertVisible:
+    text: 'Swap Bernardi'
+    above:
+      id: 'bench-row'
+- takeScreenshot: ios-waveb-team
+# No wait for the cache: the app writes it as soon as the save settles
+# (before the toast shows), not on the one-second throttle.
+- stopApp
+- launchApp
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 10000
+- tapOn:
+    id: 'view-pitch'
+- scrollUntilVisible:
+    element:
+      id: 'bench-row'
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: ios-waveb-team-from-cache
+# Bernardi (the bench keeper before the swap) now starts, above the bench.
+- assertVisible:
+    text: 'Swap Bernardi'
+    above:
+      id: 'bench-row'
+# The control: once that entry is stale (15 s), a relaunch restores it and
+# refetches behind it, showing the rebuilt mock world where Gustavsen starts.
+# Let the staleTime run out. waitForAnimationToEnd is no clock: it returns
+# as soon as the screen is still, often well inside 15 s. Waiting for an id
+# the app never shows (optional, so its timeout is not a failure) does wait
+# the full 16 s.
+- extendedWaitUntil:
+    visible:
+      id: 'never-shown-staleness-clock'
+    timeout: 16000
+    optional: true
+    label: Wait out the 15 s staleTime of the saved lineup
+- stopApp
+- launchApp
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 10000
+- tapOn:
+    id: 'view-pitch'
+- scrollUntilVisible:
+    element:
+      id: 'bench-row'
+    direction: DOWN
+    centerElement: true
+- extendedWaitUntil:
+    visible:
+      text: 'Swap Gustavsen'
+      above:
+        id: 'bench-row'
+    timeout: 10000

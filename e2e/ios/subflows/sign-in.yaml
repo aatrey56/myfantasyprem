@@ -1,0 +1,27 @@
+# Fresh start on the mock build: the mock world is in memory, so a relaunch
+# resets the leagues, and clearKeychain drops any saved session. The mock
+# build signs in with any 6-digit code except 000000.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-email'
+    timeout: 30000
+- takeScreenshot: ios-sign-in
+- tapOn:
+    id: 'sign-in-email'
+- inputText: 'sam@example.com'
+# The keyboard's Send key submits, like the button under it.
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-code-input'
+    timeout: 10000
+- takeScreenshot: ios-sign-in-code
+- inputText: '123456'
+- extendedWaitUntil:
+    visible: 'The Sunday Draft'
+    timeout: 15000

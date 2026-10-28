@@ -1,0 +1,6 @@
+# Only what `go build ./cmd/...` needs goes into the image build.
+**/*_test.go
+**/testdata
+tools
+Dockerfile
+.dockerignore

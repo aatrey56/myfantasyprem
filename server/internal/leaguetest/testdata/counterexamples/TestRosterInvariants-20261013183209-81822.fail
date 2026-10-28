@@ -1,0 +1,382 @@
+# 2026/10/13 18:32:09.684018 [TestRosterInvariants] [rapid] draw review: "none"
+# 2026/10/13 18:32:09.684033 [TestRosterInvariants] [rapid] draw teams: 4
+# 2026/10/13 18:32:09.684753 [TestRosterInvariants] [rapid] draw draft action: 0
+# 2026/10/13 18:32:09.684758 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14j65b1mrnnwsz44hpy"
+# 2026/10/13 18:32:09.685440 [TestRosterInvariants] [rapid] draw draft action: 1
+# 2026/10/13 18:32:09.685442 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14adm36xzsez8y4a66e"
+# 2026/10/13 18:32:09.686074 [TestRosterInvariants] [rapid] draw draft action: 3
+# 2026/10/13 18:32:09.686752 [TestRosterInvariants] [rapid] draw draft action: 3
+# 2026/10/13 18:32:09.687478 [TestRosterInvariants] [rapid] draw draft action: 1
+# 2026/10/13 18:32:09.687479 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14ar1dq79prk1zcb601"
+# 2026/10/13 18:32:09.688970 [TestRosterInvariants] [rapid] draw draft action: 1
+# 2026/10/13 18:32:09.688987 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14ap63fzjsgq55s5p56"
+# 2026/10/13 18:32:09.689980 [TestRosterInvariants] [rapid] draw draft action: 4
+# 2026/10/13 18:32:09.689988 [TestRosterInvariants] [rapid] draw user: "usr_01m4vpa16m6p59mt5b006vpn64"
+# 2026/10/13 18:32:09.689991 [TestRosterInvariants] [rapid] draw on: false
+# 2026/10/13 18:32:09.694260 [TestRosterInvariants] [rapid] draw draft action: 2
+# 2026/10/13 18:32:09.694269 [TestRosterInvariants] [rapid] draw user: "usr_01m4vpa16m5nw3mz94k8h87nak"
+# 2026/10/13 18:32:09.694271 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14a74hb8w005cme06b0"
+# 2026/10/13 18:32:09.695329 [TestRosterInvariants] [rapid] draw draft action: 4
+# 2026/10/13 18:32:09.695335 [TestRosterInvariants] [rapid] draw user: "usr_01m4vpa16m5nw3mz94k8h87nak"
+# 2026/10/13 18:32:09.695338 [TestRosterInvariants] [rapid] draw on: false
+# 2026/10/13 18:32:09.696466 [TestRosterInvariants] [rapid] draw draft action: 1
+# 2026/10/13 18:32:09.696483 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14abfb8jzbsaffvvk8n"
+# 2026/10/13 18:32:09.698094 [TestRosterInvariants] [rapid] draw draft action: 1
+# 2026/10/13 18:32:09.698107 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14j82a4whamh5c12ca3"
+# 2026/10/13 18:32:09.699037 [TestRosterInvariants] [rapid] draw draft action: 0
+# 2026/10/13 18:32:09.699044 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14jjrpm74b9wp8rkk6h"
+# 2026/10/13 18:32:09.699700 [TestRosterInvariants] [rapid] draw draft action: 3
+# 2026/10/13 18:32:09.700431 [TestRosterInvariants] [rapid] draw draft action: 3
+# 2026/10/13 18:32:09.702400 [TestRosterInvariants] [rapid] draw draft action: 0
+# 2026/10/13 18:32:09.702410 [TestRosterInvariants] [rapid] draw player: "plr_01m4vpa14a8zf4a2kdypmrhwvy"
+# 2026/10/13 18:32:09.705009 [TestRosterInvariants] [rapid] draw draft action: 3
+# 2026/10/13 18:32:09.708196 [TestRosterInvariants] [rapid] draw season steps: 25
+# 2026/10/13 18:32:09.708202 [TestRosterInvariants] [rapid] draw team: 1
+# 2026/10/13 18:32:09.708204 [TestRosterInvariants] [rapid] draw season action: 1
+# 2026/10/13 18:32:09.708215 [TestRosterInvariants] [rapid] draw free agent drop: "plr_01m4vpa14adm36xzsez8y4a66e"
+# 2026/10/13 18:32:09.708238 [TestRosterInvariants] [rapid] draw free agent add: "plr_01m4vpa14anzbp29aezb8espkk"
+# 2026/10/13 18:32:09.708660 [TestRosterInvariants] [rapid] draw team: 0
+# 2026/10/13 18:32:09.708661 [TestRosterInvariants] [rapid] draw season action: 1
+# 2026/10/13 18:32:09.708670 [TestRosterInvariants] [rapid] draw free agent drop: "plr_01m4vpa14ap63fzjsgq55s5p56"
+# 2026/10/13 18:32:09.708691 [TestRosterInvariants] [rapid] draw free agent add: "plr_01m4vpa14a2s19cstc84ebjbt0"
+# 2026/10/13 18:32:09.710076 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.710091 [TestRosterInvariants] [rapid] draw season action: 0
+# 2026/10/13 18:32:09.710331 [TestRosterInvariants] [rapid] draw claim drop: "plr_01m4vpa14afnz1ntz24h9sssx0"
+# 2026/10/13 18:32:09.710401 [TestRosterInvariants] [rapid] draw claim add: "plr_01m4vpa14aymep9xwg2g9640wq"
+# 2026/10/13 18:32:09.711128 [TestRosterInvariants] [rapid] draw team: 1
+# 2026/10/13 18:32:09.711132 [TestRosterInvariants] [rapid] draw season action: 3
+# 2026/10/13 18:32:09.711133 [TestRosterInvariants] [rapid] draw other team: 2
+# 2026/10/13 18:32:09.711133 [TestRosterInvariants] [rapid] draw players: 2
+# 2026/10/13 18:32:09.711135 [TestRosterInvariants] [rapid] draw position: "MID"
+# 2026/10/13 18:32:09.711698 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.711700 [TestRosterInvariants] [rapid] draw season action: 2
+# 2026/10/13 18:32:09.711701 [TestRosterInvariants] [rapid] draw hours: 11
+# 2026/10/13 18:32:09.712234 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.712239 [TestRosterInvariants] [rapid] draw season action: 1
+# 2026/10/13 18:32:09.712253 [TestRosterInvariants] [rapid] draw free agent drop: "plr_01m4vpa14af8mh5nn31c7776r7"
+# 2026/10/13 18:32:09.712308 [TestRosterInvariants] [rapid] draw free agent add: "plr_01m4vpa14agcn4r4n97zpxybn7"
+# 2026/10/13 18:32:09.712868 [TestRosterInvariants] [rapid] draw team: 0
+# 2026/10/13 18:32:09.712871 [TestRosterInvariants] [rapid] draw season action: 4
+# 2026/10/13 18:32:09.712872 [TestRosterInvariants] [rapid] draw other team: 3
+# 2026/10/13 18:32:09.712873 [TestRosterInvariants] [rapid] draw players: 2
+# 2026/10/13 18:32:09.712875 [TestRosterInvariants] [rapid] draw position: "GKP"
+# 2026/10/13 18:32:09.713492 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.713499 [TestRosterInvariants] [rapid] draw season action: 0
+# 2026/10/13 18:32:09.713517 [TestRosterInvariants] [rapid] draw claim drop: "plr_01m4vpa14aq5s33g5vvvgard34"
+# 2026/10/13 18:32:09.713569 [TestRosterInvariants] [rapid] draw claim add: "plr_01m4vpa14a12e6ckagxneb02g6"
+# 2026/10/13 18:32:09.715238 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.715244 [TestRosterInvariants] [rapid] draw season action: 2
+# 2026/10/13 18:32:09.715245 [TestRosterInvariants] [rapid] draw hours: 5
+# 2026/10/13 18:32:09.715890 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.715894 [TestRosterInvariants] [rapid] draw season action: 2
+# 2026/10/13 18:32:09.715895 [TestRosterInvariants] [rapid] draw hours: 14
+# 2026/10/13 18:32:09.716435 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.716437 [TestRosterInvariants] [rapid] draw season action: 0
+# 2026/10/13 18:32:09.716452 [TestRosterInvariants] [rapid] draw claim drop: "plr_01m4vpa14az12me587qk9s04qh"
+# 2026/10/13 18:32:09.716506 [TestRosterInvariants] [rapid] draw claim add: "plr_01m4vpa14ajw25t6ptte0sfzbj"
+# 2026/10/13 18:32:09.717038 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.717040 [TestRosterInvariants] [rapid] draw season action: 2
+# 2026/10/13 18:32:09.717040 [TestRosterInvariants] [rapid] draw hours: 17
+# 2026/10/13 18:32:09.717529 [TestRosterInvariants] [rapid] draw team: 1
+# 2026/10/13 18:32:09.717531 [TestRosterInvariants] [rapid] draw season action: 3
+# 2026/10/13 18:32:09.717532 [TestRosterInvariants] [rapid] draw other team: 0
+# 2026/10/13 18:32:09.717533 [TestRosterInvariants] [rapid] draw players: 3
+# 2026/10/13 18:32:09.717534 [TestRosterInvariants] [rapid] draw position: "FWD"
+# 2026/10/13 18:32:09.718074 [TestRosterInvariants] [rapid] draw team: 0
+# 2026/10/13 18:32:09.718075 [TestRosterInvariants] [rapid] draw season action: 2
+# 2026/10/13 18:32:09.718076 [TestRosterInvariants] [rapid] draw hours: 25
+# 2026/10/13 18:32:09.718711 [TestRosterInvariants] [rapid] draw team: 2
+# 2026/10/13 18:32:09.718722 [TestRosterInvariants] [rapid] draw season action: 0
+# 2026/10/13 18:32:09.718748 [TestRosterInvariants] [rapid] draw claim drop: "plr_01m4vpa14a4p44ejrtn35q3q6j"
+# 2026/10/13 18:32:09.718850 [TestRosterInvariants] [rapid] draw claim add: "plr_01m4vpa14a23hdrpefzywr4q2k"
+# 2026/10/13 18:32:09.719750 [TestRosterInvariants] [rapid] draw team: 0
+# 2026/10/13 18:32:09.719758 [TestRosterInvariants] [rapid] draw season action: 6
+# 2026/10/13 18:32:09.721710 [TestRosterInvariants] [rapid] draw team: 0
+# 2026/10/13 18:32:09.721724 [TestRosterInvariants] [rapid] draw season action: 0
+# 2026/10/13 18:32:09.721741 [TestRosterInvariants] [rapid] draw claim drop: "plr_01m4vpa14ah0n8vej19j1c96t1"
+# 2026/10/13 18:32:09.721806 [TestRosterInvariants] [rapid] draw claim add: "plr_01m4vpa14jz1c3v53d3zevvb42"
+# 2026/10/13 18:32:09.722339 [TestRosterInvariants] [rapid] draw team: 3
+# 2026/10/13 18:32:09.722342 [TestRosterInvariants] [rapid] draw season action: 6
+# 2026/10/13 18:32:09.723321 [TestRosterInvariants] [rapid] draw team: 2
+# 2026/10/13 18:32:09.723323 [TestRosterInvariants] [rapid] draw season action: 7
+# 2026/10/13 18:32:09.723917 [TestRosterInvariants] gameweek 9: team tm_01m4vpa16mf5x4ee07e8kzsmwv has 3 GKP, want 2 (map[DEF:5 FWD:3 GKP:3 MID:5])
+# 
+v0.4.8#14105232780129596195
+0x937d5739f6399
+0x0
+0x6de3fd002b4f3
+0x498ae04f7e562
+0x0
+0x181e423564cae1
+0x1ffc4e6f22ed9
+0x0
+0x15d8ab88fae5a9
+0x25
+0x196ee651d821cc
+0x10bd8d28b4f505
+0x1
+0xe2612a0d466b
+0x1
+0x1c95a7d942305a
+0x46dd1392f6fb0
+0x3
+0x1c822c38307143
+0x70f6697223dbb
+0x3
+0x1f319ea44d36e8
+0x1590c06ac1a615
+0x1
+0x1cb6283198174c
+0x128
+0x6247005283ffb
+0x29c5afe307486
+0x1
+0x1d122a70a9d206
+0x63
+0xad1c3d8ec37f3
+0xbf9d914c0387e
+0x4
+0xac0124681578a
+0x3
+0x0
+0x1f0a5ef88d26ac
+0x16cde5d657a683
+0x6
+0x6
+0x2
+0x412ee4596a87e
+0x1
+0xc455af955c4fe
+0x6
+0x13caccf18f221c
+0x16041dca972902
+0x6
+0x6
+0x7
+0x4
+0x1386bf1f2bf900
+0x1
+0x0
+0xfd0f25f9447f
+0x10015725aed313
+0x1
+0xb00af322c4ba0
+0xd
+0x1c5091c18160aa
+0x1e1943944b27be
+0x7
+0x5
+0x1
+0x19d9441bb17aea
+0xc4
+0x142f88f132125
+0x4f52f75142bba
+0x0
+0x88fe3dde7e6c9
+0x4
+0x1fc742828d829f
+0x8960bcb0604e3
+0x3
+0x5f33bb743ce0
+0x141e73bb60409d
+0x5
+0x3
+0x9450f78817532
+0x1e1e28ab0e7a47
+0x0
+0x709cb67101a84
+0x5
+0xd58f0212e370b
+0xcaf00d87977c1
+0x3
+0x1a5301b64cc851
+0x1e3ce3dc438432
+0xf
+0x51ccf38204d13
+0x1e9c5eed4b94f9
+0x1
+0x13324250006713
+0x15384018ca977d
+0x1
+0x4a7d3a3ceddb4
+0x0
+0x172c8a2e2d2775
+0x41
+0x2ea839a909478
+0x531b7b44c607a
+0x0
+0xb7d35285f4c29
+0x1d793b0167c02
+0x1
+0x7bd96785096bb
+0x1
+0x16335b5ff380d7
+0x37
+0xb69827725aa4f
+0xf0234b9cc7914
+0x3
+0xc5d2a81133fba
+0xb990cda43dd20
+0x0
+0x1c7363026bd023
+0xa
+0x1e64cf5beef7c1
+0x5f
+0x1cbf8470f8a552
+0x17a6ae5308943d
+0x1
+0xd66093a383071
+0x183470d4b60f81
+0x3
+0x611029f6787dc
+0xfbb01c08d4292
+0x2
+0xeebfe456081ac
+0x6c749492ff0c
+0x1
+0x136ca602183f5d
+0x2
+0xace42c5af560f
+0x140bfa6772fc51
+0x3
+0x19f631b5db84a7
+0x94dc154fda799
+0x2
+0x1ec09546d20ddd
+0xbe94df933a814
+0xa
+0x628bfa8ee2744
+0xf801327108f67
+0x3
+0x5c04b60c29f12
+0xd12f35a44d91a
+0x1
+0xcd637d9b68ac1
+0xf
+0x8
+0xdae0e6b0a279
+0x0
+0x18d64d37fd9f14
+0xaa130942ec879
+0x0
+0xd4d56d0b79754
+0x1097ad12d9a16c
+0x4
+0x9a250c00df902
+0x1224dc4b4b151f
+0x3
+0x1797e988395f34
+0xa442e0cd4cac
+0x1
+0x6b105f8032a7c
+0x0
+0x124156e7920de1
+0x1f5e8432a467aa
+0xffffffffffffffff
+0x1de7829e28cb9d
+0x6aeed2e8d358
+0x0
+0x3985cef3adbf3
+0x1
+0x1c7a6ff4526359
+0x5
+0x109228c7327c8e
+0x115c58d171411e
+0x3
+0xa6f0893a768f7
+0xea62e9041084e
+0x2
+0x16d0e1490015e4
+0x7f1ae541ba5f3
+0x4
+0x8fd73dc187f05
+0xa76910217831b
+0x3
+0x16c8afce799f7d
+0x61d02d45ebe3a
+0x2
+0xdea21d18ba70a
+0xd96828a42b162
+0xd
+0x15a212ca0a2b94
+0x167dac3e0fe5b9
+0x3
+0x1f04ea6cc3fbde
+0xb528e62bed53
+0x0
+0xdc940ab967d14
+0xe
+0x15814f979f4fb5
+0x19
+0x1ffa1d7ac85a12
+0x171480a9687574
+0x3
+0x19b71599b8e253
+0x6993eb0842e01
+0x2
+0x7a89b1cb9564f
+0x127ebb5f3ca0a5
+0x10
+0x174ca779bb0fa3
+0x12f2fbd17a38fb
+0x1
+0x45597c9847f44
+0x88e3b8d380e15
+0x3
+0x18f20ce709f738
+0x1dda69fe0c9cb6
+0x0
+0x62a486bab34b5
+0x60f7fb329e7b2
+0x2
+0x1fb6c1087ac882
+0xffffffffffffffff
+0xad681ed3affef
+0xdc7cf382ec43
+0x0
+0x14503a70917a5e
+0xdad8440dab5e6
+0x2
+0x11fa2756b91203
+0x10616c3b4fb7a0
+0x18
+0xed2bb08d0dc01
+0x1cf956d3e6bfad
+0x2
+0x18fe800d81f7d2
+0xc0e6f43431ee
+0x0
+0x15e0c26b9c7708
+0x4
+0xabff60381543e
+0xb
+0x5de1cdef67c04
+0x1800c8c9d208b1
+0x0
+0x15b107877c9bc8
+0xd3339aa75d4b8
+0x6
+0x10f05a4d7da6c5
+0x124eaad9d479d8
+0x0
+0xcf5324e5d430f
+0x15d37efb9ddf03
+0x0
+0x1b57fa403fa4af
+0xf
+0xf
+0x9
+0x1268c88efd1577
+0x3c
+0x6a917ec93816d
+0xacbb3920770cd
+0x3
+0x1dfb49d502c0b8
+0x1a177ed389bc33
+0x6
+0x1872536ac7f8f
+0x18af56fc04ed6f
+0x2
+0xedfb4fd42acb6
+0xf7ea8fff55e5d
+0x7

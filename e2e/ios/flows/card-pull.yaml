@@ -1,0 +1,53 @@
+# The owner's pull to close (npm run test:ios -- card-pull): the full-height
+# player card, its content scrolled a little and back to the top, then pulled
+# down from the middle of the card (around the tag chips, not the grabber).
+# It must close on the first pull, five times in a row.
+appId: ${APP_ID}
+name: Card pull
+---
+- runFlow: ../subflows/sign-in.yaml
+- tapOn: 'The Sunday Draft'
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-plr_.*'
+    timeout: 15000
+- repeat:
+    times: 5
+    commands:
+      - tapOn:
+          id: 'player-plr_.*'
+          index: 0
+      - extendedWaitUntil:
+          visible:
+            id: 'card-name'
+          timeout: 10000
+      - waitForAnimationToEnd
+      # Scroll the content a little and slowly back to the top: the card stays up.
+      - swipe:
+          start: 50%, 70%
+          end: 50%, 55%
+          duration: 600
+      - waitForAnimationToEnd
+      - swipe:
+          start: 50%, 45%
+          end: 50%, 62%
+          duration: 600
+      - waitForAnimationToEnd
+      - assertVisible:
+          id: 'card-name'
+      - assertVisible:
+          id: 'card-tag-avoid'
+      # One pull from the tag chips closes it: no retries.
+      - swipe:
+          from:
+            id: 'card-tag-avoid'
+          direction: DOWN
+          duration: 350
+      - extendedWaitUntil:
+          notVisible:
+            id: 'card-name'
+          timeout: 3000
+      - assertVisible:
+          id: 'player-plr_.*'

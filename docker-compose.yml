@@ -1,0 +1,45 @@
+# Local Postgres.
+#   db       the development database (npm run dev:stack uses it)
+#            DATABASE_URL=postgres://myfantasyprem:myfantasyprem@localhost:5432/myfantasyprem?sslmode=disable
+#   db-test  a throwaway server on fixed port 5433 for manual use; data lives
+#            in tmpfs. (npm run test:go:db and npm run test:e2e:server do NOT
+#            use it: each starts its own container on a free port and removes
+#            it afterwards, scripts/test-postgres.mjs.)
+#            TEST_DATABASE_URL=postgres://myfantasyprem:myfantasyprem@localhost:5433/myfantasyprem?sslmode=disable
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: myfantasyprem
+      POSTGRES_PASSWORD: myfantasyprem
+      POSTGRES_DB: myfantasyprem
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U myfantasyprem -d myfantasyprem']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  db-test:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: myfantasyprem
+      POSTGRES_PASSWORD: myfantasyprem
+      POSTGRES_DB: myfantasyprem
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    command:
+      ['postgres', '-c', 'fsync=off', '-c', 'full_page_writes=off', '-c', 'synchronous_commit=off']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U myfantasyprem -d myfantasyprem']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

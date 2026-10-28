@@ -1,0 +1,8 @@
+# Generates the std net/http strict server and models from ../api/openapi.yaml.
+# Paths are relative to internal/httpapi (where go:generate runs).
+package: httpapi
+output: api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true

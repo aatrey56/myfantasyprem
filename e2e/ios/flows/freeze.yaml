@@ -1,0 +1,99 @@
+# The owner's "frozen app" (npm run test:ios -- freeze): a sheet closed
+# around a mutation left its Modal over the app, taking every touch. After
+# each close a tab switch must land.
+appId: ${APP_ID}
+name: Freeze
+---
+- runFlow: ../subflows/sign-in.yaml
+- tapOn: 'The Sunday Draft'
+- extendedWaitUntil:
+    visible:
+      id: 'status-loaded'
+    timeout: 15000
+
+# Player card (Players list; Status opens the same sheet) → tag on and off → close (✕, then a pull down), 5×.
+- repeat:
+    times: 5
+    commands:
+      - runFlow: ../subflows/card-tag-cycle.yaml
+
+# Team → the swap sheet: open, close, open again (a second tap), close by a
+# tap on the backdrop (a centred dialog), a saved swap (a mutation), the sheet again, and tab switches.
+- tapOn:
+    id: 'tab-team'
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 10000
+- repeat:
+    times: 3
+    commands:
+      - tapOn:
+          id: 'lineup-swap-.*'
+          index: 1
+      - extendedWaitUntil:
+          visible:
+            id: 'swap-title'
+          timeout: 5000
+      - tapOn:
+          id: 'sheet-close'
+      - extendedWaitUntil:
+          notVisible:
+            id: 'swap-title'
+          timeout: 5000
+      - tapOn:
+          id: 'lineup-swap-.*'
+          index: 1
+      - extendedWaitUntil:
+          visible:
+            id: 'swap-title'
+          timeout: 5000
+      # A centred dialog on phones: a tap on the dimmed backdrop closes it.
+      - tapOn:
+          point: 50%, 95%
+      - extendedWaitUntil:
+          notVisible:
+            id: 'swap-title'
+          timeout: 5000
+      - tapOn:
+          id: 'tab-players'
+      - extendedWaitUntil:
+          visible:
+            id: 'player-list'
+          timeout: 5000
+      - tapOn:
+          id: 'tab-team'
+      - extendedWaitUntil:
+          visible:
+            id: 'lineup-open'
+          timeout: 5000
+# A swap that saves while the sheet slides away, then the sheet again.
+- tapOn:
+    id: 'lineup-swap-.*'
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: 'swap-title'
+    timeout: 5000
+- tapOn:
+    id: 'swap-candidate-.*'
+    index: 0
+- extendedWaitUntil:
+    notVisible:
+      id: 'swap-title'
+    timeout: 5000
+- tapOn:
+    id: 'lineup-swap-.*'
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: 'swap-title'
+    timeout: 5000
+- tapOn:
+    id: 'sheet-close'
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 5000

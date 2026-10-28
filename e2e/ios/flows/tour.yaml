@@ -1,0 +1,164 @@
+# A screenshot tour of every screen on the mock build (npm run test:ios).
+# Each stop opens the screen by its deep link, waits for it to render and
+# captures ios-tour-<name>.png. A red screen or crash fails the wait.
+# Screens outside the league tabs (no league header) are also captured scrolled
+# (ios-tour-<name>-scrolled.png): their content must stop below the status
+# bar and Dynamic Island, never run under the clock.
+appId: ${APP_ID}
+name: Tour
+---
+- runFlow: ../subflows/sign-in.yaml
+- openLink: ${APP_SCHEME}://leagues
+- extendedWaitUntil:
+    visible: 'The Sunday Draft'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-hub
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-hub-scrolled
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-status
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/matchup
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-matchup
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-team
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/league
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-league
+# League opens on the matchups; the draft results link sits further down.
+- scrollUntilVisible:
+    element:
+      id: 'link-draft-results'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'link-draft-results'
+- extendedWaitUntil:
+    visible: 'Draft complete'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-draft-results
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-players
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players/waivers
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-waivers
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players/trades
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-trades
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/activity
+- extendedWaitUntil:
+    visible: { id: 'back-link' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-activity
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/activity/deadlines
+- extendedWaitUntil:
+    visible: { id: 'back-link' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-deadlines
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd1/draft
+- extendedWaitUntil:
+    visible: "You're on the clock"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-draft-room
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd2/settings
+- extendedWaitUntil:
+    visible: 'League settings'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-settings
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-settings-scrolled
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd5
+- extendedWaitUntil:
+    visible: { id: 'league-tabs' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-imported
+- openLink: ${APP_SCHEME}://import
+- extendedWaitUntil:
+    visible: { id: 'league-input' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-import
+- tapOn:
+    id: 'use-example-button'
+- tapOn:
+    id: 'find-button'
+- extendedWaitUntil:
+    visible: { id: 'seat-list' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-import-preview
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-import-preview-scrolled
+- openLink: ${APP_SCHEME}://leagues/new
+- extendedWaitUntil:
+    visible: { id: 'league-name-input' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-new-league
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-new-league-scrolled
+- openLink: ${APP_SCHEME}://join/DERBY7XQ
+- extendedWaitUntil:
+    visible: { id: 'invite-preview' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-join
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-join-scrolled
+- openLink: ${APP_SCHEME}://scores
+- extendedWaitUntil:
+    visible: { id: 'scores-list' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-scores
+- openLink: ${APP_SCHEME}://feed
+- extendedWaitUntil:
+    visible: { id: 'feed-league' }
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-feed
+- openLink: ${APP_SCHEME}://account
+- extendedWaitUntil:
+    visible: 'Account'
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-account
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: ios-tour-account-scrolled

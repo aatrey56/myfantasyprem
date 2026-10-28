@@ -1,0 +1,66 @@
+{
+  "name": "myfantasyprem",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sleeper-style fantasy app for the Premier League.",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "gen": "npm run gen:ts && npm run gen:go",
+    "gen:ts": "npm run gen -w @myfantasyprem/api-client",
+    "gen:go": "cd server && go generate ./...",
+    "dev:web": "npm run web -w @myfantasyprem/app",
+    "dev:web:mocks": "npm run web:mocks -w @myfantasyprem/app",
+    "dev:server": "cd server && go run ./cmd/api",
+    "dev:stack": "node scripts/dev-stack.mjs",
+    "db:seed": "cd server && go run ./cmd/seed",
+    "db:migrate": "cd server && go run ./cmd/migrate up",
+    "admin": "cd server && go run ./cmd/admin",
+    "build:web": "npm run build:web -w @myfantasyprem/app",
+    "build:web:mocks": "npm run build:web:mocks -w @myfantasyprem/app",
+    "verify:prod-bundle": "node scripts/verify-prod-bundle.mjs apps/app/dist",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check:go": "cd server && go vet ./... && test -z \"$(gofmt -l .)\" && go test -timeout 25m ./...",
+    "test:go:db": "node scripts/go-db-tests.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "test:mutation": "npm run test:mutation:go && npm run test:mutation:app",
+    "test:mutation:go": "node scripts/mutation-go.mjs",
+    "test:mutation:app": "npm run test:mutation -w @myfantasyprem/app",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run test:scripts && npm run check:go",
+    "test:e2e": "playwright test",
+    "test:e2e:server": "node scripts/e2e-server.mjs",
+    "test:ios": "node scripts/test-ios.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "screenshots": "npm run build:web:mocks && node scripts/screenshots.mjs",
+    "build:web:pages": "npm run build:web && npm run verify:prod-bundle && node scripts/pages-files.mjs apps/app/dist",
+    "dev:ios": "npm run ios -w @myfantasyprem/app",
+    "dev:ios:mocks": "npm run ios:mocks -w @myfantasyprem/app",
+    "updates:publish": "node scripts/updates-publish.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "eslint": "9.39.5",
+    "eslint-config-expo": "57.0.2",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "prettier": "3.9.9",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "@types/react": "19.2.18",
+    "react-native-worklets": "0.10.1",
+    "react-native-reanimated": "4.5.1",
+    "react-native-gesture-handler": "2.32.0"
+  }
+}

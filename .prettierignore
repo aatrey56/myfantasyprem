@@ -1,0 +1,15 @@
+node_modules
+dist
+.expo
+package-lock.json
+packages/api-client/src/schema.d.ts
+dist-mocks
+dist-server
+apps/app/public/mockServiceWorker.js
+docs/research
+server
+playwright-report
+test-results
+.claude
+.stryker-tmp
+reports

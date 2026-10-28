@@ -1,0 +1,265 @@
+# The league's top tabs as a pager and the app's bottom bar, on the mock
+# build (npm run test:ios -- nav): swipe left and right between tabs and
+# check which one is selected, tap tabs, check a horizontal row inside a
+# page scrolls itself instead of paging, then every section of the bottom bar,
+# the player card's game log scrolled sideways, and deep links to each tab.
+appId: ${APP_ID}
+name: Navigation
+---
+- runFlow: ../subflows/sign-in.yaml
+- tapOn: 'The Sunday Draft'
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: 'status-loaded'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+- assertVisible:
+    id: 'app-tabs'
+- waitForAnimationToEnd
+- takeScreenshot: ios-nav-status
+
+# Swipe left: STATUS → MATCH → TEAM, the page following the finger.
+- swipe:
+    start: 90%, 55%
+    end: 10%, 55%
+    duration: 300
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-matchup'
+    selected: true
+- extendedWaitUntil:
+    visible:
+      id: 'h2h-starters'
+    timeout: 10000
+- takeScreenshot: ios-nav-match
+- swipe:
+    start: 90%, 55%
+    end: 10%, 55%
+    duration: 300
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-team'
+    selected: true
+- extendedWaitUntil:
+    visible:
+      id: 'team-name'
+    timeout: 10000
+
+# Swipe right: back to MATCH.
+- swipe:
+    start: 10%, 55%
+    end: 90%, 55%
+    duration: 300
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-matchup'
+    selected: true
+
+# Tap tabs.
+- tapOn:
+    id: 'tab-players'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-players'
+    selected: true
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 10000
+- tapOn:
+    id: 'tab-league'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-league'
+    selected: true
+- extendedWaitUntil:
+    visible:
+      id: 'league-matchups-header'
+    timeout: 10000
+# LEAGUE is the last page: a swipe left stays on it.
+- swipe:
+    start: 90%, 55%
+    end: 10%, 55%
+    duration: 300
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-league'
+    selected: true
+- takeScreenshot: ios-nav-league
+
+# A horizontal row inside a page scrolls itself: STATUS stays selected.
+- tapOn:
+    id: 'tab-index'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+# A vertical scroll inside a page scrolls it: STATUS stays selected.
+- scrollUntilVisible:
+    element:
+      id: 'potw'
+    direction: DOWN
+    centerElement: true
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+- swipe:
+    from:
+      id: 'potw'
+    direction: RIGHT
+    duration: 400
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+
+# The app's bottom bar.
+- tapOn:
+    id: 'app-tab-scores'
+- extendedWaitUntil:
+    visible:
+      id: 'scores-list'
+    timeout: 10000
+- assertVisible:
+    id: 'app-tab-scores'
+    selected: true
+- takeScreenshot: ios-nav-scores
+- tapOn:
+    id: 'app-tab-feed'
+# The list's wrapper is not in the iOS accessibility tree; its rows are.
+- extendedWaitUntil:
+    visible:
+      id: 'feed-league'
+    timeout: 10000
+- assertVisible:
+    id: 'app-tab-feed'
+    selected: true
+- tapOn:
+    id: 'app-tab-account'
+- extendedWaitUntil:
+    visible: 'Account'
+    timeout: 10000
+# Back to Leagues: the league, on the tab it was left on.
+- tapOn:
+    id: 'app-tab-leagues'
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 10000
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+# Again: the hub.
+- tapOn:
+    id: 'app-tab-leagues'
+- extendedWaitUntil:
+    visible:
+      id: 'league-list'
+    timeout: 10000
+
+# The player card's game log scrolls sideways inside the card: the card
+# stays open and PLAYERS stays selected.
+- tapOn: 'The Sunday Draft'
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 10000
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 10000
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- tapOn:
+    id: 'card-tab-log'
+- extendedWaitUntil:
+    visible:
+      id: 'card-log-scroll'
+    timeout: 10000
+- swipe:
+    from:
+      id: 'card-log-scroll'
+    direction: LEFT
+    duration: 400
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'card-name'
+- swipe:
+    from:
+      id: 'card-log-scroll'
+    direction: RIGHT
+    duration: 400
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'card-name'
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+- assertVisible:
+    id: 'tab-players'
+    selected: true
+
+# Deep links open the right tab.
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/matchup
+- extendedWaitUntil:
+    visible:
+      id: 'h2h-starters'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-matchup'
+    selected: true
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible:
+      id: 'team-name'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-team'
+    selected: true
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players/waivers
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-players'
+    selected: true
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/league
+- extendedWaitUntil:
+    visible:
+      id: 'league-matchups-header'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-league'
+    selected: true
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy
+- extendedWaitUntil:
+    visible:
+      id: 'status-loaded'
+    timeout: 15000
+- assertVisible:
+    id: 'tab-index'
+    selected: true
+- openLink: ${APP_SCHEME}://scores
+- extendedWaitUntil:
+    visible:
+      id: 'scores-list'
+    timeout: 15000
+- assertVisible:
+    id: 'app-tab-scores'
+    selected: true

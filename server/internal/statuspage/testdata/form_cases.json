@@ -1,0 +1,160 @@
+{
+  "_about": [
+    "Form cases shared by the Go rules (statuspage/statuspage_test.go) and the app's (apps/app/src/lib/form.cases.test.ts).",
+    "gameweek: the gameweek form is for, from the season's current gameweek and whether it has finished.",
+    "form: matches are per-match points {gameweek, points}; a gameweek's points are the sum of its matches.",
+    "Form averages the two gameweeks before the form gameweek (fewer early in the season), with a gameweek",
+    "without a match or without minutes counting as 0; want is null when no gameweek has been completed."
+  ],
+  "gameweek": [
+    {
+      "name": "a live gameweek is the form gameweek",
+      "current": 7,
+      "currentFinished": false,
+      "want": 7
+    },
+    {
+      "name": "after a finished gameweek, the next one",
+      "current": 6,
+      "currentFinished": true,
+      "want": 7
+    },
+    {
+      "name": "before the season, gameweek 1",
+      "current": 0,
+      "currentFinished": false,
+      "want": 1
+    },
+    {
+      "name": "gameweek 1 live",
+      "current": 1,
+      "currentFinished": false,
+      "want": 1
+    },
+    {
+      "name": "after the season, past gameweek 38",
+      "current": 38,
+      "currentFinished": true,
+      "want": 39
+    }
+  ],
+  "form": [
+    {
+      "name": "GW7: GW5 6 and GW6 8, (6 + 8) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 5, "points": 6 },
+        { "gameweek": 6, "points": 8 }
+      ],
+      "want": 7
+    },
+    {
+      "name": "a gameweek without minutes counts 0: (0 + 9) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 5, "points": 0 },
+        { "gameweek": 6, "points": 9 }
+      ],
+      "want": 4.5
+    },
+    {
+      "name": "only the two gameweeks before the form gameweek count: (4 + 9) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 4, "points": 20 },
+        { "gameweek": 5, "points": 4 },
+        { "gameweek": 6, "points": 9 },
+        { "gameweek": 7, "points": 15 }
+      ],
+      "want": 6.5
+    },
+    {
+      "name": "a double gameweek counts both matches: (3 + 6 + 1) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 4, "points": 2 },
+        { "gameweek": 5, "points": 3 },
+        { "gameweek": 5, "points": 6 },
+        { "gameweek": 6, "points": 1 }
+      ],
+      "want": 5
+    },
+    {
+      "name": "transferred in for gameweek 6, nothing before: still over two, 7 / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 6, "points": 7 }
+      ],
+      "want": 3.5
+    },
+    {
+      "name": "no points in two gameweeks is 0",
+      "formGameweek": 7,
+      "matches": [],
+      "want": 0
+    },
+    {
+      "name": "GW1 has no form",
+      "formGameweek": 1,
+      "matches": [
+        { "gameweek": 1, "points": 10 }
+      ],
+      "want": null
+    },
+    {
+      "name": "GW2 is gameweek 1's points, divided by 1",
+      "formGameweek": 2,
+      "matches": [
+        { "gameweek": 1, "points": 7 },
+        { "gameweek": 2, "points": 3 }
+      ],
+      "want": 7
+    },
+    {
+      "name": "GW3 averages gameweeks 1 and 2: (7 + 2) / 2",
+      "formGameweek": 3,
+      "matches": [
+        { "gameweek": 1, "points": 7 },
+        { "gameweek": 2, "points": 2 }
+      ],
+      "want": 4.5
+    },
+    {
+      "name": "GW3 with a gameweek without minutes: (0 + 5) / 2",
+      "formGameweek": 3,
+      "matches": [
+        { "gameweek": 2, "points": 5 }
+      ],
+      "want": 2.5
+    },
+    {
+      "name": "after the season, gameweeks 37 and 38: (2 + 6) / 2",
+      "formGameweek": 39,
+      "matches": [
+        { "gameweek": 36, "points": 1 },
+        { "gameweek": 37, "points": 2 },
+        { "gameweek": 38, "points": 6 }
+      ],
+      "want": 4
+    },
+    {
+      "name": "an odd total is a half: (2 + 1) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 4, "points": 9 },
+        { "gameweek": 5, "points": 2 },
+        { "gameweek": 6, "points": 1 }
+      ],
+      "want": 1.5
+    },
+    {
+      "name": "negative points: (-1 + 0) / 2",
+      "formGameweek": 7,
+      "matches": [
+        { "gameweek": 5, "points": -1 },
+        { "gameweek": 6, "points": 0 }
+      ],
+      "want": -0.5
+    }
+  ]
+}

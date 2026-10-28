@@ -1,0 +1,78 @@
+# One owner reproduction: a player card from the Players list (the same card Status opens), a tag set and removed
+# (a mutation each), closed by ✕ and then by a pull down, and a tab switch
+# that must land (an invisible Modal left over takes every touch).
+appId: ${APP_ID}
+---
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-plr_.*'
+    timeout: 10000
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: 'card-tag-avoid'
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: 'card-tag-avoid'
+- tapOn:
+    id: 'card-tag-avoid'
+# Close right after the mutation: ✕.
+- tapOn:
+    id: 'sheet-close'
+- extendedWaitUntil:
+    notVisible:
+      id: 'card-tag-avoid'
+    timeout: 5000
+- tapOn:
+    id: 'tab-team'
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 5000
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-plr_.*'
+    timeout: 5000
+# Again, closed by a pull down from the top of the card this time.
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: 'card-tag-avoid'
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: 'card-tag-avoid'
+- tapOn:
+    id: 'card-tag-avoid'
+- waitForAnimationToEnd
+- swipe:
+    start: 50%, 64%
+    end: 50%, 95%
+    duration: 400
+- extendedWaitUntil:
+    notVisible:
+      id: 'card-tag-avoid'
+    timeout: 5000
+- tapOn:
+    id: 'tab-team'
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 5000

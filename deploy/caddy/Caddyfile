@@ -1,0 +1,74 @@
+# Caddy in front of the stack (compose.prod.yml, docs/DEPLOY.md): automatic
+# HTTPS for {$DOMAIN}, the web app at / and the API on the same origin.
+#
+#   /v1/*  (incl. the /v1/realtime WebSocket), /updates/*, /healthz -> api:8080
+#   everything else -> the static web app in /srv/web/current (SPA fallback)
+#
+# /srv/web holds one folder per upload under releases/, a relative `current`
+# symlink (deploy.sh web / web-rollback flip it) and shared/, the hashed
+# files of the retained releases.
+#
+# No access log on purpose: paths carry league ids and sign-in tokens.
+{
+	# Caddy's own admin API stays inside the container.
+	admin localhost:2019
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Every response, the API's included (deferred, so they win over upstream).
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Cross-Origin-Opener-Policy same-origin
+		-Server
+		-Via
+		defer
+	}
+
+	@api path /v1 /v1/* /updates /updates/* /healthz
+	handle @api {
+		header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		# Caddy sets X-Forwarded-For to the client's address (it trusts no
+		# incoming one); the API trusts it from Caddy's fixed IP only
+		# (TRUSTED_PROXIES). WebSocket upgrades pass through as they are.
+		reverse_proxy api:8080 {
+			header_up -X-Forwarded-Host
+		}
+	}
+
+	# Hashed bundles and assets come from /srv/web/shared, where every
+	# release's files accumulate (deploy.sh web), so a tab still on an older
+	# bundle finds its files after a release switch. A missing one is a plain
+	# 404, never the SPA's index.html (nosniff would stop the app booting, and
+	# the immutable cache would keep the HTML).
+	@hashed path /_expo/static/* /assets/*
+	handle @hashed {
+		root * /srv/web/shared
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		# The Expo web export: one external bundle, no inline scripts; React
+		# Native Web and expo-font inject <style> rules (hence 'unsafe-inline'
+		# for styles only); images come from /v1/assets on this origin, a few
+		# icons are data: SVGs; the push service worker is /push/sw.js.
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://{$DOMAIN}; worker-src 'self'; manifest-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+		# index.html and everything that is not hashed must revalidate.
+		header Cache-Control "no-cache"
+		root * /srv/web/current
+		try_files {path} /index.html
+		file_server
+	}
+
+	# A 404 must not inherit the immutable cache header.
+	handle_errors {
+		header Cache-Control "no-store"
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}

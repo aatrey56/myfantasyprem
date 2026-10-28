@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "testRunner": "jest",
+  "jest": { "projectType": "custom", "enableFindRelatedTests": true },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/lib/draft.ts",
+    "src/lib/lineup.ts",
+    "src/lib/matchup.ts",
+    "src/lib/standings.ts",
+    "src/lib/trade.ts",
+    "src/lib/waivers.ts"
+  ],
+  "reporters": ["clear-text", "progress"],
+  "tempDirName": ".stryker-tmp",
+  "concurrency": 4
+}

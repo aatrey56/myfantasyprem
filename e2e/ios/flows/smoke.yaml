@@ -1,0 +1,127 @@
+# Native smoke test on the mock build (npm run test:ios): sign in → join
+# sheet over the keyboard → matchup points breakdown → team swap → player
+# card closed → draft pick.
+appId: ${APP_ID}
+name: Smoke
+---
+- runFlow: ../subflows/sign-in.yaml
+
+# A sheet with a text field stays above the keyboard.
+- tapOn:
+    id: 'join-league'
+- extendedWaitUntil:
+    visible:
+      id: 'join-code-input'
+    timeout: 10000
+- tapOn:
+    id: 'join-code-input'
+- inputText: 'DERBY7XQ'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'join-code-submit'
+- takeScreenshot: ios-join-sheet-keyboard
+- tapOn:
+    id: 'join-code-submit'
+- extendedWaitUntil:
+    visible:
+      id: 'invite-preview'
+    timeout: 10000
+- tapOn:
+    id: 'back-link'
+
+# The live matchup and a points breakdown in a bottom sheet.
+- extendedWaitUntil:
+    visible: 'The Sunday Draft'
+    timeout: 10000
+- tapOn: 'The Sunday Draft'
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 10000
+- tapOn:
+    id: 'tab-matchup'
+- extendedWaitUntil:
+    visible:
+      id: 'h2h-starters'
+    timeout: 10000
+- tapOn:
+    id: 'h2h-breakdown-.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'breakdown-total'
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: ios-points-breakdown
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'breakdown-total'
+
+# Team: swap the starting keeper with the bench keeper (first on the bench).
+- tapOn:
+    id: 'tab-team'
+- extendedWaitUntil:
+    visible:
+      id: 'lineup-open'
+    timeout: 10000
+# The list is the default view; swap on the pitch.
+- tapOn:
+    id: 'view-pitch'
+- scrollUntilVisible:
+    element:
+      id: 'bench-row'
+    direction: DOWN
+    centerElement: true
+# Sam's starting keeper and backup keeper in the mock world.
+- tapOn: 'Swap .*Gustavsen'
+- tapOn: 'Swap .*Bernardi'
+- extendedWaitUntil:
+    visible: 'Lineup saved'
+    timeout: 10000
+- takeScreenshot: ios-lineup-saved
+
+# Players: open a player card, then close it.
+- tapOn:
+    id: 'tab-players'
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 10000
+- tapOn:
+    id: 'player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: ios-player-card
+# Phones close the full-height card with the floating round button.
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+
+# Draft room: Sam is on the clock in Draft Day Derby; make a pick. The mock
+# draft clock starts when the app launches, so relaunch (the session stays)
+# rather than race a clock the steps above may have used up on a slow machine.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Draft Day Derby'
+    timeout: 10000
+- tapOn: 'Draft Day Derby'
+- extendedWaitUntil:
+    visible: "You're on the clock"
+    timeout: 10000
+- tapOn:
+    id: 'pane-players'
+- tapOn:
+    id: 'draft-pick-.*'
+    index: 0
+- extendedWaitUntil:
+    visible: 'You drafted.*'
+    timeout: 10000
+- takeScreenshot: ios-draft-picked

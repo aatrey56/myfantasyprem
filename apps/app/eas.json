@@ -1,0 +1,50 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "env": {
+        "APP_BUNDLE_ID": "com.myfantasyprem.app.dev"
+      }
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "ios": { "simulator": true },
+      "env": {
+        "APP_BUNDLE_ID": "com.myfantasyprem.app.dev",
+        "EXPO_PUBLIC_USE_MOCKS": "true"
+      }
+    },
+    "development-device": {
+      "extends": "development",
+      "ios": { "simulator": false }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "APP_BUNDLE_ID": "com.myfantasyprem.app.preview",
+        "EXPO_PUBLIC_USE_MOCKS": "true"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "distribution": "store",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "APP_BUNDLE_ID": "com.myfantasyprem.app",
+        "EXPO_PUBLIC_BRANDED_ASSETS": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

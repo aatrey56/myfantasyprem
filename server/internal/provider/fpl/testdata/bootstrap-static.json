@@ -1,0 +1,623 @@
+{
+ "element_types": [
+  {
+   "id": 1,
+   "plural_name_short": "GKP",
+   "singular_name_short": "GKP",
+   "squad_select": 2
+  },
+  {
+   "id": 2,
+   "plural_name_short": "DEF",
+   "singular_name_short": "DEF",
+   "squad_select": 5
+  },
+  {
+   "id": 3,
+   "plural_name_short": "MID",
+   "singular_name_short": "MID",
+   "squad_select": 5
+  },
+  {
+   "id": 4,
+   "plural_name_short": "FWD",
+   "singular_name_short": "FWD",
+   "squad_select": 3
+  }
+ ],
+ "elements": [
+  {
+   "code": 1001,
+   "draft_rank": 20,
+   "element_type": 1,
+   "first_name": "Ollie",
+   "id": 1,
+   "news": "",
+   "second_name": "Brandt",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Brandt"
+  },
+  {
+   "code": 1002,
+   "draft_rank": 3,
+   "element_type": 2,
+   "first_name": "Theo",
+   "id": 2,
+   "news": "",
+   "second_name": "Marlow",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Marlow"
+  },
+  {
+   "code": 1003,
+   "draft_rank": 1,
+   "element_type": 3,
+   "first_name": "Rhys",
+   "id": 3,
+   "news": "",
+   "second_name": "Calder",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Calder"
+  },
+  {
+   "code": 1004,
+   "draft_rank": 2,
+   "element_type": 4,
+   "first_name": "Kofi",
+   "id": 4,
+   "news": "Knock - 75% chance of playing",
+   "second_name": "Okafor",
+   "status": "d",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Okafor"
+  },
+  {
+   "code": 1005,
+   "draft_rank": 21,
+   "element_type": 1,
+   "first_name": "Luis",
+   "id": 5,
+   "news": "",
+   "second_name": "Vasquez",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Vasquez"
+  },
+  {
+   "code": 1006,
+   "draft_rank": 9,
+   "element_type": 2,
+   "first_name": "Erik",
+   "id": 6,
+   "news": "",
+   "second_name": "Lindqvist",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Lindqvist"
+  },
+  {
+   "code": 1007,
+   "draft_rank": 5,
+   "element_type": 3,
+   "first_name": "Sam",
+   "id": 7,
+   "news": "",
+   "second_name": "Hale",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Hale"
+  },
+  {
+   "code": 1008,
+   "draft_rank": 4,
+   "element_type": 4,
+   "first_name": "Remy",
+   "id": 8,
+   "news": "Hamstring injury - unknown return date",
+   "second_name": "Moreau",
+   "status": "i",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Moreau"
+  },
+  {
+   "code": 1009,
+   "draft_rank": 22,
+   "element_type": 1,
+   "first_name": "Dan",
+   "id": 9,
+   "news": "",
+   "second_name": "Dunmore",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Dunmore"
+  },
+  {
+   "code": 1010,
+   "draft_rank": 7,
+   "element_type": 2,
+   "first_name": "Ike",
+   "id": 10,
+   "news": "",
+   "second_name": "Abara",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Abara"
+  },
+  {
+   "code": 1011,
+   "draft_rank": 6,
+   "element_type": 3,
+   "first_name": "Gio",
+   "id": 11,
+   "news": "",
+   "second_name": "Santoro",
+   "status": "a",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Santoro"
+  },
+  {
+   "code": 1012,
+   "draft_rank": 8,
+   "element_type": 4,
+   "first_name": "Tom",
+   "id": 12,
+   "news": "Suspended for 1 match",
+   "second_name": "Whitlock",
+   "status": "s",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Whitlock"
+  },
+  {
+   "code": 1013,
+   "draft_rank": 30,
+   "element_type": 1,
+   "first_name": "Ned",
+   "id": 13,
+   "news": "",
+   "second_name": "Penhallow",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Penhallow"
+  },
+  {
+   "code": 1014,
+   "draft_rank": 11,
+   "element_type": 2,
+   "first_name": "Abe",
+   "id": 14,
+   "news": "",
+   "second_name": "Ivanek",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Ivanek"
+  },
+  {
+   "code": 1015,
+   "draft_rank": 12,
+   "element_type": 2,
+   "first_name": "Bo",
+   "id": 15,
+   "news": "",
+   "second_name": "Duarte",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Duarte"
+  },
+  {
+   "code": 1016,
+   "draft_rank": 10,
+   "element_type": 2,
+   "first_name": "Cy",
+   "id": 16,
+   "news": "",
+   "second_name": "Ketteridge",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Ketteridge"
+  },
+  {
+   "code": 1017,
+   "draft_rank": 13,
+   "element_type": 2,
+   "first_name": "Dov",
+   "id": 17,
+   "news": "",
+   "second_name": "Ashworth",
+   "status": "a",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Ashworth"
+  },
+  {
+   "code": 1018,
+   "draft_rank": 29,
+   "element_type": 2,
+   "first_name": "Eli",
+   "id": 18,
+   "news": "Left the club",
+   "second_name": "Brennan",
+   "status": "u",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Brennan"
+  },
+  {
+   "code": 1019,
+   "draft_rank": 14,
+   "element_type": 2,
+   "first_name": "Fin",
+   "id": 19,
+   "news": "",
+   "second_name": "Corbett",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Corbett"
+  },
+  {
+   "code": 1020,
+   "draft_rank": 15,
+   "element_type": 2,
+   "first_name": "Gus",
+   "id": 20,
+   "news": "",
+   "second_name": "Delaney",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Delaney"
+  },
+  {
+   "code": 1021,
+   "draft_rank": 16,
+   "element_type": 3,
+   "first_name": "Hal",
+   "id": 21,
+   "news": "",
+   "second_name": "Ellery",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Ellery"
+  },
+  {
+   "code": 1022,
+   "draft_rank": 17,
+   "element_type": 3,
+   "first_name": "Ivo",
+   "id": 22,
+   "news": "",
+   "second_name": "Fairbank",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Fairbank"
+  },
+  {
+   "code": 1023,
+   "draft_rank": 18,
+   "element_type": 3,
+   "first_name": "Jem",
+   "id": 23,
+   "news": "",
+   "second_name": "Garside",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Garside"
+  },
+  {
+   "code": 1024,
+   "draft_rank": 19,
+   "element_type": 3,
+   "first_name": "Kit",
+   "id": 24,
+   "news": "",
+   "second_name": "Holloway",
+   "status": "a",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Holloway"
+  },
+  {
+   "code": 1025,
+   "draft_rank": 23,
+   "element_type": 3,
+   "first_name": "Lev",
+   "id": 25,
+   "news": "",
+   "second_name": "Inchley",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Inchley"
+  },
+  {
+   "code": 1026,
+   "draft_rank": 24,
+   "element_type": 3,
+   "first_name": "Max",
+   "id": 26,
+   "news": "",
+   "second_name": "Jardine",
+   "status": "a",
+   "team": 2,
+   "total_points": 0,
+   "web_name": "Jardine"
+  },
+  {
+   "code": 1027,
+   "draft_rank": 25,
+   "element_type": 3,
+   "first_name": "Nat",
+   "id": 27,
+   "news": "",
+   "second_name": "Kirkby",
+   "status": "a",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Kirkby"
+  },
+  {
+   "code": 1028,
+   "draft_rank": 26,
+   "element_type": 4,
+   "first_name": "Oz",
+   "id": 28,
+   "news": "",
+   "second_name": "Lomax",
+   "status": "a",
+   "team": 3,
+   "total_points": 0,
+   "web_name": "Lomax"
+  },
+  {
+   "code": 1029,
+   "draft_rank": 27,
+   "element_type": 4,
+   "first_name": "Pip",
+   "id": 29,
+   "news": "",
+   "second_name": "Merriman",
+   "status": "a",
+   "team": 4,
+   "total_points": 0,
+   "web_name": "Merriman"
+  },
+  {
+   "code": 1030,
+   "draft_rank": 28,
+   "element_type": 4,
+   "first_name": "Quin",
+   "id": 30,
+   "news": "",
+   "second_name": "Northcott",
+   "status": "a",
+   "team": 1,
+   "total_points": 0,
+   "web_name": "Northcott"
+  }
+ ],
+ "events": {
+  "current": 2,
+  "data": [
+   {
+    "data_checked": true,
+    "deadline_time": "2026-08-14T17:30:00Z",
+    "finished": true,
+    "id": 1,
+    "name": "Gameweek 1",
+    "trades_time": "2026-08-12T17:30:00Z",
+    "waivers_time": "2026-08-13T17:30:00Z"
+   },
+   {
+    "data_checked": false,
+    "deadline_time": "2026-08-21T17:30:00Z",
+    "finished": false,
+    "id": 2,
+    "name": "Gameweek 2",
+    "trades_time": "2026-08-19T17:30:00Z",
+    "waivers_time": "2026-08-20T17:30:00Z"
+   },
+   {
+    "data_checked": false,
+    "deadline_time": "2026-08-28T17:30:00Z",
+    "finished": false,
+    "id": 3,
+    "name": "Gameweek 3",
+    "trades_time": "2026-08-26T17:30:00Z",
+    "waivers_time": "2026-08-27T17:30:00Z"
+   }
+  ],
+  "next": 3
+ },
+ "fixtures": {
+  "0": [
+   {
+    "code": 2608,
+    "event": null,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 8,
+    "kickoff_time": null,
+    "started": false,
+    "team_a": 2,
+    "team_a_score": null,
+    "team_h": 3,
+    "team_h_score": null
+   }
+  ],
+  "1": [
+   {
+    "code": 2601,
+    "event": 1,
+    "finished": true,
+    "finished_provisional": true,
+    "id": 1,
+    "kickoff_time": "2026-08-15T14:00:00Z",
+    "started": true,
+    "team_a": 2,
+    "team_a_score": 1,
+    "team_h": 1,
+    "team_h_score": 2
+   },
+   {
+    "code": 2602,
+    "event": 1,
+    "finished": true,
+    "finished_provisional": true,
+    "id": 2,
+    "kickoff_time": "2026-08-15T16:30:00Z",
+    "started": true,
+    "team_a": 4,
+    "team_a_score": 0,
+    "team_h": 3,
+    "team_h_score": 0
+   }
+  ],
+  "2": [
+   {
+    "code": 2603,
+    "event": 2,
+    "finished": false,
+    "finished_provisional": true,
+    "id": 3,
+    "kickoff_time": "2026-08-22T14:00:00Z",
+    "started": true,
+    "team_a": 3,
+    "team_a_score": 1,
+    "team_h": 2,
+    "team_h_score": 1
+   },
+   {
+    "code": 2604,
+    "event": 2,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 4,
+    "kickoff_time": "2026-08-22T16:30:00Z",
+    "started": true,
+    "team_a": 1,
+    "team_a_score": 2,
+    "team_h": 4,
+    "team_h_score": 0
+   }
+  ],
+  "3": [
+   {
+    "code": 2605,
+    "event": 3,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 5,
+    "kickoff_time": "2026-08-29T14:00:00Z",
+    "started": false,
+    "team_a": 3,
+    "team_a_score": null,
+    "team_h": 1,
+    "team_h_score": null
+   },
+   {
+    "code": 2606,
+    "event": 3,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 6,
+    "kickoff_time": "2026-08-29T14:00:00Z",
+    "started": false,
+    "team_a": 4,
+    "team_a_score": null,
+    "team_h": 2,
+    "team_h_score": null
+   },
+   {
+    "code": 2607,
+    "event": 3,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 7,
+    "kickoff_time": "2026-09-01T19:00:00Z",
+    "started": false,
+    "team_a": 4,
+    "team_a_score": null,
+    "team_h": 1,
+    "team_h_score": null
+   }
+  ]
+ },
+ "settings": {
+  "scoring": {
+   "assists": 3,
+   "bonus": 1,
+   "clean_sheets_DEF": 4,
+   "clean_sheets_FWD": 0,
+   "clean_sheets_GKP": 4,
+   "clean_sheets_MID": 1,
+   "goals_conceded_DEF": -1,
+   "goals_conceded_FWD": 0,
+   "goals_conceded_GKP": -1,
+   "goals_conceded_MID": 0,
+   "goals_scored_DEF": 6,
+   "goals_scored_FWD": 4,
+   "goals_scored_GKP": 10,
+   "goals_scored_MID": 5,
+   "long_play": 2,
+   "own_goals": -2,
+   "penalties_missed": -2,
+   "penalties_saved": 5,
+   "red_cards": -3,
+   "saves": 1,
+   "short_play": 1,
+   "yellow_cards": -1
+  },
+  "squad": {
+   "squad_size": 15,
+   "starting_size": 11
+  }
+ },
+ "teams": [
+  {
+   "code": 901,
+   "id": 1,
+   "name": "Northgate",
+   "short_name": "NOR"
+  },
+  {
+   "code": 902,
+   "id": 2,
+   "name": "Ashford",
+   "short_name": "ASH"
+  },
+  {
+   "code": 903,
+   "id": 3,
+   "name": "Brookvale",
+   "short_name": "BRK"
+  },
+  {
+   "code": 904,
+   "id": 4,
+   "name": "Cliffton",
+   "short_name": "CLF"
+  }
+ ]
+}

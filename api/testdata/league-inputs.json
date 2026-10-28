@@ -1,0 +1,70 @@
+{
+  "$comment": "What a user may paste on the import screen. Shared by the app (apps/app/src/api/league-input.test.ts) and the server (server/internal/httpapi/leagueurl_test.go) so both parsers agree. A case has `id` (accepted) or `error` (a key of `messages`, or `classic`).",
+  "messages": {
+    "empty": "Paste your league link or league ID.",
+    "invalid": "That doesn't look like an FPL Draft league link. Paste the link from your league page, or just the league ID.",
+    "missingId": "That page's link doesn't include your league ID. Type just your league's ID number instead."
+  },
+  "cases": [
+    { "input": "90001", "id": 90001 },
+    { "input": "  90001  ", "id": 90001 },
+    { "input": "90 001", "id": 90001 },
+    { "input": "090001", "id": 90001 },
+    { "input": "https://draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "https://www.draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "http://draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "http://www.draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "www.draft.premierleague.com/league/90001", "id": 90001 },
+    { "input": "https://draft.premierleague.com/en/league/90001", "id": 90001 },
+    { "input": "https://www.draft.premierleague.com/en/league/90001", "id": 90001 },
+    { "input": "https://draft.premierleague.com/league/90001/", "id": 90001 },
+    { "input": "https://draft.premierleague.com/league/90001?tab=standings", "id": 90001 },
+    { "input": "https://draft.premierleague.com/league/90001#standings", "id": 90001 },
+    { "input": "https://draft.premierleague.com/league/90001/standings", "id": 90001 },
+    {
+      "input": "https://www.draft.premierleague.com/en/league/90001/standings/?a=1#b",
+      "id": 90001
+    },
+    { "input": "https://DRAFT.PremierLeague.com/League/90001", "id": 90001 },
+    { "input": "https://draft.premierleague.com:443/league/90001", "id": 90001 },
+    { "input": "https://draft.premierleague.com/leagues/777/matches", "id": 777 },
+    { "input": "https://draft.premierleague.com/?league=4242", "id": 4242 },
+    { "input": "https://draft.premierleague.com/en/league?league=77", "id": 77 },
+    { "input": "  https://draft.premierleague.com/league/9\n", "id": 9 },
+    {
+      "input": "Join my league: https://www.draft.premierleague.com/league/90001 see you there",
+      "id": 90001
+    },
+
+    { "input": "https://fantasy.premierleague.com/leagues/12345/standings/c", "error": "classic" },
+    { "input": "https://www.fantasy.premierleague.com/leagues/314", "error": "classic" },
+    { "input": "http://fantasy.premierleague.com/leagues/1/standings/c", "error": "classic" },
+    { "input": "fantasy.premierleague.com/leagues/314/standings/c", "error": "classic" },
+
+    { "input": "https://draft.premierleague.com/en/league", "error": "missingId" },
+    { "input": "https://draft.premierleague.com/league", "error": "missingId" },
+    { "input": "https://www.draft.premierleague.com/en/league/", "error": "missingId" },
+    { "input": "draft.premierleague.com/en/league/", "error": "missingId" },
+
+    { "input": "", "error": "empty" },
+    { "input": "   ", "error": "empty" },
+    { "input": "0", "error": "invalid" },
+    { "input": "-5", "error": "invalid" },
+    { "input": "1234567890123", "error": "invalid" },
+    { "input": "my league", "error": "invalid" },
+    { "input": "::::", "error": "invalid" },
+    { "input": "https://example.com/league/1", "error": "invalid" },
+    { "input": "https://premierleague.com/league/1", "error": "invalid" },
+    { "input": "https://draft.premierleague.com.evil.example/league/12345", "error": "invalid" },
+    { "input": "https://evil.example/draft.premierleague.com/league/1", "error": "invalid" },
+    { "input": "https://draft.premierleague.com@evil.example/league/1", "error": "invalid" },
+    { "input": "ftp://draft.premierleague.com/league/12345", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/league/abc", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/league/0", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/league/-5", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/league/99999999999999999999", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/entry/12345", "error": "invalid" },
+    { "input": "https://draft.premierleague.com/", "error": "invalid" }
+  ]
+}

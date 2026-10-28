@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.release
+.release.previous
+web/
+.caddyfile.sha

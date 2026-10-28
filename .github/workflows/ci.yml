@@ -1,0 +1,127 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Three jobs in parallel: on a private repo's 2-core runner the app checks,
+# the Go suites on Postgres and Playwright together outlast any sensible
+# single-job timeout. Together they run the same commands as `npm run check`
+# plus the web builds and e2e (see .office/checks).
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm run gen` also runs `go generate` for the server.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - run: npm ci
+
+      - name: Generate code from api/openapi.yaml
+        run: npm run gen
+
+      - name: Generated code is committed and up to date
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::npm run gen changed files. Run it locally and commit the output."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+
+      - run: npm run test
+        env:
+          # A private repo's runner has 2 cores, so Jest's default (cores - 1)
+          # runs every suite in band in the main process: a timer or a late
+          # log one suite leaves behind then hangs or fails the whole run.
+          # Two worker processes isolate the suites as on a developer machine.
+          JEST_WORKERS: '2'
+
+      - run: npm run test:scripts
+
+      - name: Build web (production, no mocks)
+        run: npm run build:web
+
+      - name: Production bundle contains no mock code
+        run: npm run verify:prod-bundle
+
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Postgres for the Go integration suites (store, auth, league, stats,
+    # demo and the contract test on Postgres); see internal/store/storetest.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: myfantasyprem
+          POSTGRES_PASSWORD: myfantasyprem
+          POSTGRES_DB: myfantasyprem
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myfantasyprem -d myfantasyprem"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Go vet, gofmt and tests (with Postgres)
+        run: npm run check:go
+        env:
+          TEST_DATABASE_URL: postgres://myfantasyprem:myfantasyprem@localhost:5432/myfantasyprem?sslmode=disable
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web with mocks enabled (for Playwright, into apps/app/dist-mocks)
+        run: npm run build:web:mocks
+
+      - run: npx playwright install --with-deps chromium webkit firefox
+
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

@@ -1,0 +1,266 @@
+{
+  "_about": [
+    "Award cases shared by the Go rules (scoring/awards_test.go) and the app's (apps/app/src/lib/awards.cases.test.ts).",
+    "A pool entry is a candidate {id, position, stats} (stats default to 0, minutes to 90) or a line",
+    "{line, n, top}: n players of that position with ids LINE-0.. and points top, top-1, ...",
+    "Every case also runs on the reversed pool: the results must not depend on input order."
+  ],
+  "playerOfTheWeek": [
+    {
+      "name": "picks the most points",
+      "pool": [
+        { "id": "def", "position": "DEF", "stats": { "points": 12 } },
+        { "id": "mid", "position": "MID", "stats": { "points": 18 } },
+        { "id": "fwd", "position": "FWD", "stats": { "points": 17 } }
+      ],
+      "want": "mid"
+    },
+    { "name": "returns null for an empty pool", "pool": [], "want": null },
+    {
+      "name": "a goal beats an assist on a points tie, whatever the bonus (Cherki over Cunha)",
+      "pool": [
+        {
+          "id": "cunha",
+          "position": "MID",
+          "stats": { "points": 10, "assists": 1, "bonus": 3, "bps": 38, "defensiveContribution": 12 }
+        },
+        { "id": "cherki", "position": "MID", "stats": { "points": 10, "goals": 1, "bonus": 1, "bps": 27 } }
+      ],
+      "want": "cherki"
+    },
+    {
+      "name": "breaks a points tie on goals",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "bonus": 3, "bps": 40, "goals": 1 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 14, "goals": 2 } }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "breaks a points tie on assists",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "goals": 1, "bonus": 3, "bps": 40 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 14, "goals": 1, "assists": 1 } }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "breaks a points tie on bonus",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "goals": 1, "assists": 1, "bonus": 2, "bps": 45 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 14, "goals": 1, "assists": 1, "bonus": 3 } }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "breaks a points tie on BPS",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "bonus": 3, "bps": 38, "defensiveContribution": 14 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 14, "bonus": 3, "bps": 41 } }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "breaks a points tie on defensive contribution",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "defensiveContribution": 10, "cleanSheets": 1 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 14, "defensiveContribution": 12 } }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "breaks a points tie on clean sheet",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 14, "defensiveContribution": 10, "minutes": 60 } },
+        {
+          "id": "b",
+          "position": "DEF",
+          "stats": { "points": 14, "defensiveContribution": 10, "cleanSheets": 1 }
+        }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "a later rule never outranks an earlier one",
+      "pool": [
+        {
+          "id": "a",
+          "position": "MID",
+          "stats": { "points": 14, "assists": 3, "bonus": 3, "bps": 60, "defensiveContribution": 12, "cleanSheets": 1, "minutes": 60 }
+        },
+        { "id": "z", "position": "MID", "stats": { "points": 14, "goals": 1, "bps": 20 } }
+      ],
+      "want": "z"
+    },
+    {
+      "name": "gives a full tie to the player with fewer minutes",
+      "pool": [
+        {
+          "id": "a",
+          "position": "MID",
+          "stats": { "points": 12, "bonus": 2, "bps": 30, "goals": 1, "assists": 1, "cleanSheets": 1, "minutes": 90 }
+        },
+        {
+          "id": "b",
+          "position": "MID",
+          "stats": { "points": 12, "bonus": 2, "bps": 30, "goals": 1, "assists": 1, "cleanSheets": 1, "minutes": 61 }
+        }
+      ],
+      "want": "b"
+    },
+    {
+      "name": "fewer minutes only after every other rule",
+      "pool": [
+        { "id": "a", "position": "DEF", "stats": { "points": 6, "cleanSheets": 1, "minutes": 90 } },
+        { "id": "b", "position": "DEF", "stats": { "points": 6, "minutes": 1 } }
+      ],
+      "want": "a"
+    },
+    {
+      "name": "falls back to the id when every rule ties",
+      "pool": [
+        { "id": "plr_b", "position": "FWD", "stats": { "points": 9 } },
+        { "id": "plr_a", "position": "FWD", "stats": { "points": 9 } }
+      ],
+      "want": "plr_a"
+    },
+    {
+      "name": "counts players of unknown positions",
+      "pool": [
+        { "id": "mid", "position": "MID", "stats": { "points": 20 } },
+        { "id": "odd", "position": "WING", "stats": { "points": 30 } }
+      ],
+      "want": "odd"
+    }
+  ],
+  "compare": [
+    {
+      "name": "fewer minutes ranks first",
+      "a": { "id": "b", "position": "MID", "stats": { "points": 12, "minutes": 61 } },
+      "b": { "id": "a", "position": "MID", "stats": { "points": 12, "minutes": 90 } },
+      "want": -1
+    },
+    {
+      "name": "more points ranks first",
+      "a": { "id": "a", "position": "MID", "stats": { "points": 2 } },
+      "b": { "id": "b", "position": "MID", "stats": { "points": 3 } },
+      "want": 1
+    },
+    {
+      "name": "a candidate ties with itself",
+      "a": { "id": "a", "position": "MID", "stats": { "points": 2 } },
+      "b": { "id": "a", "position": "MID", "stats": { "points": 2 } },
+      "want": 0
+    }
+  ],
+  "teamOfTheWeek": [
+    {
+      "name": "takes the minimum of each line, then the best four outfielders",
+      "pool": [
+        { "line": "GKP", "n": 3, "top": 9 },
+        { "line": "DEF", "n": 6, "top": 10 },
+        { "line": "MID", "n": 6, "top": 14 },
+        { "line": "FWD", "n": 4, "top": 13 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "MID-0", "MID-1", "MID-2", "MID-3", "FWD-0", "FWD-1", "FWD-2"],
+      "formation": "3-4-3"
+    },
+    {
+      "name": "caps defenders at five when six outscore everyone else",
+      "pool": [
+        { "line": "GKP", "n": 2, "top": 6 },
+        { "line": "DEF", "n": 6, "top": 20 },
+        { "line": "MID", "n": 4, "top": 5 },
+        { "line": "FWD", "n": 3, "top": 4 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "DEF-3", "DEF-4", "MID-0", "MID-1", "MID-2", "FWD-0", "FWD-1"],
+      "formation": "5-3-2"
+    },
+    {
+      "name": "caps midfielders at five and forwards at three",
+      "pool": [
+        { "line": "GKP", "n": 1, "top": 2 },
+        { "line": "DEF", "n": 3, "top": 1 },
+        { "line": "MID", "n": 8, "top": 30 },
+        { "line": "FWD", "n": 6, "top": 25 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "MID-0", "MID-1", "MID-2", "MID-3", "MID-4", "FWD-0", "FWD-1"],
+      "formation": "3-5-2"
+    },
+    {
+      "name": "never fields more than three forwards",
+      "pool": [
+        { "line": "GKP", "n": 1, "top": 2 },
+        { "line": "DEF", "n": 3, "top": 1 },
+        { "line": "MID", "n": 2, "top": 1 },
+        { "line": "FWD", "n": 6, "top": 30 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "MID-0", "MID-1", "FWD-0", "FWD-1", "FWD-2"],
+      "formation": "3-2-3"
+    },
+    {
+      "name": "always plays exactly one keeper, even when keepers top the scoring",
+      "pool": [
+        { "line": "GKP", "n": 4, "top": 25 },
+        { "line": "DEF", "n": 5, "top": 6 },
+        { "line": "MID", "n": 5, "top": 5 },
+        { "line": "FWD", "n": 3, "top": 4 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "DEF-3", "DEF-4", "MID-0", "MID-1", "MID-2", "FWD-0", "FWD-1"],
+      "formation": "5-3-2"
+    },
+    {
+      "name": "keeps a minimum line even when its players score least",
+      "pool": [
+        { "line": "GKP", "n": 1, "top": 5 },
+        { "line": "DEF", "n": 8, "top": 20 },
+        { "line": "MID", "n": 8, "top": 19 },
+        { "line": "FWD", "n": 2, "top": 0 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "DEF-3", "DEF-4", "MID-0", "MID-1", "MID-2", "MID-3", "FWD-0"],
+      "formation": "5-4-1"
+    },
+    {
+      "name": "uses the award tie-breaks for places",
+      "pool": [
+        { "line": "GKP", "n": 1, "top": 5 },
+        { "line": "DEF", "n": 5, "top": 3 },
+        { "id": "mid-top", "position": "MID", "stats": { "points": 10 } },
+        { "id": "mid-a", "position": "MID", "stats": { "points": 8, "minutes": 90 } },
+        { "id": "mid-b", "position": "MID", "stats": { "points": 8, "minutes": 70 } },
+        { "line": "FWD", "n": 3, "top": 2 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "DEF-3", "mid-top", "mid-b", "mid-a", "FWD-0", "FWD-1", "FWD-2"],
+      "formation": "4-3-3"
+    },
+    {
+      "name": "ignores players of unknown positions",
+      "pool": [
+        { "id": "wing", "position": "WING", "stats": { "points": 50 } },
+        { "line": "GKP", "n": 1, "top": 5 },
+        { "line": "DEF", "n": 5, "top": 5 },
+        { "line": "MID", "n": 5, "top": 5 },
+        { "line": "FWD", "n": 3, "top": 5 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "DEF-3", "MID-0", "MID-1", "MID-2", "FWD-0", "FWD-1", "FWD-2"],
+      "formation": "4-3-3"
+    },
+    {
+      "name": "is order independent",
+      "pool": [
+        { "line": "GKP", "n": 2, "top": 7 },
+        { "line": "DEF", "n": 7, "top": 11 },
+        { "line": "MID", "n": 7, "top": 12 },
+        { "line": "FWD", "n": 4, "top": 12 }
+      ],
+      "want": ["GKP-0", "DEF-0", "DEF-1", "DEF-2", "MID-0", "MID-1", "MID-2", "MID-3", "FWD-0", "FWD-1", "FWD-2"],
+      "formation": "3-4-3"
+    },
+    {
+      "name": "an empty pool gives an empty team",
+      "pool": [],
+      "want": [],
+      "formation": "0-0-0"
+    }
+  ]
+}

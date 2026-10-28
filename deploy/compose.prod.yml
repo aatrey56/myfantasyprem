@@ -1,0 +1,260 @@
+# Production stack on one VM (docs/DEPLOY.md). Drive it with deploy.sh;
+# it reads deploy/.env (copy .env.example) and deploy/.release (the API
+# image tag in service).
+#
+#   caddy        HTTPS on :80/:443 for DOMAIN: the web app at /, /v1 /updates /healthz -> api
+#   postgres     Postgres 17, data on the pgdata volume, tuned by postgres/postgresql.conf
+#   api          the Go API: HTTP + realtime + River jobs + the stats poller
+#   duckdns      points DUCKDNS_DOMAIN at this VM every 5 minutes (profile "duckdns")
+#   cloudflared  Cloudflare Tunnel to api:8080 (profile "tunnel"; the older setup)
+#   migrate, admin, seed, backup  one-off tools (profile "tools")
+#
+# Only Caddy listens on a public interface. The API and metrics are also
+# published on 127.0.0.1, for curl on the VM.
+#
+# The network's subnet is pinned and Caddy has a fixed address outside the
+# range Docker hands out, so the API can trust X-Forwarded-For from Caddy
+# alone (TRUSTED_PROXIES) and rate limit per real client.
+
+# Not "myfantasyprem": the development docker-compose.yml at the repo root
+# gets that project name, and its pgdata volume must never be shared.
+name: mfp-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '5'
+
+x-api-image: &api-image ${API_IMAGE:-ghcr.io/OWNER/myfantasyprem-api}:${API_TAG:-latest}
+
+x-db-url: &db-url postgres://${POSTGRES_USER:-myfantasyprem}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-myfantasyprem}?sslmode=disable
+
+x-tool: &tool
+  image: *api-image
+  profiles: [tools]
+  restart: 'no'
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: *db-url
+  logging: *logging
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${MFP_SUBNET:-172.30.0.0/24}
+          # Dynamic addresses come from the upper half; Caddy's is below it.
+          ip_range: ${MFP_IP_RANGE:-172.30.0.128/25}
+
+services:
+  caddy:
+    image: caddy:${CADDY_TAG:-2.10}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env (e.g. harvestfc.duckdns.org)}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # deploy.sh web uploads into releases/ and flips the `current` symlink.
+      - ${WEB_ROOT:-./web}:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: ${CADDY_IP:-172.30.0.10}
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *logging
+
+  duckdns:
+    image: curlimages/curl:${CURL_TAG:-8.16.0}
+    profiles: [duckdns]
+    restart: unless-stopped
+    environment:
+      DUCKDNS_DOMAIN: ${DUCKDNS_DOMAIN:-}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
+    # The token goes to curl on stdin (-K -), never on a command line or in a log.
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        [ -n "$$DUCKDNS_DOMAIN" ] && [ -n "$$DUCKDNS_TOKEN" ] || { echo "duckdns: set DUCKDNS_DOMAIN and DUCKDNS_TOKEN"; exit 1; }
+        while true; do
+          r=$$(printf 'url = "https://www.duckdns.org/update?domains=%s&token=%s&ip="\n' "$$DUCKDNS_DOMAIN" "$$DUCKDNS_TOKEN" | curl -fsS -m 30 -K - 2>&1)
+          echo "$$(date -u +%FT%TZ) duckdns: $$r"
+          sleep 300
+        done
+    deploy:
+      resources:
+        limits:
+          memory: 32m
+    logging: *logging
+
+  postgres:
+    image: postgres:${PG_MAJOR:-17}
+    restart: unless-stopped
+    command: ['postgres', '-c', 'config_file=/etc/postgresql/postgresql.conf']
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myfantasyprem}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-myfantasyprem}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    shm_size: 256mb
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    logging: *logging
+
+  api:
+    image: *api-image
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: *db-url
+      MIGRATE_ON_START: 'false' # deploy.sh migrates before rolling out
+      HTTP_ADDR: ':8080'
+      LOG_FORMAT: json
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_ADDR: '0.0.0.0:9090' # published on 127.0.0.1 only (below)
+      APP_URL: ${APP_URL:?set APP_URL in deploy/.env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in deploy/.env}
+      REALTIME_URL: ${REALTIME_URL:-}
+      POLLER_ENABLED: ${POLLER_ENABLED:-true}
+      POLLER_SOURCE: ${POLLER_SOURCE:-fpl}
+      FPL_USER_AGENT: ${FPL_USER_AGENT:-}
+      # Scheduled read-only FPL checks of imported leagues end on this date.
+      FPL_SHADOW_UNTIL: ${FPL_SHADOW_UNTIL:-}
+      # League ids (lg_...) whose re-sync answers 409 resync-disabled.
+      FPL_RESYNC_DISABLED_LEAGUES: ${FPL_RESYNC_DISABLED_LEAGUES:-}
+      # Only Caddy (fixed address above) may set the client address.
+      TRUSTED_PROXIES: ${CADDY_IP:-172.30.0.10}
+      # Official crests, shirts and photos (docs/RUNBOOK.md): true for the
+      # private build, false for App Store and other public builds. Unset,
+      # the API refuses to start (backups and other services still run).
+      BRANDED_ASSETS: ${BRANDED_ASSETS:-}
+      ASSETS_CACHE_DIR: /var/lib/mfp/assets
+      # Over-the-air iOS updates (docs/IOS.md): /var/lib/mfp/updates is the
+      # updates volume. Empty keeps /updates off.
+      UPDATES_DIR: ${UPDATES_DIR:-}
+      UPDATES_PUBLIC_URL: ${UPDATES_PUBLIC_URL:-}
+      # Web Push (docs/notifications.md): all three or none.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      JOBS_ENABLED: 'true'
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-none}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      AUTH_DEV_MAGIC_LINKS: 'false'
+      CLAIM_LINK_SIGNIN: ${CLAIM_LINK_SIGNIN:-true} # testing phase (docs/adr/0013); warns at startup
+      APPLE_CLIENT_IDS: ${APPLE_CLIENT_IDS:-}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      SHUTDOWN_TIMEOUT: 20s
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-8080}:8080'
+      - '127.0.0.1:${METRICS_HOST_PORT:-9090}:9090'
+    volumes:
+      # The image owns /var/lib/mfp/* as nonroot, so fresh volumes are writable.
+      - assets_cache:/var/lib/mfp/assets
+      - updates:/var/lib/mfp/updates
+    # The image's HEALTHCHECK runs /app/healthcheck (GET /healthz).
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging: *logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-2026.9.0}
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: ['tunnel', '--no-autoupdate', '--metrics', '0.0.0.0:2000', 'run']
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-} # from the Cloudflare dashboard (Zero Trust > Networks > Tunnels)
+    depends_on:
+      - api
+    healthcheck:
+      test: ['CMD', 'cloudflared', 'tunnel', '--metrics', 'localhost:2000', 'ready']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *logging
+
+  migrate:
+    <<: *tool
+    entrypoint: ['/app/migrate']
+    command: ['up']
+
+  admin:
+    <<: *tool
+    entrypoint: ['/app/admin']
+
+  seed:
+    <<: *tool
+    entrypoint: ['/app/seed']
+
+  backup:
+    build:
+      context: ./backup
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+    image: myfantasyprem-backup:pg${PG_MAJOR:-17}
+    profiles: [tools]
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-myfantasyprem}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-myfantasyprem}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_PROVIDER: ${BACKUP_S3_PROVIDER:-Cloudflare}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-postgres}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      BACKUP_TAG: ${BACKUP_TAG:-}
+      RESTORE_CONFIRM: ${RESTORE_CONFIRM:-}
+    volumes:
+      - backups:/backups
+    logging: *logging
+
+volumes:
+  pgdata:
+  backups:
+  caddy_data: # certificates and ACME account: keep it, or Let's Encrypt rate limits bite
+  caddy_config:
+  assets_cache:
+  updates:

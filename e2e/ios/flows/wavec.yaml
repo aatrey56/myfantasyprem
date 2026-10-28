@@ -1,0 +1,212 @@
+# Wave C on the mock build (npm run test:ios -- wavec): Scores (the
+# gameweek stepper, a box score, a player card from it), projections
+# (a difficulty chip on Team; Expected and the win chance hidden),
+# the trade block (my player put on it, then listed in the block table)
+# and a private tag (set on a card, then the Players filter by it).
+# Mock world: gameweek 7 is live, 6 finished (apps/app/src/mocks/world.ts).
+# Screenshots: ios-wavec-*.png (docs/screenshots/ios-wave-c).
+appId: ${APP_ID}
+name: Wave C
+---
+- runFlow: ../subflows/sign-in.yaml
+
+# Scores: the live gameweek, one step back, a finished fixture's box score
+# and a player card from it.
+- tapOn:
+    id: 'app-tab-scores'
+- extendedWaitUntil:
+    visible:
+      id: 'gw-label'
+      text: 'GW 7'
+    timeout: 15000
+- assertVisible:
+    id: 'fixture-live'
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-scores
+- tapOn:
+    id: 'gw-prev'
+- extendedWaitUntil:
+    visible:
+      id: 'gw-label'
+      text: 'GW 6'
+    timeout: 10000
+- assertNotVisible:
+    id: 'fixture-live'
+- tapOn:
+    id: 'fixture-fx_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'fixture-detail'
+    timeout: 15000
+- assertVisible:
+    id: 'fixture-hero-score'
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-fixture
+- tapOn:
+    id: 'fx-player-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 15000
+- waitForAnimationToEnd
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: 'card-name'
+- assertVisible:
+    id: 'fixture-detail'
+
+# Team: a difficulty chip on a fixture. Expected and the win chance are
+# hidden (EXPO_PUBLIC_SHOW_PROJECTIONS off, owner 2026-10-17).
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team
+- extendedWaitUntil:
+    visible:
+      id: 'team-points'
+    timeout: 15000
+- assertNotVisible:
+    id: 'team-expected'
+- tapOn:
+    id: 'view-list'
+- extendedWaitUntil:
+    visible:
+      id: 'fixture-difficulty'
+      index: 0
+    timeout: 10000
+- assertVisible:
+    id: 'fixture-difficulty'
+    # VoiceOver reads the chip's "(6th)" in words.
+    text: 'opponent ranked (\d|1\d|20)(st|nd|rd|th) of 20 .*'
+    index: 0
+- assertNotVisible:
+    id: 'lineup-expected'
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-team
+
+# The trade block: my first starter on it, then in the block table under my
+# team (with a remove button), and back off.
+- tapOn:
+    id: 'open-card-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-name'
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: 'card-block'
+    direction: DOWN
+    centerElement: true
+- assertVisible: 'Put .* on your trade block'
+- tapOn:
+    id: 'card-block'
+- extendedWaitUntil:
+    visible: 'Take .* off your trade block'
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: 'card-block-editor'
+    timeout: 10000
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+- assertVisible:
+    id: 'row-block'
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players/trades/block
+- extendedWaitUntil:
+    visible:
+      id: 'trade-block-table'
+    timeout: 15000
+- assertVisible:
+    id: 'block-remove-plr_.*'
+- assertVisible:
+    id: 'block-trade-plr_.*'
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-trade-block
+
+# The matchup: no Expected or win chance while projections are hidden.
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/matchup
+- extendedWaitUntil:
+    visible:
+      id: 'gw-next'
+      index: 0
+    timeout: 15000
+- assertNotVisible:
+    id: 'matchup-projection'
+- assertNotVisible:
+    id: 'win-chance-basis'
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-matchup
+
+# A tag: the newest player in another team's news (Team → News), tagged 🎯
+# on his card, which shows his news and its time;
+# then the Players filter by 🎯 shows only him, by 🔥 nobody.
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/team/tm_01k7m2xq800000000000000004
+- extendedWaitUntil:
+    visible:
+      id: 'team-card'
+    timeout: 15000
+- tapOn:
+    id: 'team-action-news'
+- extendedWaitUntil:
+    visible:
+      id: 'news-sheet'
+    timeout: 10000
+- tapOn:
+    id: 'news-row-plr_.*'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'card-status'
+    timeout: 15000
+# The banner reads as one element: status, news, then when it was posted.
+- assertVisible:
+    id: 'card-status'
+    text: '.*: .*, (just now|\d+[mh] ago|\w{3} \d+ \w{3})'
+- scrollUntilVisible:
+    element:
+      id: 'card-tag-target'
+    direction: DOWN
+    centerElement: true
+- copyTextFrom:
+    id: 'card-name'
+- tapOn:
+    id: 'card-tag-target'
+- assertVisible:
+    id: 'card-tag-target'
+    # A radio: its accessibility value says whether it is chosen.
+    text: 'radio button, checked'
+- waitForAnimationToEnd
+- takeScreenshot: ios-wavec-card-news-tag
+- tapOn:
+    id: 'sheet-close'
+- waitForAnimationToEnd
+# By link: the Players tab keeps its stack, which still holds the block table.
+- openLink: ${APP_SCHEME}://leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hdy/players
+- extendedWaitUntil:
+    visible:
+      id: 'player-list'
+    timeout: 15000
+# He is on another team: tags filter within the availability, so turn Available off.
+- tapOn:
+    id: 'filter-available'
+- waitForAnimationToEnd
+- tapOn:
+    id: 'filter-tag-target'
+- extendedWaitUntil:
+    visible:
+      id: 'player-plr_.*'
+    timeout: 10000
+- assertVisible: '.*${maestro.copiedText}.*'
+- assertNotVisible:
+    id: 'player-plr_.*'
+    index: 1
+- tapOn:
+    id: 'filter-tag-hot'
+- extendedWaitUntil:
+    visible: 'No players tagged Hot'
+    timeout: 10000

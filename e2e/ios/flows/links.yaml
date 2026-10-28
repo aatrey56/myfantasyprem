@@ -1,0 +1,53 @@
+# Links opened from outside the app (Mail, Messages) on the mock build:
+# an emailed sign-in link waits for Continue, and a signed-out friend claims
+# an imported seat from its claim link with only a name.
+appId: ${APP_ID}
+name: Links
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-email'
+    timeout: 30000
+
+# Claim link, signed out.
+- openLink: ${APP_SCHEME}://join/SEATCHKX42
+- extendedWaitUntil:
+    visible:
+      id: 'claim-sign-in'
+    timeout: 15000
+- tapOn:
+    id: 'claim-name'
+- inputText: 'Robin'
+- hideKeyboard
+- takeScreenshot: ios-claim-link
+- tapOn:
+    id: 'claim-sign-in-button'
+- extendedWaitUntil:
+    visible:
+      id: 'league-tabs'
+    timeout: 15000
+- assertVisible: 'Away Days Draft'
+
+# Emailed sign-in link: nothing happens until Continue.
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: 'sign-in-email'
+    timeout: 30000
+- openLink: ${APP_SCHEME}://sign-in?token=mock-magic-link-token-0001
+- extendedWaitUntil:
+    visible:
+      id: 'magic-link-continue'
+    timeout: 15000
+- assertNotVisible: 'The Sunday Draft'
+- takeScreenshot: ios-sign-in-link
+- tapOn:
+    id: 'magic-link-continue'
+- extendedWaitUntil:
+    visible: 'The Sunday Draft'
+    timeout: 15000

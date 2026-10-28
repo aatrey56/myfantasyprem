@@ -1,0 +1,6 @@
+npm ci
+npm run gen && test -z "$(git status --porcelain)"
+npm run check
+npm run test:go:db
+npm run build:web && npm run verify:prod-bundle
+npm run build:web:mocks && npx playwright test
