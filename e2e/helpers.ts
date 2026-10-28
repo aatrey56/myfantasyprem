@@ -165,3 +165,11 @@ export async function wheel(page: Page, x: number, y: number, dx: number, dy: nu
     [x, y, dx, dy],
   );
 }
+
+/**
+ * The element with this test id on the page the user sees. On touch screens
+ * the league pager keeps the neighbouring tabs rendered off-screen and
+ * inert, and `:visible` alone still matches them.
+ */
+export const onScreen = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);

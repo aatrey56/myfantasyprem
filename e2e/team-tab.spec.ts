@@ -1,6 +1,6 @@
 import { expect, test, type Locator } from './fixtures';
 
-import { LEAGUE, overflowingElements, pageOverflow, signIn } from './helpers';
+import { LEAGUE, onScreen, overflowingElements, pageOverflow, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -61,7 +61,7 @@ for (const vp of [
         await box(heading),
         await box(page.getByTestId('view-list')),
         await box(page.getByTestId('view-pitch')),
-        await box(page.getByTestId('gw-switcher')),
+        await box(onScreen(page, 'gw-switcher')),
       ];
       const centres = row.map(centreY);
       expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(4);

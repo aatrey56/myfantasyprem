@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from './fixtures';
 
-import { LEAGUE, pageOverflow, signIn } from './helpers';
+import { LEAGUE, onScreen, pageOverflow, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -343,11 +343,11 @@ for (const vp of [
 test('past gameweeks are locked and show points', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${LEAGUE}/team`);
-  await expect(page.getByTestId('gw-label')).toHaveText('GW 8');
-  await page.getByTestId('gw-prev').click();
-  await expect(page.getByTestId('gw-label')).toHaveText('GW 7');
-  await expect(page.getByTestId('lineup-locked')).toBeVisible();
-  await expect(page.getByTestId('team-points')).toHaveText(/^\d+$/);
+  await expect(onScreen(page, 'gw-label')).toHaveText('GW 8');
+  await onScreen(page, 'gw-prev').click();
+  await expect(onScreen(page, 'gw-label')).toHaveText('GW 7');
+  await expect(onScreen(page, 'lineup-locked')).toBeVisible();
+  await expect(onScreen(page, 'team-points')).toHaveText(/^\d+$/);
   await openPitch(page);
   // The pitch shows a points box under each name; players are not swap buttons.
   await expect(page.locator('[data-testid="pitch-points"]:visible:not([inert] *)')).toHaveCount(11);
