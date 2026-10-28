@@ -566,7 +566,7 @@ poll` shows `poll ok`. Problems: RUNBOOK "FPL API down or blocked".
 
 ## 11. Web app on Cloudflare Pages
 
-The workflow in step 7 publishes it. To do it by hand from the laptop:
+Publish it by hand from the laptop (no workflow does it):
 
 ```bash
 EXPO_PUBLIC_API_BASE_URL=https://api.example.com npm run build:web:pages
@@ -654,7 +654,8 @@ in. Browser devtools show no CSP errors.
 
 ```bash
 # laptop
-git tag v0.2.0 && git push origin v0.2.0      # workflow builds the image and publishes the web app
+deploy/deploy.sh push v0.2.0                   # builds and pushes the API image (see 7)
+# then publish the web app as in 11
 # VM
 cd ~/myfantasyprem && git pull                 # picks up compose/script changes
 deploy/deploy.sh deploy v0.2.0
