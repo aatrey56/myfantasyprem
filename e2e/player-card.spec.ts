@@ -169,19 +169,21 @@ test.describe('player card (phone 390)', () => {
     const grabber = card.getByTestId('sheet-grabber');
     await settled(card);
     const rest = (await card.boundingBox())!.y;
-    const drag = async (dy: number) => {
+    const drag = async (dy: number, steps = 8) => {
       const g = (await grabber.boundingBox())!;
       const x = g.x + g.width / 2;
       const y = g.y + g.height / 2;
       await page.mouse.move(x, y);
       await page.mouse.down();
-      await page.mouse.move(x, y + dy / 2, { steps: 8 });
-      await page.mouse.move(x, y + dy, { steps: 8 });
+      await page.mouse.move(x, y + dy / 2, { steps });
+      await page.mouse.move(x, y + dy, { steps });
       return async () => page.mouse.up();
     };
-    // The sheet follows the pointer, then springs back.
-    const release = await drag(60);
+    // The sheet follows the pointer, then springs back: a quick short pull,
+    // held still, is no fling (the release must not reuse the pull's speed).
+    const release = await drag(60, 4);
     await expect.poll(async () => (await card.boundingBox())!.y).toBeGreaterThan(rest + 40);
+    await page.waitForTimeout(200);
     await release();
     await expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(rest + 1);
     await expect(card).toBeVisible();

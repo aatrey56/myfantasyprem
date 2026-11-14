@@ -3,6 +3,7 @@ import {
   backdropOpacity,
   dragOffset,
   pullCloses,
+  releaseVelocity,
   settle,
   snapHeights,
   snapOffset,
@@ -106,5 +107,14 @@ describe('backdropOpacity', () => {
   it('handles a sheet that rests at its own height', () => {
     expect(backdropOpacity(0, 0, 0)).toBe(1);
     expect(backdropOpacity(150, 0, 300)).toBe(0.5);
+  });
+});
+
+describe('releaseVelocity', () => {
+  it('keeps the speed of a release mid-move', () => {
+    expect(releaseVelocity(2000, 10)).toBe(2000);
+  });
+  it('is no fling after the pointer rested', () => {
+    expect(releaseVelocity(2000, 300)).toBe(0);
   });
 });

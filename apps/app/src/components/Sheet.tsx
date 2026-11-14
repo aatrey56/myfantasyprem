@@ -38,8 +38,10 @@ import { X } from './icons';
 import {
   backdropOpacity,
   dragOffset,
+  gestureClock,
   NATIVE_SHEET,
   PANEL_LAYOUT_TIMEOUT,
+  releaseVelocity,
   settle,
   snapHeights,
   snapOffset,
@@ -212,6 +214,8 @@ function useSheetMotion({
   const closingJs = useRef(false);
   // Where a drag started, and whether a content drag pulls the sheet.
   const start = useSharedValue(0);
+  // When the grabber last moved (ms): a release after a rest is no fling.
+  const lastMove = useSharedValue(0);
   const pulling = useSharedValue(false);
   const latestClose = useRef(onClose);
   useEffect(() => {
@@ -401,10 +405,11 @@ function useSheetMotion({
       })
       .onUpdate((e) => {
         if (closing.get()) return;
+        lastMove.set(gestureClock());
         offset.set(dragOffset(start.get() + e.translationY, panel.get()));
       })
       .onEnd((e) => {
-        if (!closing.get()) end(e.velocityY);
+        if (!closing.get()) end(releaseVelocity(e.velocityY, gestureClock() - lastMove.get()));
       });
     // The content's scroll view, natively: scrolling as usual, and a pull
     // down that starts at its top moves the sheet instead.
@@ -441,6 +446,7 @@ function useSheetMotion({
     scrollY,
     closing,
     start,
+    lastMove,
     pulling,
     beginClose,
     finishClose,
