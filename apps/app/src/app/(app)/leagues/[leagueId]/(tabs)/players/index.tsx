@@ -51,12 +51,14 @@ import { useLayout } from '@/hooks/useLayout';
 import { useLeagueId } from '@/hooks/useLeagueId';
 import { usePlayerSort } from '@/hooks/usePlayerSort';
 import { usePlayerView } from '@/hooks/usePlayerView';
+import { useShownWith } from '@/hooks/useShownWith';
 import {
   formatSortValue,
   sortChipA11y,
   sortChipText,
   sortShort,
   sortValueA11y,
+  type PlayerSort,
 } from '@/lib/playerSort';
 import { expandRowFixtures } from '@/lib/fixtures';
 import { flattenUnique } from '@/lib/pages';
@@ -66,6 +68,11 @@ import { waiversDueLabel } from '@/lib/waivers';
 import { tint, useTheme } from '@/theme';
 
 export { RouteError as ErrorBoundary } from '@/components/RouteError';
+
+/** What decides a row's value box: the view, its sort and the Trend/Leaders toggles. */
+type ListMode = { view: PlayersView; sort: PlayerSort; rising: boolean; season: boolean };
+const sameListMode = (a: ListMode, b: ListMode) =>
+  a.view === b.view && a.sort === b.sort && a.rising === b.rising && a.season === b.season;
 
 /** Debounces a value (search as you type without a request per key). */
 function useDebounced<T>(value: T, ms: number): T {
@@ -163,10 +170,13 @@ export default function PlayersScreen() {
   const players = useLeaguePlayers(leagueId, filter, {
     enabled: sortReady && viewReady && scopeReady,
   });
-  // While a new sort loads the rows still show the last list (placeholder
-  // data): they keep that list's sort for their label and value.
-  const [shownSort, setShownSort] = useState(sort);
-  if (!players.isPlaceholderData && players.data && shownSort !== sort) setShownSort(sort);
+  // While a new list loads the rows still show the last one (placeholder
+  // data): they keep that list's view, sort and toggles for their label and value.
+  const shown = useShownWith(
+    { view, sort, rising, season },
+    !players.isPlaceholderData && players.data !== undefined,
+    sameListMode,
+  );
   const claims = useWaiverClaims(leagueId);
   const waiverState = useWaiverState(leagueId);
   const first = players.data?.pages[0];
@@ -214,7 +224,7 @@ export default function PlayersScreen() {
                 ? 'Available'
                 : 'All players';
   const box = (p: Schemas['PlayerListItem']) =>
-    view === 'trend'
+    shown.view === 'trend'
       ? {
           points: p.formChange,
           label: 'Form ±',
@@ -224,26 +234,28 @@ export default function PlayersScreen() {
               ? 'Form change, no value'
               : `Form change ${formChangeText(p.formChange)}`,
         }
-      : view === 'leaders'
-        ? season
+      : shown.view === 'leaders'
+        ? shown.season
           ? { points: p.totalPoints, label: 'PTS' }
           : { points: p.gameweekPoints, label: 'GW' }
-        : shownSort === 'total_points'
+        : shown.sort === 'total_points'
           ? { points: p.totalPoints, label: 'PTS' }
           : {
               points: p.sortValue,
-              label: sortShort(shownSort),
-              text: formatSortValue(shownSort, p.sortValue),
-              a11y: sortValueA11y(shownSort, p.sortValue),
+              label: sortShort(shown.sort),
+              text: formatSortValue(shown.sort, p.sortValue),
+              a11y: sortValueA11y(shown.sort, p.sortValue),
             };
   const stripSort: ListSort | undefined =
-    view === 'leaders'
-      ? season
+    shown.view === 'leaders'
+      ? shown.season
         ? 'total_points'
         : 'gameweek_points'
-      : browsing &&
-          (shownSort === 'total_points' || shownSort === 'form' || shownSort === 'gameweek_points')
-        ? shownSort
+      : (shown.view === 'available' || shown.view === 'search') &&
+          (shown.sort === 'total_points' ||
+            shown.sort === 'form' ||
+            shown.sort === 'gameweek_points')
+        ? shown.sort
         : undefined;
 
   const renderRow = (p: Schemas['PlayerListItem'], i: number) => {

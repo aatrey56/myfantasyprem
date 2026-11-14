@@ -72,7 +72,8 @@ export type Scenario =
   | 'trade-refused'
   | 'status-rank-up'
   | 'news-503'
-  | 'transactions-locked';
+  | 'transactions-locked'
+  | 'players-slow';
 
 /** Applies a scenario from the first request on (set before the page loads). */
 export async function startWithScenario(page: Page, scenario: Scenario) {

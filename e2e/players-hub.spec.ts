@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures';
 
-import { LEAGUE, overflowingElements, signIn, wheel } from './helpers';
+import { LEAGUE, overflowingElements, signIn, useScenario, wheel } from './helpers';
 
 /** The Office League: offers both ways, a trade in a league vote. */
 const OFFICE = '/leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd0';
@@ -41,6 +41,36 @@ async function rowPositions(page: Page): Promise<string[]> {
   const texts = await rows(page).allTextContents();
   return texts.map((t) => /(GKP|GK|DEF|MID|FWD)•/.exec(t)?.[1] ?? '?');
 }
+
+/** The label above (or under) the first row's number: what that number is. */
+const firstBoxLabel = (page: Page) =>
+  rows(page)
+    .first()
+    .getByTestId('player-points')
+    .evaluate((points) => {
+      // Up from the number to the first box that also holds its label.
+      let box = points.parentElement;
+      while (box && box.textContent === points.textContent) box = box.parentElement;
+      return box?.textContent?.replace(points.textContent ?? '', '').trim() ?? '';
+    });
+
+test('while the gameweek leaders load, the season rows keep their PTS label', async ({ page }) => {
+  await page.goto(`${LEAGUE}/players`);
+  await expect(rows(page).first()).toBeVisible();
+  await visible(page, 'open-leaders').click();
+  await expect(visible(page, 'players-scope-title')).toHaveText('Leaders');
+  await expect.poll(() => firstBoxLabel(page)).toBe('PTS');
+  const season = await boxValues(page);
+  await useScenario(page, 'players-slow');
+  await visible(page, 'leaders-gw').click();
+  await expect(visible(page, 'leaders-gw')).toHaveAttribute('aria-checked', 'true');
+  // The season list is still on screen: its label and its numbers, in its order.
+  expect(await firstBoxLabel(page)).toBe('PTS');
+  expect(await boxValues(page)).toEqual(season);
+  await expect.poll(() => firstBoxLabel(page), { timeout: 10_000 }).toBe('GW');
+  const gw = await boxValues(page);
+  expect(gw).toEqual([...gw].sort((a, b) => b - a));
+});
 
 for (const vp of [
   { name: 'phone', width: 390, height: 844 },
