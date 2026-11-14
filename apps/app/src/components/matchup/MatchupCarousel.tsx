@@ -64,38 +64,83 @@ export function MatchupCarousel({
   // The page the scroll position shows; a page set from outside scrolls to it.
   const shown = useRef(page);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The page an animated scroll from outside is heading to. Until it gets
+  // there, scroll positions are that animation's, not a swipe: landing on
+  // one would send the page back (a busy main thread can leave a 120 ms gap
+  // between scroll events mid-animation). Any input that can scroll (touch,
+  // wheel, mouse drag or scrollbar, keys, a native drag) hands control back,
+  // as do a resize and, so it can never latch, a second without arriving.
+  const heading = useRef<number | null>(null);
+  const giveUp = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The last scroll position, and whether one came since heading was set.
+  const at = useRef(0);
+  const moved = useRef(false);
+  const release = () => {
+    heading.current = null;
+    if (giveUp.current) clearTimeout(giveUp.current);
+    giveUp.current = null;
+  };
+  // Within this of a page's offset is on it (a scroller can stop just short).
+  const near = (x: number, p: number) => Math.abs(x - p * width) <= Math.max(2, width * 0.02);
   const count = order.length;
   const mineFirst =
     myTeamId !== undefined &&
     count > 0 &&
     [order[0].home, order[0].away].some((s) => teamOf(s)?.id === myTeamId);
 
-  useEffect(() => {
-    if (width === 0) return;
-    if (shown.current === page) {
-      // A new width (rotation, resize) keeps the page.
-      scroller.current?.scrollTo({ x: page * width, animated: false });
-      return;
-    }
-    shown.current = page;
-    scroller.current?.scrollTo({ x: page * width, animated: true });
-  }, [page, width]);
-  useEffect(() => () => void (settle.current && clearTimeout(settle.current)), []);
-
   const land = (x: number) => {
     if (width === 0) return;
+    if (heading.current !== null) {
+      if (!near(x, heading.current)) return;
+      release();
+    }
     const next = Math.min(Math.max(Math.round(x / width), 0), count - 1);
     if (next === shown.current) return;
     shown.current = next;
     onPageChange(next);
   };
+  useEffect(() => {
+    if (width === 0) return;
+    release();
+    if (shown.current === page) {
+      // A new width (rotation, resize) keeps the page.
+      at.current = page * width;
+      scroller.current?.scrollTo({ x: page * width, animated: false });
+      return;
+    }
+    shown.current = page;
+    // Already there: no scroll event will come to clear it.
+    if (!near(at.current, page)) {
+      heading.current = page;
+      moved.current = false;
+      giveUp.current = setTimeout(() => {
+        const stopped = moved.current;
+        release();
+        if (stopped) land(at.current);
+      }, 1000);
+    }
+    scroller.current?.scrollTo({ x: page * width, animated: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a new page or width only
+  }, [page, width]);
+  useEffect(
+    () => () => {
+      if (settle.current) clearTimeout(settle.current);
+      if (giveUp.current) clearTimeout(giveUp.current);
+    },
+    [],
+  );
+
   // Native reports the end of a fling; web only scrolls, so wait for it to stop.
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (Platform.OS !== 'web') return;
     const x = e.nativeEvent.contentOffset.x;
+    at.current = x;
+    moved.current = true;
     if (settle.current) clearTimeout(settle.current);
     settle.current = setTimeout(() => land(x), 120);
   };
+  const userInput: WebScrollInput =
+    Platform.OS === 'web' ? { onWheel: release, onMouseDown: release, onKeyDown: release } : {};
   const go = (next: number) => {
     if (next < 0 || next >= count || next === page) return;
     onPageChange(next);
@@ -138,7 +183,28 @@ export function MatchupCarousel({
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={32}
           onScroll={onScroll}
-          onMomentumScrollEnd={(e) => land(e.nativeEvent.contentOffset.x)}
+          // Native: the end of a fling or of the animation itself, snapped to the
+          // nearest page wherever it stopped.
+          onMomentumScrollEnd={(e) => {
+            at.current = e.nativeEvent.contentOffset.x;
+            release();
+            land(at.current);
+          }}
+          // A native drag that stops without a fling sends no momentum end:
+          // land where it stopped unless a fling starts right after.
+          onMomentumScrollBegin={() => {
+            if (settle.current) clearTimeout(settle.current);
+          }}
+          onScrollBeginDrag={release}
+          onScrollEndDrag={(e) => {
+            release();
+            if (Platform.OS === 'web') return;
+            at.current = e.nativeEvent.contentOffset.x;
+            if (settle.current) clearTimeout(settle.current);
+            settle.current = setTimeout(() => land(at.current), 120);
+          }}
+          onTouchStart={release}
+          {...userInput}
           contentOffset={{ x: page * width, y: 0 }}
         >
           {order.map((m, i) => {
@@ -210,6 +276,13 @@ export function MatchupCarousel({
       ) : null}
     </View>
   );
+}
+
+/** Input events react-native-web forwards to the scroller's element; RN's ScrollView types lack them. */
+interface WebScrollInput {
+  onWheel?: () => void;
+  onMouseDown?: () => void;
+  onKeyDown?: () => void;
 }
 
 function Dot({
