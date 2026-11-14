@@ -198,8 +198,14 @@ for (const vp of [
       await expect(sheet.getByTestId('sort-form')).toContainText('Form');
       await sheet.getByTestId('sort-gameweek_points').click();
       await expect(visible(page, 'sort-menu')).toContainText('Sort: GW');
-      const gw = await boxValues(page);
-      expect(gw).toEqual([...gw].sort((a, b) => b - a));
+      // The label flips on the pick; the rows follow when the re-sorted page
+      // lands (one more mock round trip), so poll instead of reading once.
+      await expect
+        .poll(async () => {
+          const gw = await boxValues(page);
+          return gw.length > 0 && gw.every((v, i) => i === 0 || gw[i - 1]! >= v);
+        })
+        .toBe(true);
     });
 
     test('a starred player shows under the watchlist chip, and unstarring empties it', async ({
