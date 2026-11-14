@@ -5,6 +5,8 @@ import { IconButton } from '../Button';
 import { ChevronLeft, ChevronRight } from '../icons';
 import { useTheme } from '@/theme';
 
+const labelStyle = { fontSize: 16, lineHeight: 22, minWidth: 52, textAlign: 'center' } as const;
+
 interface Props {
   gameweek: number;
   min: number;
@@ -37,13 +39,7 @@ export function GameweekSwitcher({ gameweek, min, max, onChange }: Props) {
         accessibilityRole="text"
         aria-live="polite"
         color={colors.accent}
-        style={{
-          fontFamily: fontFamilies.bold,
-          fontSize: 16,
-          lineHeight: 22,
-          minWidth: 52,
-          textAlign: 'center',
-        }}
+        style={[labelStyle, { fontFamily: fontFamilies.bold }]}
       >
         {`GW ${gameweek}`}
       </AppText>
@@ -56,6 +52,31 @@ export function GameweekSwitcher({ gameweek, min, max, onChange }: Props) {
         size={20}
         color={colors.accent}
       />
+    </View>
+  );
+}
+
+/**
+ * The stepper's footprint with nothing in it: the same arrows' width and the
+ * same label text (so it grows with the user's text size), invisible and out
+ * of the accessibility tree. Holds the slot while the gameweek loads.
+ */
+export function GameweekSwitcherSlot({ gameweek }: { gameweek: number }) {
+  const { fontFamilies, layout } = useTheme();
+  return (
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', opacity: 0 }}
+      pointerEvents="none"
+      aria-hidden
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      testID="gw-switcher-slot"
+    >
+      <View style={{ width: layout.touch, height: layout.touch }} />
+      <AppText numeric style={[labelStyle, { fontFamily: fontFamilies.bold }]}>
+        {`GW ${gameweek}`}
+      </AppText>
+      <View style={{ width: layout.touch, height: layout.touch }} />
     </View>
   );
 }
