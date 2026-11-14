@@ -300,6 +300,18 @@ func (p *Postgres) SaveScores(ctx context.Context, leagueID string, gw int, scor
 	var changed []string
 	err := store.InTx(ctx, p.pool, pgx.ReadCommitted, func(tx pgx.Tx) error {
 		changed = nil
+		// The league lock Tx.LoadState takes: a state transaction reads
+		// matchups and scores in separate statements, and a rescore
+		// committing between them would show it half-applied. A deleted
+		// league has nothing to save.
+		var one int
+		err := tx.QueryRow(ctx, `SELECT 1 FROM leagues WHERE id = $1 FOR UPDATE`, leagueID).Scan(&one)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 		now := time.Now()
 		for _, s := range scores {
 			subs := s.AutoSubs

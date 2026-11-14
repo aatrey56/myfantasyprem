@@ -105,3 +105,60 @@ func TestStateReadsOneSnapshot(t *testing.T) {
 		t.Errorf("State saw pick=%v autopick=%v, want both or neither", picked, auto)
 	}
 }
+
+// SaveScores waits for a transaction that holds the league (LoadState),
+// so the transaction's reads of matchups and scores cannot straddle a
+// rescore's commit.
+func TestSaveScoresWaitsForLeagueLock(t *testing.T) {
+	pool := storetest.New(t)
+	seedUsers(t, pool)
+	repo := NewPostgres(pool)
+	l, err := NewService(repo, time.Now).Create(ctx, usrA, "Lock League", 4, "A", SettingsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	score := []TeamScore{{TeamID: l.Teams[0].ID, Gameweek: 1, Points: 7, State: scoring.StateLive}}
+	done := make(chan error, 1)
+	if err := repo.Tx(ctx, func(tx Tx) error {
+		if _, err := tx.LoadState(ctx, l.ID); err != nil {
+			return err
+		}
+		go func() {
+			_, err := repo.SaveScores(ctx, l.ID, 1, score, nil)
+			done <- err
+		}()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+			select {
+			case err := <-done:
+				done <- err
+				t.Errorf("SaveScores finished (%v) while the league was locked", err)
+				return nil
+			default:
+			}
+			var waiting int
+			if err := pool.QueryRow(ctx,
+				`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`).
+				Scan(&waiting); err != nil {
+				return err
+			}
+			if waiting > 0 {
+				return nil
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Error("SaveScores neither waited nor finished")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	g, err := repo.Game(ctx, l.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, ok := g.Score(l.Teams[0].ID, 1); !ok || s.Points != 7 {
+		t.Errorf("score = %+v %v, want 7 saved after the transaction", s, ok)
+	}
+}
