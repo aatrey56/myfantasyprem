@@ -165,7 +165,10 @@ const TOP_GAP = 8;
  */
 function webPanelHeight(panel: View | null): number {
   if (Platform.OS !== 'web' || !panel) return 0;
-  const el = panel as unknown as HTMLElement;
+  // A ref that is not a page element (a test double, a future renderer)
+  // reports no height.
+  const el = panel as unknown as Partial<HTMLElement>;
+  if (typeof el.isConnected !== 'boolean' || typeof el.offsetHeight !== 'number') return 0;
   return el.isConnected ? el.offsetHeight : 0;
 }
 
