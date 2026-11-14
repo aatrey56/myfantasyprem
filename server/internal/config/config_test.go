@@ -56,6 +56,8 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"JOBS_ENABLED": "sometimes"},
 		{"JOBS_TICK": "100ms"},
 		{"SNAPSHOTS_KEEP": "0"},
+		{"DATABASE_MAX_CONNS": "0"},
+		{"DATABASE_MAX_CONNS": "ten"},
 		{"APP_URL": "app.example"},
 		{"APP_URL": "ftp://app.example"},
 		{"APP_URL": "https://"},
@@ -201,6 +203,15 @@ func TestLoadTrustedProxies(t *testing.T) {
 	}
 	if _, err := Load(env(map[string]string{"TRUSTED_PROXIES": "the load balancer"})); err == nil {
 		t.Error("want an error for a non-address")
+	}
+}
+
+func TestLoadDatabaseMaxConns(t *testing.T) {
+	if cfg, err := Load(env(nil)); err != nil || cfg.DatabaseMaxConns != 10 {
+		t.Fatalf("default: %d %v", cfg.DatabaseMaxConns, err)
+	}
+	if cfg, err := Load(env(map[string]string{"DATABASE_MAX_CONNS": "25"})); err != nil || cfg.DatabaseMaxConns != 25 {
+		t.Fatalf("override: %d %v", cfg.DatabaseMaxConns, err)
 	}
 }
 

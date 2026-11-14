@@ -18,6 +18,20 @@ import (
 
 // The migration applies, rolls back to empty and applies again, and the
 // database enforces the rules the architecture puts on it.
+func TestOpenCapsPool(t *testing.T) {
+	_, url := storetest.NewWithURL(t)
+	for _, c := range []struct{ give, want int32 }{{0, store.DefaultMaxConns}, {3, 3}} {
+		pool, err := store.Open(context.Background(), url, c.give)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := pool.Config().MaxConns; got != c.want {
+			t.Errorf("Open(%d): MaxConns = %d, want %d", c.give, got, c.want)
+		}
+		pool.Close()
+	}
+}
+
 func TestMigrationsRoundTripAndConstraints(t *testing.T) {
 	pool, url := storetest.NewWithURL(t)
 	ctx := context.Background()

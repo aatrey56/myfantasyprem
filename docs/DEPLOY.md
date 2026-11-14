@@ -119,6 +119,9 @@ pick another private /24 and change all three together, e.g.
 (`CADDY_IP` inside the subnet, outside the range), then `deploy.sh down` and
 `deploy.sh up`. `FPL_RESYNC_DISABLED_LEAGUES` stays
 empty unless the owner wants "Re-sync from FPL" off for a league.
+`DATABASE_MAX_CONNS` (default 10) sizes the API's connection pool; pgx's own
+default would be 4 on a 2-vCPU VM. Keep it under `max_connections` (50,
+`deploy/postgres/postgresql.conf`).
 
 Check, from `~/myfantasyprem`:
 `docker compose -f deploy/compose.prod.yml --env-file deploy/.env config >/dev/null`

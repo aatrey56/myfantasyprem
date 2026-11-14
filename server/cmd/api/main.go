@@ -138,7 +138,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, read
 				return err
 			}
 		}
-		pool, err = store.Open(ctx, cfg.DatabaseURL)
+		pool, err = store.Open(ctx, cfg.DatabaseURL, cfg.DatabaseMaxConns)
 		if err != nil {
 			return err
 		}

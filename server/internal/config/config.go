@@ -52,6 +52,9 @@ type Config struct {
 	// DatabaseURL is from DATABASE_URL. Empty runs every store in memory
 	// (development only: data is lost on restart).
 	DatabaseURL string
+	// DatabaseMaxConns caps the connection pool, from DATABASE_MAX_CONNS
+	// (default 10).
+	DatabaseMaxConns int32
 	// MigrateOnStart applies pending migrations at startup, from
 	// MIGRATE_ON_START=true. Otherwise run `go run ./cmd/migrate up`.
 	MigrateOnStart bool
@@ -338,6 +341,14 @@ func Load(getenv func(string) string) (Config, error) {
 			p = netip.PrefixFrom(a, a.BitLen())
 		}
 		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
+	}
+	cfg.DatabaseMaxConns = 10
+	if v := getenv("DATABASE_MAX_CONNS"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 32)
+		if err != nil || n < 1 {
+			return Config{}, fmt.Errorf("DATABASE_MAX_CONNS: want a positive integer, got %q", v)
+		}
+		cfg.DatabaseMaxConns = int32(n)
 	}
 	cfg.SnapshotsKeep = 50
 	if v := getenv("SNAPSHOTS_KEEP"); v != "" {
