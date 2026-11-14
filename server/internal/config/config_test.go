@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +213,19 @@ func TestLoadDatabaseMaxConns(t *testing.T) {
 	}
 	if cfg, err := Load(env(map[string]string{"DATABASE_MAX_CONNS": "25"})); err != nil || cfg.DatabaseMaxConns != 25 {
 		t.Fatalf("override: %d %v", cfg.DatabaseMaxConns, err)
+	}
+	// The realtime listener holds one connection and a scores lock holds
+	// another while its callback needs more: a smaller pool deadlocks.
+	for _, v := range []string{"1", "3"} {
+		if _, err := Load(env(map[string]string{"DATABASE_MAX_CONNS": v})); err == nil {
+			t.Errorf("%s: want an error below the minimum", v)
+		}
+	}
+	for _, v := range []int32{4, 10} {
+		cfg, err := Load(env(map[string]string{"DATABASE_MAX_CONNS": strconv.Itoa(int(v))}))
+		if err != nil || cfg.DatabaseMaxConns != v {
+			t.Errorf("%d: %d %v", v, cfg.DatabaseMaxConns, err)
+		}
 	}
 }
 
