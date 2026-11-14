@@ -91,9 +91,11 @@ type view struct {
 }
 
 // loadView checks membership and loads the league, its game state and the
-// world. A *Problem return is the response to send.
+// world. The league and its game come from one snapshot (GetState), so
+// standings and matchups agree with the teams shown. A *Problem return is
+// the response to send.
 func (s *Server) loadView(ctx context.Context, leagueID string) (*view, *Problem, error) {
-	l, err := s.leagues.Get(ctx, userFrom(ctx), leagueID)
+	st, err := s.leagues.GetState(ctx, userFrom(ctx), leagueID)
 	if err != nil {
 		p, err := leagueProblem(ctx, err)
 		if err != nil {
@@ -109,15 +111,7 @@ func (s *Server) loadView(ctx context.Context, leagueID string) (*view, *Problem
 	if err != nil {
 		return nil, nil, err
 	}
-	st, err := s.leagues.Repo().State(ctx, leagueID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if st == nil {
-		p := notFound(ctx, "League not found.")
-		return nil, &p, nil
-	}
-	g := st.Game
+	l, g := st.League, st.Game
 	n, err := s.namesFor(ctx, l)
 	if err != nil {
 		return nil, nil, err

@@ -481,6 +481,23 @@ func (m *Service) Get(ctx context.Context, actor, leagueID string) (*League, err
 	return l, nil
 }
 
+// GetState returns the State of a league the actor is in. The league,
+// its game and the rest come from one snapshot, so a view built from them
+// (standings, matchups) agrees with itself.
+func (m *Service) GetState(ctx context.Context, actor, leagueID string) (*State, error) {
+	st, err := m.repo.State(ctx, leagueID)
+	if err != nil {
+		return nil, err
+	}
+	if st == nil {
+		return nil, errLeagueNotFound
+	}
+	if err := member(st.League, actor); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
 // ForUser returns the actor's leagues, newest first.
 func (m *Service) ForUser(ctx context.Context, actor string) ([]*League, error) {
 	out, err := m.repo.ForUser(ctx, actor)
