@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,8 @@ import (
 type Postgres struct {
 	pool  *pgxpool.Pool
 	sched Scheduler
+	// wrapRead, when set, wraps the transaction reads run on (tests).
+	wrapRead func(store.DB) store.DB
 }
 
 var _ Repo = (*Postgres)(nil)
@@ -48,6 +51,22 @@ func (p *Postgres) TxWith(ctx context.Context, fn func(tx Tx, db store.DB) error
 	return store.InTx(ctx, p.pool, pgx.ReadCommitted, func(tx pgx.Tx) error { return fn(pgTx{tx, p.sched}, tx) })
 }
 
+// read runs fn on one snapshot (store.ReadSnapshot): every read that
+// makes more than one query goes through it, so a commit landing between
+// its queries cannot show half-applied.
+func read[T any](ctx context.Context, p *Postgres, fn func(db store.DB) (T, error)) (T, error) {
+	var out T
+	err := store.ReadSnapshot(ctx, p.pool, func(db store.DB) error {
+		if p.wrapRead != nil {
+			db = p.wrapRead(db)
+		}
+		var err error
+		out, err = fn(db)
+		return err
+	})
+	return out, err
+}
+
 func (t pgTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 	if t.sched == nil {
 		return nil
@@ -57,51 +76,94 @@ func (t pgTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 
 // load reads one league; lock adds FOR UPDATE on the league row.
 func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League, error) {
+	ls, err := loadMany(ctx, db, []string{leagueID}, lock)
+	if err != nil || len(ls) == 0 {
+		return nil, err
+	}
+	return ls[0], nil
+}
+
+// loadMany reads leagues in the order of leagueIDs, skipping missing ones,
+// in four queries whatever their number.
+func loadMany(ctx context.Context, db store.DB, leagueIDs []string, lock bool) ([]*League, error) {
 	q := `SELECT id, name, season, status, coalesce(commissioner_id, ''), created_at, source, coalesce(fpl_league_id, 0)
-	      FROM leagues WHERE id = $1`
+	      FROM leagues WHERE id = ANY($1)`
 	if lock {
 		q += ` FOR UPDATE`
 	}
-	l := &League{}
-	err := db.QueryRow(ctx, q, leagueID).Scan(&l.ID, &l.Name, &l.Season, &l.Status, &l.CommissionerID, &l.CreatedAt,
-		&l.Source, &l.FPLLeagueID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+	rows, err := db.Query(ctx, q, leagueIDs)
 	if err != nil {
 		return nil, err
 	}
-	l.CreatedAt = l.CreatedAt.UTC()
-	var raw []byte
-	if err := db.QueryRow(ctx,
-		`SELECT settings FROM league_settings WHERE league_id = $1 ORDER BY version DESC LIMIT 1`, leagueID).Scan(&raw); err != nil {
+	byID := map[string]*League{}
+	var l League
+	if _, err := pgx.ForEachRow(rows, []any{&l.ID, &l.Name, &l.Season, &l.Status, &l.CommissionerID, &l.CreatedAt,
+		&l.Source, &l.FPLLeagueID}, func() error {
+		c := l
+		c.CreatedAt = c.CreatedAt.UTC()
+		byID[c.ID] = &c
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(raw, &l.Settings); err != nil {
+	if len(byID) == 0 {
+		return nil, nil
+	}
+	rows, err = db.Query(ctx,
+		`SELECT DISTINCT ON (league_id) league_id, settings FROM league_settings
+		 WHERE league_id = ANY($1) ORDER BY league_id, version DESC`, leagueIDs)
+	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(ctx,
-		`SELECT id, name, coalesce(owner_id, ''), joined_at, coalesce(fpl_entry_id, 0), coalesce(fpl_manager_name, '')
-		 FROM teams WHERE league_id = $1 ORDER BY joined_at, id`, leagueID)
+	var (
+		leagueID string
+		raw      []byte
+	)
+	settled := map[string]bool{}
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &raw}, func() error {
+		if x := byID[leagueID]; x != nil {
+			settled[leagueID] = true
+			return json.Unmarshal(raw, &x.Settings)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	// Every league is created with settings; zero ones would be persisted
+	// by the next write, so a league without them is an error.
+	for id := range byID {
+		if !settled[id] {
+			return nil, fmt.Errorf("league %s has no settings: %w", id, pgx.ErrNoRows)
+		}
+	}
+	rows, err = db.Query(ctx,
+		`SELECT league_id, id, name, coalesce(owner_id, ''), joined_at, coalesce(fpl_entry_id, 0), coalesce(fpl_manager_name, '')
+		 FROM teams WHERE league_id = ANY($1) ORDER BY joined_at, id`, leagueIDs)
 	if err != nil {
 		return nil, err
 	}
 	var t Team
-	if _, err := pgx.ForEachRow(rows, []any{&t.ID, &t.Name, &t.OwnerID, &t.JoinedAt, &t.FPLEntryID, &t.ManagerName}, func() error {
-		t.JoinedAt = t.JoinedAt.UTC()
-		l.Teams = append(l.Teams, t)
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &t.ID, &t.Name, &t.OwnerID, &t.JoinedAt, &t.FPLEntryID, &t.ManagerName}, func() error {
+		if x := byID[leagueID]; x != nil {
+			t.JoinedAt = t.JoinedAt.UTC()
+			x.Teams = append(x.Teams, t)
+		}
 		return nil
 	}); err != nil {
 		return nil, err
 	}
 	rows, err = db.Query(ctx,
-		`SELECT id, code, created_at, expires_at, max_uses, uses, revoked_at IS NOT NULL, coalesce(team_id, '')
-		 FROM invites WHERE league_id = $1 ORDER BY created_at, id`, leagueID)
+		`SELECT league_id, id, code, created_at, expires_at, max_uses, uses, revoked_at IS NOT NULL, coalesce(team_id, '')
+		 FROM invites WHERE league_id = ANY($1) ORDER BY created_at, id`, leagueIDs)
 	if err != nil {
 		return nil, err
 	}
 	var inv Invite
-	if _, err := pgx.ForEachRow(rows, []any{&inv.ID, &inv.Code, &inv.CreatedAt, &inv.ExpiresAt, &inv.MaxUses, &inv.Uses, &inv.Revoked, &inv.TeamID}, func() error {
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &inv.ID, &inv.Code, &inv.CreatedAt, &inv.ExpiresAt, &inv.MaxUses, &inv.Uses, &inv.Revoked, &inv.TeamID}, func() error {
+		x := byID[leagueID]
+		if x == nil {
+			return nil
+		}
 		c := inv
 		c.CreatedAt = c.CreatedAt.UTC()
 		if c.ExpiresAt != nil {
@@ -112,16 +174,23 @@ func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League
 			n := *c.MaxUses
 			c.MaxUses = &n
 		}
-		l.Invites = append(l.Invites, c)
+		x.Invites = append(x.Invites, c)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return l, nil
+	out := make([]*League, 0, len(byID))
+	for _, id := range leagueIDs {
+		if x := byID[id]; x != nil {
+			out = append(out, x)
+			delete(byID, id) // a repeated id is returned once
+		}
+	}
+	return out, nil
 }
 
 func (p *Postgres) Get(ctx context.Context, leagueID string) (*League, error) {
-	return load(ctx, p.pool, leagueID, false)
+	return read(ctx, p, func(db store.DB) (*League, error) { return load(ctx, db, leagueID, false) })
 }
 
 func idList(ctx context.Context, db store.DB, sql string, args ...any) ([]string, error) {
@@ -133,21 +202,13 @@ func idList(ctx context.Context, db store.DB, sql string, args ...any) ([]string
 }
 
 func (p *Postgres) ForUser(ctx context.Context, userID string) ([]*League, error) {
-	leagueIDs, err := idList(ctx, p.pool, `SELECT league_id FROM teams WHERE owner_id = $1`, userID)
-	if err != nil {
-		return nil, err
-	}
-	var out []*League
-	for _, id := range leagueIDs {
-		l, err := load(ctx, p.pool, id, false)
+	return read(ctx, p, func(db store.DB) ([]*League, error) {
+		leagueIDs, err := idList(ctx, db, `SELECT league_id FROM teams WHERE owner_id = $1`, userID)
 		if err != nil {
 			return nil, err
 		}
-		if l != nil {
-			out = append(out, l)
-		}
-	}
-	return out, nil
+		return loadMany(ctx, db, leagueIDs, false)
+	})
 }
 
 func byCode(ctx context.Context, db store.DB, code string, lock bool) (*League, error) {
@@ -163,11 +224,11 @@ func byCode(ctx context.Context, db store.DB, code string, lock bool) (*League, 
 }
 
 func (p *Postgres) ByInviteCode(ctx context.Context, code string) (*League, error) {
-	return byCode(ctx, p.pool, code, false)
+	return read(ctx, p, func(db store.DB) (*League, error) { return byCode(ctx, db, code, false) })
 }
 
 func (p *Postgres) Game(ctx context.Context, leagueID string) (*Game, error) {
-	return loadGame(ctx, p.pool, leagueID)
+	return read(ctx, p, func(db store.DB) (*Game, error) { return loadGame(ctx, db, leagueID) })
 }
 
 func loadGame(ctx context.Context, db store.DB, leagueID string) (*Game, error) {
@@ -249,6 +310,26 @@ func (p *Postgres) SaveScores(ctx context.Context, leagueID string, gw int, scor
 	var changed []string
 	err := store.InTx(ctx, p.pool, pgx.ReadCommitted, func(tx pgx.Tx) error {
 		changed = nil
+		// The league lock Tx.LoadState takes: a state transaction reads
+		// matchups and scores in separate statements, and a rescore
+		// committing between them would show it half-applied. A deleted
+		// league has nothing to save.
+		//
+		// The caller holds the gameweek's scoring lock (LockScores), so a
+		// long league transaction stalls the gameweek's scoring while this
+		// waits. That wait is bounded: league transactions do only database
+		// work, none takes the scoring lock (the order is always scoring
+		// lock, then league row, so no cycle), and production ends a stuck
+		// one after idle_in_transaction_session_timeout (5min,
+		// deploy/postgres/postgresql.conf).
+		var one int
+		err := tx.QueryRow(ctx, `SELECT 1 FROM leagues WHERE id = $1 FOR UPDATE`, leagueID).Scan(&one)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 		now := time.Now()
 		for _, s := range scores {
 			subs := s.AutoSubs

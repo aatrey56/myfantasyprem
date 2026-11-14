@@ -133,6 +133,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: *db-url
+      DATABASE_MAX_CONNS: ${DATABASE_MAX_CONNS:-10}
       MIGRATE_ON_START: 'false' # deploy.sh migrates before rolling out
       HTTP_ADDR: ':8080'
       LOG_FORMAT: json
