@@ -280,7 +280,32 @@ func (p *Postgres) Trades(ctx context.Context, leagueID string) ([]Trade, error)
 }
 
 func (p *Postgres) Transactions(ctx context.Context, leagueID string) ([]Txn, error) {
-	rows, err := p.pool.Query(ctx,
+	return loadTxns(ctx, p.pool, leagueID)
+}
+
+func (p *Postgres) History(ctx context.Context, leagueID string) (*State, []Txn, error) {
+	type history struct {
+		st   *State
+		txns []Txn
+	}
+	h, err := read(ctx, p, func(db store.DB) (h history, err error) {
+		if h.st, err = loadState(ctx, db, leagueID, false); err != nil || h.st == nil {
+			return h, err
+		}
+		if h.st.Claims, err = loadClaims(ctx, db, `league_id = $1`, leagueID); err != nil {
+			return h, err
+		}
+		if h.st.Trades, err = loadTrades(ctx, db, `league_id = $1`, leagueID); err != nil {
+			return h, err
+		}
+		h.txns, err = loadTxns(ctx, db, leagueID)
+		return h, err
+	})
+	return h.st, h.txns, err
+}
+
+func loadTxns(ctx context.Context, db store.DB, leagueID string) ([]Txn, error) {
+	rows, err := db.Query(ctx,
 		`SELECT id, kind, gameweek, occurred_at, payload FROM transactions
 		 WHERE league_id = $1 ORDER BY occurred_at DESC, id DESC`, leagueID)
 	if err != nil {

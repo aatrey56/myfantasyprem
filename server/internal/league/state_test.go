@@ -209,6 +209,20 @@ func TestStateRoundTrip(t *testing.T) {
 			txns[0].PlayerIn != p[1] || txns[1].Kind != TxnTrade || txns[2].PlayerIn != p[6] || !txns[2].Approved {
 			t.Errorf("txns = %+v", txns)
 		}
+		// History: the same, from one read.
+		hist, htxns, err := m.Repo().History(ctx, l.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(hist.Claims, claims) || !reflect.DeepEqual(hist.Trades, trades) || !reflect.DeepEqual(htxns, txns) {
+			t.Errorf("history = %+v %+v %+v", hist.Claims, hist.Trades, htxns)
+		}
+		if hist.League.ID != l.ID || len(hist.Game.Rosters) != len(got.Game.Rosters) {
+			t.Errorf("history state = %+v", hist.League)
+		}
+		if st, _, err := m.Repo().History(ctx, "lg_missing"); st != nil || err != nil {
+			t.Errorf("missing league: %v %v", st, err)
+		}
 		ins, _ := m.Repo().LeaguesWithStatus(ctx, StatusInSeason)
 		if !slices.Contains(ins, l.ID) {
 			t.Errorf("in season = %v", ins)
