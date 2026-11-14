@@ -18,6 +18,8 @@ import (
 type Postgres struct {
 	pool  *pgxpool.Pool
 	sched Scheduler
+	// wrapRead, when set, wraps the transaction reads run on (tests).
+	wrapRead func(store.DB) store.DB
 }
 
 var _ Repo = (*Postgres)(nil)
@@ -46,6 +48,22 @@ func (p *Postgres) Tx(ctx context.Context, fn func(tx Tx) error) error {
 // deletion deletes the user in the same transaction).
 func (p *Postgres) TxWith(ctx context.Context, fn func(tx Tx, db store.DB) error) error {
 	return store.InTx(ctx, p.pool, pgx.ReadCommitted, func(tx pgx.Tx) error { return fn(pgTx{tx, p.sched}, tx) })
+}
+
+// read runs fn on one snapshot (store.ReadSnapshot): every read that
+// makes more than one query goes through it, so a commit landing between
+// its queries cannot show half-applied.
+func read[T any](ctx context.Context, p *Postgres, fn func(db store.DB) (T, error)) (T, error) {
+	var out T
+	err := store.ReadSnapshot(ctx, p.pool, func(db store.DB) error {
+		if p.wrapRead != nil {
+			db = p.wrapRead(db)
+		}
+		var err error
+		out, err = fn(db)
+		return err
+	})
+	return out, err
 }
 
 func (t pgTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
@@ -121,7 +139,7 @@ func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League
 }
 
 func (p *Postgres) Get(ctx context.Context, leagueID string) (*League, error) {
-	return load(ctx, p.pool, leagueID, false)
+	return read(ctx, p, func(db store.DB) (*League, error) { return load(ctx, db, leagueID, false) })
 }
 
 func idList(ctx context.Context, db store.DB, sql string, args ...any) ([]string, error) {
@@ -133,21 +151,23 @@ func idList(ctx context.Context, db store.DB, sql string, args ...any) ([]string
 }
 
 func (p *Postgres) ForUser(ctx context.Context, userID string) ([]*League, error) {
-	leagueIDs, err := idList(ctx, p.pool, `SELECT league_id FROM teams WHERE owner_id = $1`, userID)
-	if err != nil {
-		return nil, err
-	}
-	var out []*League
-	for _, id := range leagueIDs {
-		l, err := load(ctx, p.pool, id, false)
+	return read(ctx, p, func(db store.DB) ([]*League, error) {
+		leagueIDs, err := idList(ctx, db, `SELECT league_id FROM teams WHERE owner_id = $1`, userID)
 		if err != nil {
 			return nil, err
 		}
-		if l != nil {
-			out = append(out, l)
+		var out []*League
+		for _, id := range leagueIDs {
+			l, err := load(ctx, db, id, false)
+			if err != nil {
+				return nil, err
+			}
+			if l != nil {
+				out = append(out, l)
+			}
 		}
-	}
-	return out, nil
+		return out, nil
+	})
 }
 
 func byCode(ctx context.Context, db store.DB, code string, lock bool) (*League, error) {
@@ -163,11 +183,11 @@ func byCode(ctx context.Context, db store.DB, code string, lock bool) (*League, 
 }
 
 func (p *Postgres) ByInviteCode(ctx context.Context, code string) (*League, error) {
-	return byCode(ctx, p.pool, code, false)
+	return read(ctx, p, func(db store.DB) (*League, error) { return byCode(ctx, db, code, false) })
 }
 
 func (p *Postgres) Game(ctx context.Context, leagueID string) (*Game, error) {
-	return loadGame(ctx, p.pool, leagueID)
+	return read(ctx, p, func(db store.DB) (*Game, error) { return loadGame(ctx, db, leagueID) })
 }
 
 func loadGame(ctx context.Context, db store.DB, leagueID string) (*Game, error) {

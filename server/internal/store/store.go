@@ -62,6 +62,18 @@ func InTx(ctx context.Context, pool *pgxpool.Pool, iso pgx.TxIsoLevel, fn func(p
 	return err
 }
 
+// ReadSnapshot runs fn in a read-only REPEATABLE READ transaction, so all
+// of fn's queries see one snapshot: a commit landing between two of them
+// cannot show half-applied. The transaction is always rolled back.
+func ReadSnapshot(ctx context.Context, pool *pgxpool.Pool, fn func(DB) error) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	return fn(tx)
+}
+
 func retryable(err error) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && (pg.Code == "40001" || pg.Code == "40P01")

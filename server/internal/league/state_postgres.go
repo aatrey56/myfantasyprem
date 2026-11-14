@@ -264,14 +264,7 @@ func loadTrades(ctx context.Context, db store.DB, where string, args ...any) ([]
 }
 
 func (p *Postgres) State(ctx context.Context, leagueID string) (*State, error) {
-	// One snapshot: State reads many tables, and a commit between the
-	// queries (a pick and its autopick flag) must not show half-applied.
-	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	return loadState(ctx, tx, leagueID, false)
+	return read(ctx, p, func(db store.DB) (*State, error) { return loadState(ctx, db, leagueID, false) })
 }
 
 func (p *Postgres) LeaguesWithStatus(ctx context.Context, status string) ([]string, error) {
@@ -283,7 +276,7 @@ func (p *Postgres) Claims(ctx context.Context, leagueID, teamID string) ([]Claim
 }
 
 func (p *Postgres) Trades(ctx context.Context, leagueID string) ([]Trade, error) {
-	return loadTrades(ctx, p.pool, `league_id = $1`, leagueID)
+	return read(ctx, p, func(db store.DB) ([]Trade, error) { return loadTrades(ctx, db, `league_id = $1`, leagueID) })
 }
 
 func (p *Postgres) Transactions(ctx context.Context, leagueID string) ([]Txn, error) {
