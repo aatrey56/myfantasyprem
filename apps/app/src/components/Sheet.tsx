@@ -156,6 +156,22 @@ export const OFFSCREEN_MS = 300;
 /** The gap between a full-height sheet and the status bar. */
 const TOP_GAP = 8;
 
+/**
+ * Web: the panel element's height when it is on the page (0 otherwise).
+ * react-native-web reports onLayout after a ResizeObserver pass and then a
+ * timer, so on a busy main thread (a slow phone, a list rendering) the
+ * report can land after the safety net's deadline, or be lost. Native
+ * reports layout itself: it relies on onLayout alone.
+ */
+function webPanelHeight(panel: View | null): number {
+  if (Platform.OS !== 'web' || !panel) return 0;
+  // A ref that is not a page element (a test double, a future renderer)
+  // reports no height.
+  const el = panel as unknown as Partial<HTMLElement>;
+  if (typeof el.isConnected !== 'boolean' || typeof el.offsetHeight !== 'number') return 0;
+  return el.isConnected ? el.offsetHeight : 0;
+}
+
 /** The ✕ for a sheet that draws its own heading (`hideHeader`). */
 export function SheetCloseButton() {
   const close = useSheetClose();
@@ -605,9 +621,16 @@ function ModalSheet({
   // tall, or its layout lost) is an invisible layer that takes every touch.
   // Close it rather than leave the app looking frozen.
   const laidOut = useRef(false);
+  const panelRef = useRef<View>(null);
+  const onPanelLayout = (e: LayoutChangeEvent) => {
+    if (e.nativeEvent.layout.height > 0) laidOut.current = true;
+    motion.onLayout(e);
+  };
   const latestOnClose = useRef(onClose);
+  const latestPanelLayout = useRef(onPanelLayout);
   useEffect(() => {
     latestOnClose.current = onClose;
+    latestPanelLayout.current = onPanelLayout;
   });
   useLayoutEffect(() => {
     laidOut.current = false;
@@ -616,14 +639,21 @@ function ModalSheet({
     const ms = PANEL_LAYOUT_TIMEOUT.ms;
     if (!visible || !Number.isFinite(ms)) return;
     const id = setTimeout(() => {
-      if (!laidOut.current) latestOnClose.current();
+      if (laidOut.current) return;
+      // Web: a panel on the page with a height whose report is late or lost
+      // is measured here instead, so a phone sheet slides on screen (and the
+      // off-screen watchdog closes it if it still doesn't get there).
+      const h = webPanelHeight(panelRef.current);
+      if (h > 0) {
+        latestPanelLayout.current({
+          nativeEvent: { layout: { x: 0, y: 0, width: 0, height: h } },
+        } as LayoutChangeEvent);
+        return;
+      }
+      latestOnClose.current();
     }, ms);
     return () => clearTimeout(id);
   }, [visible]);
-  const onPanelLayout = (e: LayoutChangeEvent) => {
-    if (e.nativeEvent.layout.height > 0) laidOut.current = true;
-    motion.onLayout(e);
-  };
   useImperativeHandle(ref, () => ({ closeAnimated: close }), [close]);
   const dialogRef = useDialogFocus(visible, close);
   const contentPadding = [{ padding: spacing.lg, gap: spacing.md }, contentStyle];
@@ -737,6 +767,7 @@ function ModalSheet({
               role="dialog"
               aria-modal
               aria-label={title}
+              ref={panelRef}
               onLayout={onPanelLayout}
               style={[
                 isWide
