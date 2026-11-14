@@ -122,4 +122,60 @@ describe('MatchupCarousel', () => {
       Platform.OS = os;
     }
   });
+
+  describe('a page set from outside', () => {
+    const os = Platform.OS;
+    afterEach(() => {
+      jest.useRealTimers();
+      Platform.OS = os;
+    });
+    const setup = async (platform: typeof Platform.OS = 'web') => {
+      Platform.OS = platform;
+      jest.useFakeTimers();
+      const onPageChange = jest.fn();
+      const props = {
+        leagueId: data.LEAGUE_ID,
+        order,
+        onPageChange,
+        myTeamId,
+        seasonLines: new Map(),
+      };
+      const view = await render(<MatchupCarousel {...props} page={0} />);
+      const layout = (width: number) =>
+        fireEvent(screen.getByLabelText(/^Matchups, /), 'layout', {
+          nativeEvent: { layout: { width, height: 200, x: 0, y: 0 } },
+        });
+      await layout(400);
+      const scroller = () => screen.getByTestId('matchup-carousel-scroller');
+      const offset = (x: number) => ({ nativeEvent: { contentOffset: { x, y: 0 } } });
+      const scroll = async (x: number) => {
+        await fireEvent.scroll(scroller(), offset(x));
+        await act(() => jest.advanceTimersByTime(200));
+      };
+      const goTo = (page: number) => view.rerender(<MatchupCarousel {...props} page={page} />);
+      return { onPageChange, layout, scroller, offset, scroll, goTo };
+    };
+
+    it.each([
+      ['a mouse down (drag, scrollbar)', 'mouseDown'],
+      ['a key on the scroller', 'keyDown'],
+      ['a touch', 'touchStart'],
+      ['a wheel', 'wheel'],
+    ])('%s mid-animation hands the scroll back to the user (web)', async (_, event) => {
+      const { onPageChange, scroller, scroll, goTo } = await setup();
+      await goTo(2);
+      await scroll(350);
+      await fireEvent(scroller(), event, { key: 'PageUp', preventDefault: () => {} });
+      await scroll(400);
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('a drag mid-animation hands the scroll back to the user (native)', async () => {
+      const { onPageChange, scroller, offset, goTo } = await setup('ios');
+      await goTo(2);
+      await fireEvent(scroller(), 'scrollBeginDrag', offset(350));
+      await fireEvent(scroller(), 'momentumScrollEnd', offset(400));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+  });
 });
