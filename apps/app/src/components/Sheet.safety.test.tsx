@@ -226,4 +226,20 @@ describe('Sheet on web, when the panel layout report is late or lost', () => {
     await wait(500);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('a panel on the page with no height still closes', async () => {
+    const onClose = jest.fn();
+    await render(<Owned visible onClose={onClose} />);
+    panelElement({ isConnected: true, offsetHeight: 0 });
+    await wait(500);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a panel not on the page still closes', async () => {
+    const onClose = jest.fn();
+    await render(<Owned visible onClose={onClose} />);
+    panelElement({ isConnected: false, offsetHeight: 400 });
+    await wait(500);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
