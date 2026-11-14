@@ -22,7 +22,13 @@ for (const vp of [
       await page.getByTestId('create-league-submit').click();
       await expect(page.getByText('League name must be 3 to 40 characters.')).toBeVisible();
 
-      await page.getByTestId('league-name-input').fill('Thursday Night Draft');
+      // The tap on submit scrolled the field off screen. fill() does not
+      // scroll, and CI's iPhone WebKit dropped text typed into the off-screen
+      // field (the create then failed validation): tap it first, as a user would.
+      const nameInput = page.getByTestId('league-name-input');
+      await nameInput.click();
+      await nameInput.fill('Thursday Night Draft');
+      await expect(nameInput).toHaveValue('Thursday Night Draft');
       await page.getByTestId('team-count-plus').click();
       await expect(page.getByTestId('team-count-value')).toHaveText('11 teams');
       await page.getByTestId('trade-review').getByRole('radio', { name: 'Vote' }).click();
