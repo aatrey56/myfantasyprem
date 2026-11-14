@@ -105,13 +105,6 @@ export function MatchupScreen({ leagueId, gameweek, matchupId, onChangeGameweek 
     for (const p of neighbourPages(order.length, page))
       void queryClient.prefetchQuery(matchupQuery(leagueId, settledGw, order[p].id));
   }, [queryClient, leagueId, settledGw, order, page]);
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollToTop = useScrollToTop(scrollRef, !otherMatchup, detail.data);
-  const select = (id: string, toTop = false) => {
-    if (gw === undefined) return;
-    setPicked({ gw, id });
-    if (toTop) scrollToTop(!otherMatchup && detail.data?.data.id === id);
-  };
   // A future gameweek: the schedule's pairings in the carousel, and the
   // open one's squads and fixtures (no scores).
   const week = upcoming ? schedule.data?.data.find((w) => w.gameweek === gw) : undefined;
@@ -137,6 +130,17 @@ export function MatchupScreen({ leagueId, gameweek, matchupId, onChangeGameweek 
     upChosen ?? '',
   );
   const otherPreview = preview.isPlaceholderData && preview.data?.data.id !== upChosen;
+  // The scroll follows what shows: a future gameweek's preview, else the
+  // scored matchup.
+  const active = upcoming ? preview : detail;
+  const activeReady = upcoming ? !otherPreview : !otherMatchup;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToTop = useScrollToTop(scrollRef, activeReady, active.data);
+  const select = (id: string, toTop = false) => {
+    if (gw === undefined) return;
+    setPicked({ gw, id });
+    if (toTop) scrollToTop(activeReady && active.data?.data.id === id);
+  };
   const startSit = useStartSit(leagueId, inSeason);
   const lines = useMemo(
     () => seasonLines(h?.standings, startSit.data?.data),
