@@ -75,51 +75,85 @@ func (t pgTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 
 // load reads one league; lock adds FOR UPDATE on the league row.
 func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League, error) {
+	ls, err := loadMany(ctx, db, []string{leagueID}, lock)
+	if err != nil || len(ls) == 0 {
+		return nil, err
+	}
+	return ls[0], nil
+}
+
+// loadMany reads leagues in the order of leagueIDs, skipping missing ones,
+// in four queries whatever their number.
+func loadMany(ctx context.Context, db store.DB, leagueIDs []string, lock bool) ([]*League, error) {
 	q := `SELECT id, name, season, status, coalesce(commissioner_id, ''), created_at, source, coalesce(fpl_league_id, 0)
-	      FROM leagues WHERE id = $1`
+	      FROM leagues WHERE id = ANY($1)`
 	if lock {
 		q += ` FOR UPDATE`
 	}
-	l := &League{}
-	err := db.QueryRow(ctx, q, leagueID).Scan(&l.ID, &l.Name, &l.Season, &l.Status, &l.CommissionerID, &l.CreatedAt,
-		&l.Source, &l.FPLLeagueID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	rows, err := db.Query(ctx, q, leagueIDs)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]*League{}
+	var l League
+	if _, err := pgx.ForEachRow(rows, []any{&l.ID, &l.Name, &l.Season, &l.Status, &l.CommissionerID, &l.CreatedAt,
+		&l.Source, &l.FPLLeagueID}, func() error {
+		c := l
+		c.CreatedAt = c.CreatedAt.UTC()
+		byID[c.ID] = &c
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if len(byID) == 0 {
 		return nil, nil
 	}
+	rows, err = db.Query(ctx,
+		`SELECT DISTINCT ON (league_id) league_id, settings FROM league_settings
+		 WHERE league_id = ANY($1) ORDER BY league_id, version DESC`, leagueIDs)
 	if err != nil {
 		return nil, err
 	}
-	l.CreatedAt = l.CreatedAt.UTC()
-	var raw []byte
-	if err := db.QueryRow(ctx,
-		`SELECT settings FROM league_settings WHERE league_id = $1 ORDER BY version DESC LIMIT 1`, leagueID).Scan(&raw); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(raw, &l.Settings); err != nil {
-		return nil, err
-	}
-	rows, err := db.Query(ctx,
-		`SELECT id, name, coalesce(owner_id, ''), joined_at, coalesce(fpl_entry_id, 0), coalesce(fpl_manager_name, '')
-		 FROM teams WHERE league_id = $1 ORDER BY joined_at, id`, leagueID)
-	if err != nil {
-		return nil, err
-	}
-	var t Team
-	if _, err := pgx.ForEachRow(rows, []any{&t.ID, &t.Name, &t.OwnerID, &t.JoinedAt, &t.FPLEntryID, &t.ManagerName}, func() error {
-		t.JoinedAt = t.JoinedAt.UTC()
-		l.Teams = append(l.Teams, t)
+	var (
+		leagueID string
+		raw      []byte
+	)
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &raw}, func() error {
+		if x := byID[leagueID]; x != nil {
+			return json.Unmarshal(raw, &x.Settings)
+		}
 		return nil
 	}); err != nil {
 		return nil, err
 	}
 	rows, err = db.Query(ctx,
-		`SELECT id, code, created_at, expires_at, max_uses, uses, revoked_at IS NOT NULL, coalesce(team_id, '')
-		 FROM invites WHERE league_id = $1 ORDER BY created_at, id`, leagueID)
+		`SELECT league_id, id, name, coalesce(owner_id, ''), joined_at, coalesce(fpl_entry_id, 0), coalesce(fpl_manager_name, '')
+		 FROM teams WHERE league_id = ANY($1) ORDER BY joined_at, id`, leagueIDs)
+	if err != nil {
+		return nil, err
+	}
+	var t Team
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &t.ID, &t.Name, &t.OwnerID, &t.JoinedAt, &t.FPLEntryID, &t.ManagerName}, func() error {
+		if x := byID[leagueID]; x != nil {
+			t.JoinedAt = t.JoinedAt.UTC()
+			x.Teams = append(x.Teams, t)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	rows, err = db.Query(ctx,
+		`SELECT league_id, id, code, created_at, expires_at, max_uses, uses, revoked_at IS NOT NULL, coalesce(team_id, '')
+		 FROM invites WHERE league_id = ANY($1) ORDER BY created_at, id`, leagueIDs)
 	if err != nil {
 		return nil, err
 	}
 	var inv Invite
-	if _, err := pgx.ForEachRow(rows, []any{&inv.ID, &inv.Code, &inv.CreatedAt, &inv.ExpiresAt, &inv.MaxUses, &inv.Uses, &inv.Revoked, &inv.TeamID}, func() error {
+	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &inv.ID, &inv.Code, &inv.CreatedAt, &inv.ExpiresAt, &inv.MaxUses, &inv.Uses, &inv.Revoked, &inv.TeamID}, func() error {
+		x := byID[leagueID]
+		if x == nil {
+			return nil
+		}
 		c := inv
 		c.CreatedAt = c.CreatedAt.UTC()
 		if c.ExpiresAt != nil {
@@ -130,12 +164,19 @@ func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League
 			n := *c.MaxUses
 			c.MaxUses = &n
 		}
-		l.Invites = append(l.Invites, c)
+		x.Invites = append(x.Invites, c)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return l, nil
+	out := make([]*League, 0, len(byID))
+	for _, id := range leagueIDs {
+		if x := byID[id]; x != nil {
+			out = append(out, x)
+			delete(byID, id) // a repeated id is returned once
+		}
+	}
+	return out, nil
 }
 
 func (p *Postgres) Get(ctx context.Context, leagueID string) (*League, error) {
@@ -156,17 +197,7 @@ func (p *Postgres) ForUser(ctx context.Context, userID string) ([]*League, error
 		if err != nil {
 			return nil, err
 		}
-		var out []*League
-		for _, id := range leagueIDs {
-			l, err := load(ctx, db, id, false)
-			if err != nil {
-				return nil, err
-			}
-			if l != nil {
-				out = append(out, l)
-			}
-		}
-		return out, nil
+		return loadMany(ctx, db, leagueIDs, false)
 	})
 }
 
