@@ -43,7 +43,7 @@ func run(ctx context.Context) error {
 	if err := store.Migrate(ctx, url); err != nil {
 		return err
 	}
-	pool, err := store.Open(ctx, url)
+	pool, err := store.Open(ctx, url, 0)
 	if err != nil {
 		return err
 	}

@@ -439,14 +439,13 @@ func (s *Scorer) RescoreLeague(ctx context.Context, leagueID string, gw int) (te
 // scores that changed. With Notify set it reports matchups.updated when
 // any score or state moved and score.corrected for each correction.
 func (s *Scorer) recomputeLeague(ctx context.Context, leagueID string, gw int, w *World, changed map[string]bool, all bool) ([]string, []Correction, error) {
-	l, err := s.Leagues.Get(ctx, leagueID)
-	if err != nil || l == nil {
+	// The league (its teams and settings) and its game from one snapshot:
+	// a roster read apart from its teams could score a team that left.
+	st, err := s.Leagues.State(ctx, leagueID)
+	if err != nil || st == nil {
 		return nil, nil, err
 	}
-	g, err := s.Leagues.Game(ctx, leagueID)
-	if err != nil {
-		return nil, nil, err
-	}
+	l, g := st.League, st.Game
 	if !all && !touched(g, w, gw, changed) {
 		return nil, nil, nil
 	}

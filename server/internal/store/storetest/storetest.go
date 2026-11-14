@@ -106,7 +106,7 @@ func NewWithURL(t testing.TB) (*pgxpool.Pool, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool, err := store.Open(ctx, u)
+	pool, err := store.Open(ctx, u, 0)
 	if err != nil {
 		t.Fatalf("storetest: %v", err)
 	}

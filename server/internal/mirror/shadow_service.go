@@ -49,29 +49,19 @@ func (s *Service) ShadowCheck(ctx context.Context, leagueID, reason string) (*Sh
 	if err != nil {
 		return nil, err
 	}
-	st, err := s.Leagues.State(ctx, leagueID)
+	// Decided claims and closed trades too: the outcomes are compared.
+	// One snapshot, so a waiver run committing meanwhile cannot show a
+	// claim won without its transaction (a false mismatch).
+	st, txns, err := s.Leagues.History(ctx, leagueID)
 	if err != nil {
 		return nil, err
 	}
-	// Decided claims and closed trades too: the outcomes are compared.
-	st.Claims = nil
-	for _, t := range st.League.Teams {
-		cs, err := s.Leagues.Claims(ctx, leagueID, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		st.Claims = append(st.Claims, cs...)
-	}
-	if st.Trades, err = s.Leagues.Trades(ctx, leagueID); err != nil {
-		return nil, err
+	if st == nil {
+		return nil, league.ErrLeagueNotFound
 	}
 	// Before the switch-over the league is played on FPL: claims are made
 	// there and only their outcomes reach us.
 	mirroring := s.ShadowUntil.IsZero() || now.Before(s.ShadowUntil)
-	txns, err := s.Leagues.Transactions(ctx, leagueID)
-	if err != nil {
-		return nil, err
-	}
 	in := ShadowInput{Snap: snap, Plan: plan, State: st, World: w, Txns: txns, Reason: reason, Now: now, Mirroring: mirroring}
 	if lv, ok := s.Source.(LiveSource); ok {
 		if cur := w.CurrentGW(now); cur > 0 && w.Started(cur) {

@@ -27,12 +27,22 @@ type DB interface {
 	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
-// Open connects a pool to url (a postgres:// URL) and pings it.
-func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
+// DefaultMaxConns is the pool size when Open is given none. pgxpool's
+// own default, max(4, NumCPU), is 4 on a 2-vCPU VM: too few for the API,
+// the jobs and the realtime listener sharing one pool.
+const DefaultMaxConns = 10
+
+// Open connects a pool of at most maxConns connections (DefaultMaxConns
+// when 0) to url (a postgres:// URL) and pings it.
+func Open(ctx context.Context, url string, maxConns int32) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, fmt.Errorf("store: parse DATABASE_URL: %w", err)
 	}
+	if maxConns <= 0 {
+		maxConns = DefaultMaxConns
+	}
+	cfg.MaxConns = maxConns
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 10 * time.Minute
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
@@ -60,6 +70,18 @@ func InTx(ctx context.Context, pool *pgxpool.Pool, iso pgx.TxIsoLevel, fn func(p
 		}
 	}
 	return err
+}
+
+// ReadSnapshot runs fn in a read-only REPEATABLE READ transaction, so all
+// of fn's queries see one snapshot: a commit landing between two of them
+// cannot show half-applied. The transaction is always rolled back.
+func ReadSnapshot(ctx context.Context, pool *pgxpool.Pool, fn func(DB) error) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	return fn(tx)
 }
 
 func retryable(err error) bool {
