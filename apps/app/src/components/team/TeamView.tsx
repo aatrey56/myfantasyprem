@@ -33,7 +33,7 @@ import { Skeleton } from '../Skeleton';
 import { StartSitCard } from '../projections/StartSit';
 import { TeamProjectionBar } from '../projections/TeamProjectionBar';
 import { useToast } from '../Toast';
-import { GameweekSwitcher } from './GameweekSwitcher';
+import { GameweekSwitcher, GameweekSwitcherSlot } from './GameweekSwitcher';
 import { ListView, PitchView, scoresOf } from './LineupViews';
 import { NewsSheet } from './NewsSheet';
 import { SwapSheet, swapCandidates } from './SwapSheet';
@@ -781,7 +781,9 @@ function Lineup({
     problemSlug(lineup.error) === 'lineup-private';
 
   // One row, as on Sleeper: "Starters ✎", the view toggle and the stepper;
-  // under it the hint and when the lineup locks.
+  // under it the hint and when the lineup locks. While the lineup first
+  // loads, the stepper's empty slot (the widest gameweek) holds its place, so
+  // the heading and toggle do not move when it mounts.
   const header = (
     <View style={{ gap: 2 }} testID="lineup-header">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
@@ -804,6 +806,8 @@ function Lineup({
             max={home.settings.endGameweek}
             onChange={changeGw}
           />
+        ) : lineup.isPending ? (
+          <GameweekSwitcherSlot gameweek={home.settings.endGameweek} />
         ) : null}
       </View>
       {lineup.data && locksAt !== null ? (
