@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -118,13 +119,22 @@ func loadMany(ctx context.Context, db store.DB, leagueIDs []string, lock bool) (
 		leagueID string
 		raw      []byte
 	)
+	settled := map[string]bool{}
 	if _, err := pgx.ForEachRow(rows, []any{&leagueID, &raw}, func() error {
 		if x := byID[leagueID]; x != nil {
+			settled[leagueID] = true
 			return json.Unmarshal(raw, &x.Settings)
 		}
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+	// Every league is created with settings; zero ones would be persisted
+	// by the next write, so a league without them is an error.
+	for id := range byID {
+		if !settled[id] {
+			return nil, fmt.Errorf("league %s has no settings: %w", id, pgx.ErrNoRows)
+		}
 	}
 	rows, err = db.Query(ctx,
 		`SELECT league_id, id, name, coalesce(owner_id, ''), joined_at, coalesce(fpl_entry_id, 0), coalesce(fpl_manager_name, '')
