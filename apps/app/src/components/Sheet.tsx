@@ -156,6 +156,19 @@ export const OFFSCREEN_MS = 300;
 /** The gap between a full-height sheet and the status bar. */
 const TOP_GAP = 8;
 
+/**
+ * Web: whether the panel is on the page with a height. react-native-web
+ * reports onLayout after a ResizeObserver pass and then a timer, so on a
+ * busy main thread (a slow phone, a list rendering) the report can land
+ * after the safety net's deadline for a panel that is already on screen.
+ * Native reports layout itself: it relies on onLayout alone.
+ */
+function panelHasHeight(panel: View | null): boolean {
+  if (Platform.OS !== 'web' || !panel) return false;
+  const el = panel as unknown as HTMLElement;
+  return el.isConnected && el.offsetHeight > 0;
+}
+
 /** The ✕ for a sheet that draws its own heading (`hideHeader`). */
 export function SheetCloseButton() {
   const close = useSheetClose();
@@ -605,6 +618,7 @@ function ModalSheet({
   // tall, or its layout lost) is an invisible layer that takes every touch.
   // Close it rather than leave the app looking frozen.
   const laidOut = useRef(false);
+  const panelRef = useRef<View>(null);
   const latestOnClose = useRef(onClose);
   useEffect(() => {
     latestOnClose.current = onClose;
@@ -616,7 +630,8 @@ function ModalSheet({
     const ms = PANEL_LAYOUT_TIMEOUT.ms;
     if (!visible || !Number.isFinite(ms)) return;
     const id = setTimeout(() => {
-      if (!laidOut.current) latestOnClose.current();
+      if (laidOut.current || panelHasHeight(panelRef.current)) return;
+      latestOnClose.current();
     }, ms);
     return () => clearTimeout(id);
   }, [visible]);
@@ -737,6 +752,7 @@ function ModalSheet({
               role="dialog"
               aria-modal
               aria-label={title}
+              ref={panelRef}
               onLayout={onPanelLayout}
               style={[
                 isWide
