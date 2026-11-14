@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { MatchupCarousel } from './MatchupCarousel';
 import { teamOf, teamRecords } from '@/lib/matchup';
@@ -82,5 +83,43 @@ describe('MatchupCarousel', () => {
     onPageChange.mockClear();
     await fireEvent.press(screen.getByTestId('carousel-dot-0'));
     expect(onPageChange).not.toHaveBeenCalled();
+  });
+
+  it('a page set from outside is not sent back by its own scroll animation (web)', async () => {
+    const os = Platform.OS;
+    Platform.OS = 'web' as typeof Platform.OS;
+    jest.useFakeTimers();
+    try {
+      const onPageChange = jest.fn();
+      const props = {
+        leagueId: data.LEAGUE_ID,
+        order,
+        onPageChange,
+        myTeamId,
+        seasonLines: new Map(),
+      };
+      const view = await render(<MatchupCarousel {...props} page={0} />);
+      await fireEvent(screen.getByLabelText(/^Matchups, /), 'layout', {
+        nativeEvent: { layout: { width: 400, height: 200, x: 0, y: 0 } },
+      });
+      const scroll = async (x: number) => {
+        await fireEvent.scroll(screen.getByTestId('matchup-carousel-scroller'), {
+          nativeEvent: { contentOffset: { x, y: 0 } },
+        });
+        await act(() => jest.advanceTimersByTime(200));
+      };
+      // A list card picks page 2: the scroller animates 0 -> 800 and the main
+      // thread stalls at 350, nearer page 1. That is not a swipe to page 1.
+      await view.rerender(<MatchupCarousel {...props} page={2} />);
+      await scroll(350);
+      await scroll(800);
+      expect(onPageChange).not.toHaveBeenCalled();
+      // Once there, a swipe lands as before.
+      await scroll(400);
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    } finally {
+      jest.useRealTimers();
+      Platform.OS = os;
+    }
   });
 });

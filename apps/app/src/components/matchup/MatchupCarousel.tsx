@@ -64,6 +64,11 @@ export function MatchupCarousel({
   // The page the scroll position shows; a page set from outside scrolls to it.
   const shown = useRef(page);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The page an animated scroll from outside is heading to. Until it gets
+  // there, scroll positions are that animation's, not a swipe: landing on
+  // one would send the page back (a busy main thread can leave a 120 ms gap
+  // between scroll events mid-animation). A touch or wheel hands control back.
+  const heading = useRef<number | null>(null);
   const count = order.length;
   const mineFirst =
     myTeamId !== undefined &&
@@ -78,12 +83,17 @@ export function MatchupCarousel({
       return;
     }
     shown.current = page;
+    heading.current = page;
     scroller.current?.scrollTo({ x: page * width, animated: true });
   }, [page, width]);
   useEffect(() => () => void (settle.current && clearTimeout(settle.current)), []);
 
   const land = (x: number) => {
     if (width === 0) return;
+    if (heading.current !== null) {
+      if (Math.abs(x - heading.current * width) < 1) heading.current = null;
+      return;
+    }
     const next = Math.min(Math.max(Math.round(x / width), 0), count - 1);
     if (next === shown.current) return;
     shown.current = next;
@@ -139,6 +149,9 @@ export function MatchupCarousel({
           scrollEventThrottle={32}
           onScroll={onScroll}
           onMomentumScrollEnd={(e) => land(e.nativeEvent.contentOffset.x)}
+          onTouchStart={() => void (heading.current = null)}
+          // react-native-web forwards onWheel; RN's ScrollView types lack it.
+          {...({ onWheel: () => void (heading.current = null) } as object)}
           contentOffset={{ x: page * width, y: 0 }}
         >
           {order.map((m, i) => {
