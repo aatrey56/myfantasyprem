@@ -22,9 +22,9 @@ for (const vp of [
       await page.getByTestId('create-league-submit').click();
       await expect(page.getByText('League name must be 3 to 40 characters.')).toBeVisible();
 
-      // The tap on submit scrolled the field off screen. fill() does not
-      // scroll, and CI's iPhone WebKit dropped text typed into the off-screen
-      // field (the create then failed validation): tap it first, as a user would.
+      // The error line shifts the page. The screen's scroll view used to blur
+      // the focused field on that scroll (react-native-web's on-drag dismiss),
+      // and iPhone WebKit then dropped the typing: tap, type, and check it held.
       const nameInput = page.getByTestId('league-name-input');
       await nameInput.click();
       await nameInput.fill('Thursday Night Draft');

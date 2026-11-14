@@ -22,6 +22,7 @@ import { pressFeedback, type PressState } from './pressable';
 import { PressableLink } from './PressableLink';
 import { StaleBanner } from './StaleBanner';
 import { ScreenScrollContext, type ScreenScroll } from './screen-scroll-context';
+import { scrollKeyboardProps } from './scroll-keyboard';
 import { useHasBottomTabBar, useHasTopBar } from './tab-bar-context';
 import type { Freshness } from '@/api/freshness';
 import { APP_NAME } from '@/constants/app';
@@ -278,12 +279,7 @@ export function Screen<T = never>({
       ) : null}
     </View>
   );
-  const keyboard = {
-    keyboardShouldPersistTaps: 'handled',
-    // iOS: the content inset follows the keyboard, and a drag dismisses it.
-    automaticallyAdjustKeyboardInsets: true,
-    keyboardDismissMode: Platform.OS === 'ios' ? 'interactive' : 'on-drag',
-  } as const;
+  const keyboard = scrollKeyboardProps(Platform.OS);
   return (
     <View
       testID="screen-frame"
