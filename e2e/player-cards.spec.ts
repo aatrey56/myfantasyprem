@@ -9,9 +9,10 @@ test.beforeEach(async ({ page }) => signIn(page));
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 /** The row's "Player card for X" button, and X. */
 async function cardButton(row: Locator) {

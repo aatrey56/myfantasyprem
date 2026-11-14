@@ -26,15 +26,20 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
   },
-  // Everything runs on chromium. Keyboard behaviour differs between engines, so
-  // the import shortcut and club menu specs also run on webkit (Safari); so do
-  // the branded images, which are native lazy <img> elements.
+  // Many users are on Safari (Mac) and Safari/WebKit (iPhone), so every spec
+  // runs on chromium and on webkit (Desktop Safari). `iphone` (WebKit with the
+  // iPhone 15 profile: touch, isMobile, 393x659) runs every spec too; a spec
+  // that sets its own viewport keeps it but still gets touch and isMobile.
+  // The one exception is import-shortcut: Tab-to-fill and autofocus are for a
+  // fine pointer and the app turns them off on touch screens on purpose
+  // (useFinePointer); import-touch covers the phone flow.
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
     {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-      testMatch: /(import-shortcut|club-menu|branded-assets)\.spec\.ts$/,
+      name: 'iphone',
+      use: { ...devices['iPhone 15'] },
+      testIgnore: /import-shortcut\.spec\.ts$/,
     },
   ],
   webServer: {

@@ -5,9 +5,10 @@ import { LEAGUE, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const boxes = (page: Page) =>
-  page.locator('[data-testid="player-list"]:visible [data-testid="player-points"]');
+  page.locator('[data-testid="player-list"]:visible:not([inert] *) [data-testid="player-points"]');
 
 /** The numbers in the rows' boxes, top to bottom (the first rows). */
 async function boxValues(page: Page, n = 12): Promise<number[]> {
@@ -55,7 +56,7 @@ for (const vp of [
     test('a player row lists more than three fixtures in one line', async ({ page }) => {
       await page.goto(`${LEAGUE}/players`);
       const row = page
-        .locator('[data-testid="player-list"]:visible [data-testid^="player-plr_"]')
+        .locator('[data-testid="player-list"]:visible:not([inert] *) [data-testid^="player-plr_"]')
         .first();
       const strip = row.getByTestId('next-fixtures');
       await expect(strip).toBeVisible();

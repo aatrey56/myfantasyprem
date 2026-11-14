@@ -9,7 +9,8 @@ import { LATE_LEAGUE, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 async function noEarlyGameweeks(page: Page) {
   await expect(page.locator('body')).not.toContainText(/\bGW ?0\b/);
@@ -23,7 +24,7 @@ test('the League tab starts its matchups at the first gameweek', async ({ page }
   const header = visible(page, 'league-matchups-header');
   await expect(header.getByTestId('gw-label')).toHaveText('GW 8');
   await expect(header.getByTestId('gw-prev')).toBeDisabled();
-  const cards = page.locator('[data-testid^="matchup-row-mu_"]:visible');
+  const cards = page.locator('[data-testid^="matchup-row-mu_"]:visible:not([inert] *)');
   await expect(cards.first()).toBeVisible();
   // A card's label is `Home 12 versus Away 9` once there are scores.
   for (const label of await cards.evaluateAll((els) =>

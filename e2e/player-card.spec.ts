@@ -5,15 +5,18 @@ import { LEAGUE, overflowingElements, signIn } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 /** Opens the card of the first free agent on the Players tab. */
 async function openFreeAgent(page: Page) {
   await page.goto(`${LEAGUE}/players`);
-  const add = page.locator('[data-testid^="move-"]:visible[aria-label^="Add "]').first();
+  const add = page
+    .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Add "]')
+    .first();
   await expect(add).toBeVisible();
   const faId = (await add.getAttribute('data-testid'))!.replace('move-', '');
-  await page.locator(`[data-testid="player-${faId}"]:visible`).click();
+  await page.locator(`[data-testid="player-${faId}"]:visible:not([inert] *)`).click();
   const card = visible(page, 'player-card');
   await expect(card).toBeVisible();
   await expect(card.getByTestId('card-name')).toBeVisible();
@@ -25,7 +28,9 @@ const settled = (card: Locator) =>
   expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(20);
 
 const headers = (page: Page) =>
-  page.locator('[data-testid="player-card"]:visible [data-testid^="log-head-"]').allTextContents();
+  page
+    .locator('[data-testid="player-card"]:visible:not([inert] *) [data-testid^="log-head-"]')
+    .allTextContents();
 
 test.describe('player card (desktop)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
@@ -164,19 +169,21 @@ test.describe('player card (phone 390)', () => {
     const grabber = card.getByTestId('sheet-grabber');
     await settled(card);
     const rest = (await card.boundingBox())!.y;
-    const drag = async (dy: number) => {
+    const drag = async (dy: number, steps = 8) => {
       const g = (await grabber.boundingBox())!;
       const x = g.x + g.width / 2;
       const y = g.y + g.height / 2;
       await page.mouse.move(x, y);
       await page.mouse.down();
-      await page.mouse.move(x, y + dy / 2, { steps: 8 });
-      await page.mouse.move(x, y + dy, { steps: 8 });
+      await page.mouse.move(x, y + dy / 2, { steps });
+      await page.mouse.move(x, y + dy, { steps });
       return async () => page.mouse.up();
     };
-    // The sheet follows the pointer, then springs back.
-    const release = await drag(60);
+    // The sheet follows the pointer, then springs back: a quick short pull,
+    // held still, is no fling (the release must not reuse the pull's speed).
+    const release = await drag(60, 4);
     await expect.poll(async () => (await card.boundingBox())!.y).toBeGreaterThan(rest + 40);
+    await page.waitForTimeout(200);
     await release();
     await expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(rest + 1);
     await expect(card).toBeVisible();

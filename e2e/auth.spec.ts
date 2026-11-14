@@ -128,8 +128,10 @@ test.describe('signing in from an invite link', () => {
     });
     await expect(page).toHaveURL(JOIN);
     await expect(page.getByTestId('invite-league-name')).toHaveText(PUB_LEAGUE_NAME);
-    await expect(page.locator('[data-testid="join-team-name"]:visible')).toHaveValue('Sam FC');
-    await page.locator('[data-testid="join-submit"]:visible').click();
+    await expect(page.locator('[data-testid="join-team-name"]:visible:not([inert] *)')).toHaveValue(
+      'Sam FC',
+    );
+    await page.locator('[data-testid="join-submit"]:visible:not([inert] *)').click();
     await expect(page.getByTestId('toast')).toContainText(`You joined ${PUB_LEAGUE_NAME}`);
   });
 
@@ -149,7 +151,9 @@ test.describe('signing in from an invite link', () => {
     await tab.goto(new URL(link, page.url()).toString());
     await tab.getByTestId('magic-link-continue').click();
     await expect(tab).toHaveURL(JOIN);
-    await expect(tab.locator('[data-testid="join-team-name"]:visible')).toHaveValue('Sam FC');
+    await expect(tab.locator('[data-testid="join-team-name"]:visible:not([inert] *)')).toHaveValue(
+      'Sam FC',
+    );
     await other.close();
   });
 
@@ -170,7 +174,9 @@ test.describe('signing in from an invite link', () => {
     await page.getByTestId('join-sign-in').click();
     await page.getByTestId('sign-in-google').click();
     await expect(page).toHaveURL(JOIN);
-    await expect(page.locator('[data-testid="join-team-name"]:visible')).toHaveValue('Sam FC');
+    await expect(page.locator('[data-testid="join-team-name"]:visible:not([inert] *)')).toHaveValue(
+      'Sam FC',
+    );
   });
 });
 

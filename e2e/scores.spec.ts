@@ -9,8 +9,9 @@ import { overflowingElements, signIn, startWithScenario } from './helpers';
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Sections keep earlier screens mounted but hidden: only match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
-const rows = (page: Page) => page.locator('[data-testid^="fixture-fx_"]:visible');
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
+const rows = (page: Page) => page.locator('[data-testid^="fixture-fx_"]:visible:not([inert] *)');
 const liveRows = (page: Page) => rows(page).filter({ has: page.getByTestId('fixture-live') });
 
 /**

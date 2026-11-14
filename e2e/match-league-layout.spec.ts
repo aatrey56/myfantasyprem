@@ -9,9 +9,10 @@ import { expectLeagueTab, LEAGUE, overflowingElements, signIn } from './helpers'
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 /** `Sam P. • 3-0-3 ▼2L (#6)` or mirrored `2-1-3 ▲1W (#7) • Tomasz K.` */
 const RECORD = /\d+-\d+-\d+ [▲▼=]\d[WDL] \(#\d+\)/;
@@ -142,7 +143,7 @@ for (const vp of [
       }
       // A medal on each of the top three's avatars.
       const medals = page.locator(
-        '[data-testid="avatar-left-medal"]:visible, [data-testid="avatar-right-medal"]:visible',
+        '[data-testid="avatar-left-medal"]:visible:not([inert] *), [data-testid="avatar-right-medal"]:visible:not([inert] *)',
       );
       await expect(medals).toHaveCount(3);
       expect((await medals.allTextContents()).sort()).toEqual(['1', '2', '3']);
@@ -158,7 +159,11 @@ for (const vp of [
       await expect(visible(page, 'gw-label')).toHaveText('GW 6');
       await expect(visibleStarting(page, 'matchup-row-mu_').first()).toBeVisible();
       await expect(
-        page.locator('[data-testid^="matchup-row-"][data-testid$="-left-result"]:visible').first(),
+        page
+          .locator(
+            '[data-testid^="matchup-row-"][data-testid$="-left-result"]:visible:not([inert] *)',
+          )
+          .first(),
       ).toBeVisible();
       expect(await overflowingElements(page)).toEqual([]);
     });

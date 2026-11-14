@@ -8,9 +8,10 @@ const FLAGGED_TEAM = `${LEAGUE}/team/tm_01k7m2xq800000000000000004`;
 test.beforeEach(async ({ page }) => signIn(page));
 
 /** Tabs keep earlier screens mounted but hidden: only match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 /** Opens the card of the first player in my lineup list and returns his id. */
 async function openMyFirstCard(page: Page): Promise<string> {
@@ -90,9 +91,9 @@ for (const vp of [
     test('news: a time on the card and on the Team tab, newest first', async ({ page }) => {
       await page.goto(FLAGGED_TEAM);
       await page.getByTestId('view-list').click();
-      const tag = page.locator('[data-testid="player-status"]:visible').first();
+      const tag = page.locator('[data-testid="player-status"]:visible:not([inert] *)').first();
       await expect(tag).toHaveText(/^(\d{1,3}%|OUT|SUSP|DOUBT)$/);
-      const row = page.locator('[data-testid^="lineup-row-"]:visible', { has: tag });
+      const row = page.locator('[data-testid^="lineup-row-"]:visible:not([inert] *)', { has: tag });
       await row.getByRole('button', { name: /^Player card for / }).click();
       const card = page.getByTestId('player-card');
       await expect(card.getByTestId('card-status')).toBeVisible();

@@ -106,6 +106,9 @@ Run the tests and linters with:
 npm run check
 ```
 
+End-to-end tests run every spec on Chromium, Desktop Safari and an iPhone 15
+profile ([docs/testing.md](docs/testing.md#browsers)).
+
 Self-hosting notes live in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## License

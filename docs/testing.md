@@ -32,6 +32,39 @@ no code with the package (see `scoring/property_test.go`).
 | Client helpers (Jest)  | `apps/app/src/lib/*.test.ts`                                                                                                                        | The UI's copies of the rules (trade shape, formation hints, snake board, standings sorts) and their edge cases.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Screens and e2e        | `apps/app/src/__tests__`, `e2e/`                                                                                                                    | Screens render on the mocks; the main flows work in a browser. Every spec imports `test` from `e2e/fixtures.ts`, which fails any request outside localhost.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
+## Browsers
+
+Many users are on Safari (Mac) and Safari/WebKit (iPhone), so the e2e
+suite runs on three Playwright projects (`playwright.config.ts`):
+
+| Project    | Engine and profile                                  | Runs                                                                                                                                            |
+| ---------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chromium` | Desktop Chrome                                      | Every spec.                                                                                                                                     |
+| `webkit`   | Desktop Safari                                      | Every spec.                                                                                                                                     |
+| `iphone`   | WebKit, iPhone 15 (touch, `isMobile`, 393x659 view) | Every spec except `import-shortcut` (Tab-to-fill and autofocus are fine-pointer features the app turns off on touch; `import-touch` covers it). |
+
+A spec that sets its own viewport keeps it on `iphone`, but still gets touch
+and `isMobile`. One project: `npx playwright test --project=webkit`.
+
+Engine differences the specs handle (use these, do not skip):
+
+- Mobile WebKit has no mouse wheel: scroll with `wheel()` from
+  `e2e/helpers.ts`.
+- Only Chromium grants `clipboard-read`; on WebKit read back what the app
+  passed to `navigator.clipboard.writeText` (see `fpl-import.spec.ts`).
+- Headless Chromium reports notifications as blocked, WebKit as not asked:
+  pin `Notification.permission` with an init script.
+- WebKit serialises a `CSSStyleDeclaration` from `evaluate` as `{}`: copy
+  the fields out.
+- On touch screens the league pager keeps the neighbouring tabs mounted and
+  laid out off-screen, so `:visible` can match several screens.
+- CDP (`newCDPSession`: touch drags, safe-area insets) is Chromium only;
+  those tests skip elsewhere with that reason.
+
+CI runs one job per browser group: `e2e (chromium)`, and the webkit and
+iphone projects together in two shards, `e2e (webkit 1/2)` and
+`e2e (webkit 2/2)`. Each installs only its browser.
+
 ## Mutation scores
 
 A mutation tool makes small changes to the code, such as `>=` → `>`,

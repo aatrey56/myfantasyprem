@@ -19,6 +19,9 @@ const imageMissing = () => problem(404, 'Not found', 'No such image.');
 /** How long a refused write takes, so a test sees the optimistic move before the rollback. */
 const REFUSAL_DELAY_MS = 1500;
 
+/** How long a slow list takes, so a test sees the last list kept while it loads. */
+const SLOW_LIST_MS = 1500;
+
 export const scenarios = {
   // The gameweek deadline passed and the gameweek is not finished: no
   // free-agent signings until the next waiver run. Every request marks the
@@ -69,6 +72,12 @@ export const scenarios = {
     }),
   ],
   // The server's branded-assets switch off: generic shirts, no image requests.
+  // The player list answers slowly: the last list stays on screen meanwhile.
+  'players-slow': [
+    http.get('*/v1/leagues/:leagueId/players', async () => {
+      await delay(SLOW_LIST_MS);
+    }),
+  ],
   'branded-off': [http.get('*/v1/config', () => ok({ brandedAssets: false }))],
   // Switched on, but every image is missing: the generic shirts as fallback.
   'assets-missing': [http.get(ASSETS, imageMissing)],

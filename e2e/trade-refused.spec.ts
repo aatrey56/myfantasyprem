@@ -9,9 +9,10 @@ import { LEAGUE, signIn, useScenario } from './helpers';
  */
 test.beforeEach(async ({ page }) => signIn(page));
 
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 /** The position (GK, DEF, MID, FWD) of each row matching `prefix`, from its label, by id. */
 const positions = (page: Page, prefix: string) =>

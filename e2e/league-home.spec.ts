@@ -1,6 +1,13 @@
 import { expect, test, type Page } from './fixtures';
 
-import { expectLeagueTab, LEAGUE, overflowingElements, signIn, startWithScenario } from './helpers';
+import {
+  expectLeagueTab,
+  LEAGUE,
+  overflowingElements,
+  signIn,
+  startWithScenario,
+  wheel,
+} from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -59,38 +66,53 @@ for (const vp of VIEWPORTS) {
       await page.getByTestId(vp.nav).getByText('Match', { exact: true }).click();
       await expect(page).toHaveURL(/\/matchup$/);
       // My matchup opens by default: two real teams head to head.
-      await expect(page.locator('[data-testid="score-header"]:visible')).toBeVisible();
-      await expect(page.locator('[data-testid="score-state"]:visible')).toHaveText('Live');
-      await expect(page.locator('[data-testid="h2h-starters"]:visible')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="score-header"]:visible:not([inert] *)'),
+      ).toBeVisible();
+      await expect(page.locator('[data-testid="score-state"]:visible:not([inert] *)')).toHaveText(
+        'Live',
+      );
+      await expect(
+        page.locator('[data-testid="h2h-starters"]:visible:not([inert] *)'),
+      ).toBeVisible();
       // Another matchup from the gameweek list, without the league average:
       // the header carousel moves to it in place.
       await page
-        .locator('[data-testid^="matchup-row-"]:visible')
+        .locator('[data-testid^="matchup-row-"]:visible:not([inert] *)')
         .filter({ hasNotText: 'League average' })
         .nth(1)
         .click();
       await expect(page).toHaveURL(/\/matchup$/);
-      await expect(page.locator('[data-testid="carousel-dot-0"]:visible')).not.toHaveAttribute(
-        'aria-current',
-        'true',
-      );
-      await expect(page.locator('[data-testid="score-left-points"]:visible')).toHaveText(/^\d+$/);
-      await expect(page.locator('[data-testid="h2h-lineups"]:visible')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="carousel-dot-0"]:visible:not([inert] *)'),
+      ).not.toHaveAttribute('aria-current', 'true');
+      await expect(
+        page.locator('[data-testid="score-left-points"]:visible:not([inert] *)'),
+      ).toHaveText(/^\d+$/);
+      await expect(
+        page.locator('[data-testid="h2h-lineups"]:visible:not([inert] *)'),
+      ).toBeVisible();
       expect(await overflowingElements(page)).toEqual([]);
     });
 
     test('the league-average matchup shows a score and no lineup', async ({ page }) => {
       await page.goto(`${LEAGUE}/matchup`);
       await page
-        .locator('[data-testid^="matchup-row-"]:visible')
+        .locator('[data-testid^="matchup-row-"]:visible:not([inert] *)')
         .filter({ hasText: 'League average' })
         .click();
-      const average = page.locator('[data-testid="average-opponent"]:visible');
+      const average = page.locator('[data-testid="average-opponent"]:visible:not([inert] *)');
       await expect(average).toBeVisible();
       await expect(average).toContainText('League average');
-      await expect(page.locator('[data-testid="average-points"]:visible')).toHaveText(/^\d+$/);
-      await expect(page.locator('[data-testid="team-lineup"]:visible')).toHaveCount(1);
-      await expect(page.locator('[data-testid="h2h-lineups"]:visible')).toHaveCount(0);
+      await expect(
+        page.locator('[data-testid="average-points"]:visible:not([inert] *)'),
+      ).toHaveText(/^\d+$/);
+      await expect(page.locator('[data-testid="team-lineup"]:visible:not([inert] *)')).toHaveCount(
+        1,
+      );
+      await expect(page.locator('[data-testid="h2h-lineups"]:visible:not([inert] *)')).toHaveCount(
+        0,
+      );
     });
   });
 }
@@ -99,9 +121,19 @@ test('my team lists next-gameweek fixtures for the whole squad', async ({ page }
   await page.goto(`${LEAGUE}/team`);
   await page.getByTestId('view-list').click();
   // Tabs keep earlier screens mounted (hidden), so only look at visible rows.
-  const chips = page.locator('[data-testid="next-fixtures"]:visible');
-  await expect(chips).toHaveCount(15);
-  for (const text of await chips.allTextContents()) {
+  // On a phone the league pager also lays the neighbouring tabs out beside
+  // this one, off-screen: only rows inside the viewport's width are Team's.
+  const chips = () =>
+    page.locator('[data-testid="next-fixtures"]:visible:not([inert] *)').evaluateAll((els) =>
+      els
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.left >= 0 && r.right <= window.innerWidth + 1;
+        })
+        .map((el) => el.textContent ?? ''),
+    );
+  await expect.poll(async () => (await chips()).length).toBe(15);
+  for (const text of await chips()) {
     // One fixture, two in a double gameweek ("v ABC Sat 15:00@ DEF Sun 14:00"), or a blank.
     // Kickoffs six days or more away add the date: "Tue 20 Oct, 16:30". A fixture
     // still to play ends with its difficulty rank: "(18th)" (ADR 0014).
@@ -168,8 +200,7 @@ for (const width of [768, 1280]) {
       await page.goto(`${LEAGUE}/league`);
       const top = page.getByTestId('league-matchups-header');
       await expect(top).toBeVisible();
-      await page.mouse.move(width / 2, 500);
-      await page.mouse.wheel(0, 2000);
+      await wheel(page, width / 2, 500, 0, 2000);
       await expect.poll(async () => (await top.boundingBox())?.y ?? 0).toBeLessThan(0);
       expect((await page.getByTestId('top-nav').boundingBox())!.y).toBe(0);
       await expect(nav(page).getByRole('tab', { name: 'Players' })).toBeInViewport();
