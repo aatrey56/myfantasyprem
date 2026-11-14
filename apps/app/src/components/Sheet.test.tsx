@@ -159,6 +159,19 @@ describe('Sheet open, drag and close (phone)', () => {
     expect(onFling).toHaveBeenCalledTimes(1);
   });
 
+  it('a fast flick closes on native even when a frame drops before release', async () => {
+    // Every gesture event lands 100 ms after the last: the last move comes
+    // well before the release, as when the UI thread drops a frame.
+    let now = 0;
+    jest.spyOn(Date, 'now').mockImplementation(() => (now += 100));
+    const onFling = jest.fn();
+    await phone(onFling);
+    await layout(400);
+    await drag(30, 2000);
+    await act(async () => undefined);
+    expect(onFling).toHaveBeenCalledTimes(1);
+  });
+
   it('closes by its ✕ and the backdrop, sliding down first', async () => {
     const onClose = jest.fn();
     await phone(onClose);

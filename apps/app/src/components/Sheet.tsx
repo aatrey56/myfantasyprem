@@ -390,6 +390,8 @@ function useSheetMotion({
       scheduleOnRN(setHidden, to);
       offset.set(reduced ? to : withTiming(to, { duration: SLIDE_MS / 1.5 }));
     };
+    // Only the web handler reports a stale speed after the pointer rests.
+    const web = Platform.OS === 'web';
     // The grabber and the header: any vertical drag moves the sheet.
     const handle = Gesture.Pan()
       .withTestId('sheet-drag')
@@ -409,7 +411,7 @@ function useSheetMotion({
         offset.set(dragOffset(start.get() + e.translationY, panel.get()));
       })
       .onEnd((e) => {
-        if (!closing.get()) end(releaseVelocity(e.velocityY, gestureClock() - lastMove.get()));
+        if (!closing.get()) end(releaseVelocity(e.velocityY, gestureClock() - lastMove.get(), web));
       });
     // The content's scroll view, natively: scrolling as usual, and a pull
     // down that starts at its top moves the sheet instead.

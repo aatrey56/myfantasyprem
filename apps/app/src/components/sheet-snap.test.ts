@@ -112,9 +112,13 @@ describe('backdropOpacity', () => {
 
 describe('releaseVelocity', () => {
   it('keeps the speed of a release mid-move', () => {
-    expect(releaseVelocity(2000, 10)).toBe(2000);
+    expect(releaseVelocity(2000, 10, true)).toBe(2000);
+    expect(releaseVelocity(2000, 10, false)).toBe(2000);
   });
-  it('is no fling after the pointer rested', () => {
-    expect(releaseVelocity(2000, 300)).toBe(0);
+  it('on the web, is no fling after the pointer rested', () => {
+    expect(releaseVelocity(2000, 300, true)).toBe(0);
+  });
+  it('on native, keeps the speed after a gap (a dropped frame, not a rest)', () => {
+    expect(releaseVelocity(2000, 300, false)).toBe(2000);
   });
 });

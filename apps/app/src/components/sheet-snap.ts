@@ -28,6 +28,8 @@ export const STILL_MS = 40;
  * it from the last pointer moves only, and a finger or mouse held still sends
  * none: a quick pull, a pause, then letting go would still read as a fling and
  * close the sheet. Resting longer than STILL_MS before release is no fling.
+ * Native handlers report a real release speed: there a gap is a dropped
+ * frame, not a rest, and the speed stands.
  */
 /** The gesture clock (ms), for releaseVelocity; a worklet like the gesture callbacks. */
 export function gestureClock(): number {
@@ -35,9 +37,9 @@ export function gestureClock(): number {
   return Date.now();
 }
 
-export function releaseVelocity(velocity: number, msSinceMove: number): number {
+export function releaseVelocity(velocity: number, msSinceMove: number, web: boolean): number {
   'worklet';
-  return msSinceMove > STILL_MS ? 0 : velocity;
+  return web && msSinceMove > STILL_MS ? 0 : velocity;
 }
 
 /** Resolves snap points to px heights within `room`, lowest first, without repeats. */
