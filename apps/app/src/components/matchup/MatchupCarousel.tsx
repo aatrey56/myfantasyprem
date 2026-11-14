@@ -185,8 +185,15 @@ export function MatchupCarousel({
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={32}
           onScroll={onScroll}
-          onMomentumScrollEnd={(e) => land(e.nativeEvent.contentOffset.x)}
+          // Native: the end of a fling or of the animation itself, snapped to the
+          // nearest page wherever it stopped.
+          onMomentumScrollEnd={(e) => {
+            at.current = e.nativeEvent.contentOffset.x;
+            release();
+            land(at.current);
+          }}
           onScrollBeginDrag={release}
+          onScrollEndDrag={release}
           onTouchStart={release}
           {...userInput}
           contentOffset={{ x: page * width, y: 0 }}

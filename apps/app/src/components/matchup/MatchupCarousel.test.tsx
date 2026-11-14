@@ -211,5 +211,22 @@ describe('MatchupCarousel', () => {
       await fireEvent(scroller(), 'momentumScrollEnd', offset(400));
       expect(onPageChange).toHaveBeenCalledWith(1);
     });
+
+    it('the animation’s momentum end releases it at an inexact offset (native)', async () => {
+      const { onPageChange, scroller, offset, goTo } = await setup('ios');
+      await goTo(2);
+      await fireEvent(scroller(), 'momentumScrollEnd', offset(780));
+      expect(onPageChange).not.toHaveBeenCalled();
+      await fireEvent(scroller(), 'momentumScrollEnd', offset(400));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('a drag end releases it (native)', async () => {
+      const { onPageChange, scroller, offset, goTo } = await setup('android');
+      await goTo(2);
+      await fireEvent(scroller(), 'scrollEndDrag', offset(400));
+      await fireEvent(scroller(), 'momentumScrollEnd', offset(400));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
   });
 });
