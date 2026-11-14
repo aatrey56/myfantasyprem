@@ -139,9 +139,7 @@ export function MatchupCarousel({
     if (settle.current) clearTimeout(settle.current);
     settle.current = setTimeout(() => land(x), 120);
   };
-  // react-native-web forwards these to the scroller's element; RN's
-  // ScrollView types lack them.
-  const userInput: Record<string, () => void> =
+  const userInput: WebScrollInput =
     Platform.OS === 'web' ? { onWheel: release, onMouseDown: release, onKeyDown: release } : {};
   const go = (next: number) => {
     if (next < 0 || next >= count || next === page) return;
@@ -267,6 +265,13 @@ export function MatchupCarousel({
       ) : null}
     </View>
   );
+}
+
+/** Input events react-native-web forwards to the scroller's element; RN's ScrollView types lack them. */
+interface WebScrollInput {
+  onWheel?: () => void;
+  onMouseDown?: () => void;
+  onKeyDown?: () => void;
 }
 
 function Dot({
