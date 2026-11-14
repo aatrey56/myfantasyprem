@@ -27,12 +27,14 @@ for (const vp of [
 
     test('Account opens the settings; a switch, All off and All on flip the switches', async ({
       page,
+      browserName,
     }) => {
       // Browser push, blocked for this site: headless Chromium reports that by
-      // default, WebKit reports "default" (not asked yet), so pin it.
-      await page.addInitScript(() =>
-        Object.defineProperty(Notification, 'permission', { get: () => 'denied' }),
-      );
+      // default; WebKit reports "default" (not asked yet), so pin it there.
+      if (browserName === 'webkit')
+        await page.addInitScript(() =>
+          Object.defineProperty(Notification, 'permission', { get: () => 'denied' }),
+        );
       await page.goto('/account');
       await visible(page, 'account-notifications').click();
       await expect(page).toHaveURL(/\/account\/notifications$/);
