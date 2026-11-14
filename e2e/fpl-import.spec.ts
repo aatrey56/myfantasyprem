@@ -245,6 +245,9 @@ test.describe('signed in', () => {
 
   test('lineups and league settings are open to edit', async ({ page }) => {
     await page.goto(`${IMPORTED}/team`);
+    // The lineup is in (and open) before checking what is absent: a blank page
+    // has no notice either, and leaving mid-load can stall the next mock start.
+    await expect(visible(page, 'lineup-open')).toBeVisible();
     await expect(page.getByText(/Synced from FPL|Make this change in FPL/)).toHaveCount(0);
     await expect(visible(page, 'lineup-synced')).toHaveCount(0);
     await page.goto(`${IMPORTED}/settings`);
