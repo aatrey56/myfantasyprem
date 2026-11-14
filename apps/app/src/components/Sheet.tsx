@@ -399,6 +399,8 @@ function useSheetMotion({
       .activeOffsetY([-6, 6])
       .failOffsetX([-24, 24])
       .onStart(() => {
+        // A fresh gesture: no rest carried over from the last one.
+        lastMove.set(gestureClock());
         // A touch during the slide down must not cancel it: the close
         // would never land and the sheet would stay up with a dead ✕.
         if (closing.get()) return;

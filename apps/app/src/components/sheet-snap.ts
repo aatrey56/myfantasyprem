@@ -31,15 +31,15 @@ export const STILL_MS = 40;
  * Native handlers report a real release speed: there a gap is a dropped
  * frame, not a rest, and the speed stands.
  */
+export function releaseVelocity(velocity: number, msSinceMove: number, web: boolean): number {
+  'worklet';
+  return web && msSinceMove > STILL_MS ? 0 : velocity;
+}
+
 /** The gesture clock (ms), for releaseVelocity; a worklet like the gesture callbacks. */
 export function gestureClock(): number {
   'worklet';
   return Date.now();
-}
-
-export function releaseVelocity(velocity: number, msSinceMove: number, web: boolean): number {
-  'worklet';
-  return web && msSinceMove > STILL_MS ? 0 : velocity;
 }
 
 /** Resolves snap points to px heights within `room`, lowest first, without repeats. */
