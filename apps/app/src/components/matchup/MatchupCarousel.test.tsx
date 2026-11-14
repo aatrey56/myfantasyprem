@@ -170,6 +170,40 @@ describe('MatchupCarousel', () => {
       expect(onPageChange).toHaveBeenCalledWith(1);
     });
 
+    it('an unreachable target (clamped short) still settles', async () => {
+      const { onPageChange, scroll, goTo } = await setup();
+      await goTo(2);
+      await scroll(798.5);
+      await scroll(400);
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('a resize mid-animation does not latch', async () => {
+      const { onPageChange, layout, scroll, goTo } = await setup();
+      await goTo(2);
+      await scroll(350);
+      await layout(500);
+      await scroll(500);
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('a target the scroller already shows does not latch', async () => {
+      const { onPageChange, scroll, goTo } = await setup();
+      await goTo(2);
+      await goTo(0);
+      await scroll(400);
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('lets go a second after the animation starts, landing where it stopped', async () => {
+      const { onPageChange, scroll, goTo } = await setup();
+      await goTo(2);
+      await scroll(350);
+      expect(onPageChange).not.toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(1000));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
     it('a drag mid-animation hands the scroll back to the user (native)', async () => {
       const { onPageChange, scroller, offset, goTo } = await setup('ios');
       await goTo(2);
