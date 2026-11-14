@@ -221,6 +221,28 @@ describe('MatchupCarousel', () => {
       expect(onPageChange).toHaveBeenCalledWith(1);
     });
 
+    it('a drag that ends without a fling lands where it stopped (native)', async () => {
+      const { onPageChange, scroller, offset, goTo } = await setup('ios');
+      await goTo(2);
+      await fireEvent(scroller(), 'scrollBeginDrag', offset(350));
+      await fireEvent(scroller(), 'scrollEndDrag', offset(400));
+      expect(onPageChange).not.toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(120));
+      expect(onPageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('a drag that ends in a fling lands once, where the fling stops (native)', async () => {
+      const { onPageChange, scroller, offset, goTo } = await setup('ios');
+      await goTo(2);
+      await fireEvent(scroller(), 'scrollEndDrag', offset(500));
+      await fireEvent(scroller(), 'momentumScrollBegin', offset(500));
+      await act(() => jest.advanceTimersByTime(120));
+      expect(onPageChange).not.toHaveBeenCalled();
+      await fireEvent(scroller(), 'momentumScrollEnd', offset(0));
+      expect(onPageChange).toHaveBeenCalledTimes(1);
+      expect(onPageChange).toHaveBeenCalledWith(0);
+    });
+
     it('a drag end releases it (native)', async () => {
       const { onPageChange, scroller, offset, goTo } = await setup('android');
       await goTo(2);

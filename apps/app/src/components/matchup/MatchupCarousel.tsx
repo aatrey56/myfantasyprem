@@ -190,8 +190,19 @@ export function MatchupCarousel({
             release();
             land(at.current);
           }}
+          // A native drag that stops without a fling sends no momentum end:
+          // land where it stopped unless a fling starts right after.
+          onMomentumScrollBegin={() => {
+            if (settle.current) clearTimeout(settle.current);
+          }}
           onScrollBeginDrag={release}
-          onScrollEndDrag={release}
+          onScrollEndDrag={(e) => {
+            release();
+            if (Platform.OS === 'web') return;
+            at.current = e.nativeEvent.contentOffset.x;
+            if (settle.current) clearTimeout(settle.current);
+            settle.current = setTimeout(() => land(at.current), 120);
+          }}
           onTouchStart={release}
           {...userInput}
           contentOffset={{ x: page * width, y: 0 }}
