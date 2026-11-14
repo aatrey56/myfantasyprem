@@ -49,6 +49,10 @@ type Repo interface {
 	Trades(ctx context.Context, leagueID string) ([]Trade, error)
 	// Transactions returns the league's activity feed, newest first.
 	Transactions(ctx context.Context, leagueID string) ([]Txn, error)
+	// History is State with every claim and trade, decided and closed
+	// ones too (Claims by team, Trades), and Transactions, all from one
+	// snapshot. A nil State means the league does not exist.
+	History(ctx context.Context, leagueID string) (*State, []Txn, error)
 }
 
 // Tx is a Repo transaction.

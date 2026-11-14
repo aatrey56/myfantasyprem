@@ -93,7 +93,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 		return err
 	}
 
-	pool, err := store.Open(ctx, url)
+	pool, err := store.Open(ctx, url, 0)
 	if err != nil {
 		return err
 	}

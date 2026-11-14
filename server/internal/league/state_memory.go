@@ -90,20 +90,30 @@ func (m *Memory) LeaguesWithStatus(_ context.Context, status string) ([]string, 
 func (m *Memory) Claims(_ context.Context, leagueID, teamID string) ([]Claim, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.claimsLocked(leagueID, teamID), nil
+}
+
+// claimsLocked returns a team's claims, or the league's when teamID is
+// empty, by team and preference.
+func (m *Memory) claimsLocked(leagueID, teamID string) []Claim {
 	var out []Claim
 	for _, c := range m.extra(leagueID).claims {
-		if c.TeamID == teamID {
+		if teamID == "" || c.TeamID == teamID {
 			c.ProcessedAt = clonePtr(c.ProcessedAt)
 			out = append(out, c)
 		}
 	}
-	slices.SortStableFunc(out, func(a, b Claim) int { return cmp.Compare(a.Order, b.Order) })
-	return out, nil
+	slices.SortStableFunc(out, func(a, b Claim) int { return cmp.Or(cmp.Compare(a.TeamID, b.TeamID), cmp.Compare(a.Order, b.Order)) })
+	return out
 }
 
 func (m *Memory) Trades(_ context.Context, leagueID string) ([]Trade, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.tradesLocked(leagueID), nil
+}
+
+func (m *Memory) tradesLocked(leagueID string) []Trade {
 	var out []Trade
 	for _, t := range m.extra(leagueID).trades {
 		out = append(out, t.clone())
@@ -111,17 +121,33 @@ func (m *Memory) Trades(_ context.Context, leagueID string) ([]Trade, error) {
 	slices.SortStableFunc(out, func(a, b Trade) int {
 		return cmp.Or(b.CreatedAt.Compare(a.CreatedAt), cmp.Compare(b.ID, a.ID))
 	})
-	return out, nil
+	return out
 }
 
 func (m *Memory) Transactions(_ context.Context, leagueID string) ([]Txn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.txnsLocked(leagueID), nil
+}
+
+func (m *Memory) txnsLocked(leagueID string) []Txn {
 	out := slices.Clone(m.extra(leagueID).txns)
 	slices.SortStableFunc(out, func(a, b Txn) int {
 		return cmp.Or(b.OccurredAt.Compare(a.OccurredAt), cmp.Compare(b.ID, a.ID))
 	})
-	return out, nil
+	return out
+}
+
+// History reads under one lock, as the Postgres one reads one snapshot.
+func (m *Memory) History(_ context.Context, leagueID string) (*State, []Txn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.stateLocked(leagueID)
+	if st == nil {
+		return nil, nil, nil
+	}
+	st.Claims, st.Trades = m.claimsLocked(leagueID, ""), m.tradesLocked(leagueID)
+	return st, m.txnsLocked(leagueID), nil
 }
 
 func (t memTx) LoadState(_ context.Context, leagueID string) (*State, error) {
