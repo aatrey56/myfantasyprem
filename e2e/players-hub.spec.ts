@@ -203,7 +203,7 @@ for (const vp of [
       await expect
         .poll(async () => {
           const gw = await boxValues(page);
-          return gw.length > 0 && gw.every((v, i) => i === 0 || gw[i - 1]! >= v);
+          return gw.length > 1 && gw.every((v, i) => i === 0 || gw[i - 1]! >= v);
         })
         .toBe(true);
     });
