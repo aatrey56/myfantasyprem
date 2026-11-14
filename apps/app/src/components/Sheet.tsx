@@ -38,8 +38,10 @@ import { X } from './icons';
 import {
   backdropOpacity,
   dragOffset,
+  gestureClock,
   NATIVE_SHEET,
   PANEL_LAYOUT_TIMEOUT,
+  releaseVelocity,
   settle,
   snapHeights,
   snapOffset,
@@ -212,6 +214,8 @@ function useSheetMotion({
   const closingJs = useRef(false);
   // Where a drag started, and whether a content drag pulls the sheet.
   const start = useSharedValue(0);
+  // When the grabber last moved (ms): a release after a rest is no fling.
+  const lastMove = useSharedValue(0);
   const pulling = useSharedValue(false);
   const latestClose = useRef(onClose);
   useEffect(() => {
@@ -386,6 +390,8 @@ function useSheetMotion({
       scheduleOnRN(setHidden, to);
       offset.set(reduced ? to : withTiming(to, { duration: SLIDE_MS / 1.5 }));
     };
+    // Only the web handler reports a stale speed after the pointer rests.
+    const web = Platform.OS === 'web';
     // The grabber and the header: any vertical drag moves the sheet.
     const handle = Gesture.Pan()
       .withTestId('sheet-drag')
@@ -393,6 +399,8 @@ function useSheetMotion({
       .activeOffsetY([-6, 6])
       .failOffsetX([-24, 24])
       .onStart(() => {
+        // A fresh gesture: no rest carried over from the last one.
+        lastMove.set(gestureClock());
         // A touch during the slide down must not cancel it: the close
         // would never land and the sheet would stay up with a dead ✕.
         if (closing.get()) return;
@@ -401,10 +409,11 @@ function useSheetMotion({
       })
       .onUpdate((e) => {
         if (closing.get()) return;
+        lastMove.set(gestureClock());
         offset.set(dragOffset(start.get() + e.translationY, panel.get()));
       })
       .onEnd((e) => {
-        if (!closing.get()) end(e.velocityY);
+        if (!closing.get()) end(releaseVelocity(e.velocityY, gestureClock() - lastMove.get(), web));
       });
     // The content's scroll view, natively: scrolling as usual, and a pull
     // down that starts at its top moves the sheet instead.
@@ -441,6 +450,7 @@ function useSheetMotion({
     scrollY,
     closing,
     start,
+    lastMove,
     pulling,
     beginClose,
     finishClose,

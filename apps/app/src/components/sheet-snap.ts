@@ -17,6 +17,31 @@ export const DISMISS_VELOCITY = 1200;
 /** How far ahead a fling's speed carries the sheet when picking a snap (s). */
 const PROJECTION = 0.15;
 
+/**
+ * How long the pointer may rest before its speed counts as zero (ms): the
+ * web gesture handler's own "pointer stopped" gap.
+ */
+export const STILL_MS = 40;
+
+/**
+ * The speed a release flings with. On the web the gesture handler measures
+ * it from the last pointer moves only, and a finger or mouse held still sends
+ * none: a quick pull, a pause, then letting go would still read as a fling and
+ * close the sheet. Resting longer than STILL_MS before release is no fling.
+ * Native handlers report a real release speed: there a gap is a dropped
+ * frame, not a rest, and the speed stands.
+ */
+export function releaseVelocity(velocity: number, msSinceMove: number, web: boolean): number {
+  'worklet';
+  return web && msSinceMove > STILL_MS ? 0 : velocity;
+}
+
+/** The gesture clock (ms), for releaseVelocity; a worklet like the gesture callbacks. */
+export function gestureClock(): number {
+  'worklet';
+  return Date.now();
+}
+
 /** Resolves snap points to px heights within `room`, lowest first, without repeats. */
 export function snapHeights(points: readonly SnapPoint[], room: number): number[] {
   const px = points.map((p) => {

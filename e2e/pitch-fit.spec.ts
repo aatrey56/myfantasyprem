@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from './fixtures';
 
-import { LEAGUE, pageOverflow, signIn } from './helpers';
+import { LEAGUE, onScreen, pageOverflow, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -23,13 +23,13 @@ const inside = (a: Box, o: Box) =>
 
 /** The bottom of the usable screen: the app bar's top, else the viewport's bottom. */
 async function screenBottom(page: Page, vpHeight: number) {
-  const bar = page.locator('[data-testid="app-tabs"]:visible');
+  const bar = page.locator('[data-testid="app-tabs"]:visible:not([inert] *)');
   return (await bar.count()) ? (await box(bar)).y : vpHeight;
 }
 
 /** Scrolled to the top, the pitch and the bench sit above the app bar. */
 async function expectPitchAndBenchFit(page: Page, vpHeight: number) {
-  const scroller = page.locator('[data-testid="screen-scroll"]:visible');
+  const scroller = page.locator('[data-testid="screen-scroll"]:visible:not([inert] *)');
   await scroller.evaluate((el) => {
     el.scrollTop = 0;
   });
@@ -37,12 +37,12 @@ async function expectPitchAndBenchFit(page: Page, vpHeight: number) {
   const bottom = await screenBottom(page, vpHeight);
   await expect
     .poll(async () => {
-      const bench = await box(page.locator('[data-testid="bench"]:visible'));
+      const bench = await box(page.locator('[data-testid="bench"]:visible:not([inert] *)'));
       return bench.y + bench.height;
     })
     .toBeLessThanOrEqual(bottom);
-  const pitch = await box(page.locator('[data-testid="pitch-xi"]:visible'));
-  const bench = await box(page.locator('[data-testid="bench"]:visible'));
+  const pitch = await box(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)'));
+  const bench = await box(page.locator('[data-testid="bench"]:visible:not([inert] *)'));
   expect(pitch.y + pitch.height).toBeLessThanOrEqual(bench.y);
   return pitch;
 }
@@ -52,7 +52,7 @@ async function formationOf(page: Page) {
   const n = (k: string) =>
     page
       .locator(
-        `[data-testid="pitch-xi"]:visible [data-testid="pitch-line-${k}"] [data-testid^="lineup-player-"]`,
+        `[data-testid="pitch-xi"]:visible:not([inert] *) [data-testid="pitch-line-${k}"] [data-testid^="lineup-player-"]`,
       )
       .count();
   return `${await n('DEF')}-${await n('MID')}-${await n('FWD')}`;
@@ -60,8 +60,10 @@ async function formationOf(page: Page) {
 
 /** Every visible name chip on the pitch: inside it, apart from each other, not truncated. */
 async function expectNamesClear(page: Page) {
-  const pitch = await box(page.locator('[data-testid="pitch-xi"]:visible'));
-  const names = page.locator('[data-testid="pitch-xi"]:visible [data-testid="pitch-name"]');
+  const pitch = await box(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)'));
+  const names = page.locator(
+    '[data-testid="pitch-xi"]:visible:not([inert] *) [data-testid="pitch-name"]',
+  );
   await expect(names).toHaveCount(11);
   const boxes: Box[] = [];
   for (const name of await names.all()) {
@@ -74,7 +76,7 @@ async function expectNamesClear(page: Page) {
   // Each line's players sit at equal steps across the pitch.
   for (const k of ['GKP', 'DEF', 'MID', 'FWD']) {
     const players = page.locator(
-      `[data-testid="pitch-xi"]:visible [data-testid="pitch-line-${k}"] [data-testid^="lineup-player-"]`,
+      `[data-testid="pitch-xi"]:visible:not([inert] *) [data-testid="pitch-line-${k}"] [data-testid^="lineup-player-"]`,
     );
     const xs = await Promise.all(
       (await players.all()).map(async (p) => {
@@ -100,11 +102,11 @@ for (const vp of [
       await page.goto(`${LEAGUE}/team`);
       await expect(page.getByTestId('lineup-open')).toBeVisible();
       await expect(page.getByTestId('view-pitch')).toHaveAttribute('aria-checked', 'true');
-      const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible');
+      const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)');
       await expect(pitchLoc).toBeVisible();
       const bottom = await screenBottom(page, vp.height);
       const pitch = await box(pitchLoc);
-      const bench = await box(page.locator('[data-testid="bench"]:visible'));
+      const bench = await box(page.locator('[data-testid="bench"]:visible:not([inert] *)'));
       expect(pitch.y).toBeGreaterThanOrEqual(0);
       expect(pitch.y + pitch.height).toBeLessThanOrEqual(bench.y);
       expect(bench.y + bench.height).toBeLessThanOrEqual(bottom);
@@ -112,7 +114,7 @@ for (const vp of [
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
       // Four bench players in one row; every player a 44px tap target.
       const benchPlayers = page.locator(
-        '[data-testid="bench-row"] [data-testid^="lineup-player-"]:visible',
+        '[data-testid="bench-row"] [data-testid^="lineup-player-"]:visible:not([inert] *)',
       );
       await expect(benchPlayers).toHaveCount(4);
       const benchYs = new Set<number>();
@@ -166,7 +168,7 @@ for (const vp of [
       page,
     }) => {
       await page.goto(`${LEAGUE}/team`);
-      const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible');
+      const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)');
       await expect(pitchLoc).toBeVisible();
       const before = await expectPitchAndBenchFit(page, vp.height);
       // Keeper for an outfield bench player: refused, the banner shows above the pitch.
@@ -175,18 +177,21 @@ for (const vp of [
         .first()
         .click();
       await page
-        .locator('[data-testid="bench-row"] [data-testid^="lineup-player-"]:visible')
+        .locator('[data-testid="bench-row"] [data-testid^="lineup-player-"]:visible:not([inert] *)')
         .nth(1)
         .click();
       await expect(page.getByTestId('lineup-errors')).toBeVisible();
       // The pitch gives up what the banner pushed it down, down to its minimum
       // (a short phone); above the minimum the bench stays on screen.
       const shift = async () =>
-        (await box(page.locator('[data-testid="pitch-xi"]:visible'))).y - before.y;
+        (await box(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)'))).y - before.y;
       await expect.poll(shift).toBeGreaterThan(40);
       const wanted = Math.max(196, before.height - (await shift()));
       await expect
-        .poll(async () => (await box(page.locator('[data-testid="pitch-xi"]:visible'))).height)
+        .poll(
+          async () =>
+            (await box(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)'))).height,
+        )
         .toBeCloseTo(wanted, 0);
       if (wanted > 196) await expectPitchAndBenchFit(page, vp.height);
     });
@@ -196,8 +201,10 @@ for (const vp of [
     }) => {
       await page.goto(`${LEAGUE}/team`);
       await page.getByTestId('view-list').click();
-      await expect(page.locator('[data-testid^="lineup-row-"]:visible').first()).toBeVisible();
-      const scroller = page.locator('[data-testid="screen-scroll"]:visible');
+      await expect(
+        page.locator('[data-testid^="lineup-row-"]:visible:not([inert] *)').first(),
+      ).toBeVisible();
+      const scroller = page.locator('[data-testid="screen-scroll"]:visible:not([inert] *)');
       await expect
         .poll(() =>
           scroller.evaluate((el) => {
@@ -208,7 +215,7 @@ for (const vp of [
         .toBeGreaterThan(100);
       // A plain click, so Playwright doesn't scroll the toggle back into view first.
       await page.getByTestId('view-pitch').evaluate((el) => (el as HTMLElement).click());
-      await expect(page.locator('[data-testid="pitch-xi"]:visible')).toBeVisible();
+      await expect(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)')).toBeVisible();
       const pitch = await expectPitchAndBenchFit(page, vp.height);
       expect(pitch.y).toBeGreaterThanOrEqual(0);
     });
@@ -218,9 +225,11 @@ for (const vp of [
       const seen = new Set<string>();
       for (const url of TEAMS) {
         await page.goto(url);
-        await expect(page.locator('[data-testid="pitch-xi"]:visible')).toBeVisible();
+        await expect(page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)')).toBeVisible();
         await expect(
-          page.locator('[data-testid="pitch-xi"]:visible [data-testid^="lineup-player-"]'),
+          page.locator(
+            '[data-testid="pitch-xi"]:visible:not([inert] *) [data-testid^="lineup-player-"]',
+          ),
         ).toHaveCount(11);
         seen.add(await formationOf(page));
         await expectNamesClear(page);
@@ -235,14 +244,14 @@ test.describe('desktop', () => {
 
   test('the half pitch and bench sit together, full size where there is room', async ({ page }) => {
     await page.goto(`${LEAGUE}/team`);
-    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible');
+    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)');
     await expect(pitchLoc).toBeVisible();
     await expectNamesClear(page);
     const pitch = await box(pitchLoc);
     expect(pitch.width).toBeLessThanOrEqual(520);
     expect(pitch.height).toBeGreaterThanOrEqual(196);
     expect(pitch.height).toBeLessThanOrEqual(420);
-    const bench = await box(page.locator('[data-testid="bench"]:visible'));
+    const bench = await box(page.locator('[data-testid="bench"]:visible:not([inert] *)'));
     expect(bench.y).toBeGreaterThan(pitch.y + pitch.height);
     expect(await pageOverflow(page)).toBeLessThanOrEqual(0);
   });
@@ -255,10 +264,10 @@ test.describe('a 320x568 phone', () => {
     page,
   }) => {
     await page.goto(`${LEAGUE}/team`);
-    await expect(page.getByTestId('gw-label')).toHaveText('GW 8');
-    await page.getByTestId('gw-prev').click();
-    await expect(page.getByTestId('gw-label')).toHaveText('GW 7');
-    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible');
+    await expect(onScreen(page, 'gw-label')).toHaveText('GW 8');
+    await onScreen(page, 'gw-prev').click();
+    await expect(onScreen(page, 'gw-label')).toHaveText('GW 7');
+    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)');
     await expect(pitchLoc.locator('[data-testid="pitch-points"]')).toHaveCount(11);
     const pitch = await box(pitchLoc);
     // Compact: the points sit on the shirt, beside the name chip's top.
@@ -283,7 +292,7 @@ test.describe('a phone too short for the fitted pitch', () => {
 
   test('the pitch stops at its minimum height, compact names still clear', async ({ page }) => {
     await page.goto(`${LEAGUE}/team`);
-    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible');
+    const pitchLoc = page.locator('[data-testid="pitch-xi"]:visible:not([inert] *)');
     await expect(pitchLoc.locator('[data-testid^="lineup-player-"]')).toHaveCount(11);
     await expect.poll(async () => (await box(pitchLoc)).height).toBeCloseTo(196, 0);
     // Compact boxes: no fixture line, names inside the pitch and apart.

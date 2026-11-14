@@ -11,7 +11,8 @@ import { LEAGUE, signIn } from './helpers';
 const NOW = new Date('2026-10-13T08:00:00Z');
 
 /** Tabs keep earlier screens mounted but hidden: only ever match what is on screen. */
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 /** "in 4d 0h" a moment before the clock moves on, "in 3d 23h" after. */
 const inDays = (d: number) => new RegExp(`in (${d}d 0h|${d - 1}d 23h)`);
@@ -71,7 +72,7 @@ test.describe('in London', () => {
 
   test('trade offers say how long ago they were made', async ({ page }) => {
     await page.goto(`${LEAGUE}/players/trades`);
-    const offered = page.locator('[data-testid="trade-offered-at"]:visible');
+    const offered = page.locator('[data-testid="trade-offered-at"]:visible:not([inert] *)');
     await expect(offered.first()).toBeVisible();
     for (const text of await offered.allTextContents()) {
       expect(text).toMatch(/^(just now|\d+m ago|\d+h ago|(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d+ Oct)$/);

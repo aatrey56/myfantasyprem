@@ -1,6 +1,6 @@
 import { expect, test, type Locator } from './fixtures';
 
-import { LEAGUE, overflowingElements, pageOverflow, signIn } from './helpers';
+import { LEAGUE, onScreen, overflowingElements, pageOverflow, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -21,7 +21,7 @@ for (const vp of [
       page,
     }) => {
       await page.goto(`${LEAGUE}/team`);
-      const card = page.locator('[data-testid="team-card"]:visible');
+      const card = page.locator('[data-testid="team-card"]:visible:not([inert] *)');
       await expect(card).toBeVisible();
       // Directly under the league tabs (the screen padding only): no title, eyebrow or back link.
       const tabs = await box(page.getByRole('tablist').first());
@@ -61,7 +61,7 @@ for (const vp of [
         await box(heading),
         await box(page.getByTestId('view-list')),
         await box(page.getByTestId('view-pitch')),
-        await box(page.getByTestId('gw-switcher')),
+        await box(onScreen(page, 'gw-switcher')),
       ];
       const centres = row.map(centreY);
       expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(4);
@@ -94,7 +94,11 @@ for (const vp of [
       await page.getByTestId('view-list').click();
       const starters = page.getByTestId('list-starters');
       await expect(starters.locator('[data-testid^="lineup-row-"]')).toHaveCount(11);
-      const style = await starters.evaluate((el) => getComputedStyle(el));
+      // Copy the fields out: WebKit returns a CSSStyleDeclaration as {}.
+      const style = await starters.evaluate((el) => {
+        const { borderTopWidth, backgroundColor } = getComputedStyle(el);
+        return { borderTopWidth, backgroundColor };
+      });
       expect(style.borderTopWidth).toBe('0px');
       expect(style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
       const rows = page.locator('[data-testid^="lineup-row-"]');

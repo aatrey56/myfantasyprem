@@ -21,6 +21,7 @@ import { IconButton } from './Button';
 import { Pill } from './Chip';
 import { ChevronDown, ChevronLeft, LayoutGrid, Settings, type LucideIcon } from './icons';
 import { LeagueSwitcherSheet } from './LeagueSwitcherSheet';
+import { PagerScene } from './PagerScene';
 import { pressFeedback, type PressState } from './pressable';
 import { useReducedMotion } from './Skeleton';
 import { PressableLink } from './PressableLink';
@@ -111,7 +112,11 @@ export function LeagueTabs({ leagueId }: { leagueId: string }) {
           const active = state.routes[state.index]?.name ?? 'index';
           return (
             <PagerSceneContext.Provider value={{ scene: route.name, active }}>
-              {swipe || route.name === active ? children : null}
+              {swipe ? (
+                <PagerScene shown={route.name === active}>{children}</PagerScene>
+              ) : route.name === active ? (
+                children
+              ) : null}
             </PagerSceneContext.Provider>
           );
         }}

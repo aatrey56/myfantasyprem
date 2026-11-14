@@ -6,7 +6,8 @@ import { LEAGUE, signIn } from './helpers';
 // phones. Runs on chromium and webkit (see playwright.config.ts).
 test.beforeEach(async ({ page }) => signIn(page));
 
-const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
+const visible = (page: Page, id: string) =>
+  page.locator(`[data-testid="${id}"]:visible:not([inert] *)`);
 
 async function expectCentred(menu: Locator, width: number, height: number, vertical: boolean) {
   const box = (await menu.boundingBox())!;
@@ -47,7 +48,7 @@ for (const [width, height] of [
 test('the player card opens centred at 1280px and closes on the backdrop', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${LEAGUE}/players`);
-  await page.locator('[data-testid^="player-plr_"]:visible').first().click();
+  await page.locator('[data-testid^="player-plr_"]:visible:not([inert] *)').first().click();
   const card = visible(page, 'player-card');
   await expect(card).toBeVisible();
   await expectCentred(card, 1280, 800, true);
@@ -60,7 +61,7 @@ test('the points breakdown opens centred at 1280px', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${LEAGUE}/matchup`);
   await expect(visible(page, 'h2h-starters')).toBeVisible();
-  await page.locator('[data-testid^="h2h-breakdown-"]:visible').first().click();
+  await page.locator('[data-testid^="h2h-breakdown-"]:visible:not([inert] *)').first().click();
   const sheet = visible(page, 'points-breakdown');
   await expect(sheet).toBeVisible();
   await expectCentred(sheet, 1280, 800, true);

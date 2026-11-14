@@ -8,6 +8,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 import { router } from 'expo-router';
 import { renderRouter, waitFor } from 'expo-router/testing-library';
 import { getResponse } from 'msw';
+import { ScrollView } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { persistOptions } from '@/api/persist';
@@ -323,6 +324,63 @@ describe('upcoming matchups', () => {
     const after = await screen.findByTestId('matchup-preview', {}, { timeout: 5000 });
     expect(after).toHaveTextContent(name(second.home), { exact: false });
     expect(after).toHaveTextContent(name(second.away), { exact: false });
+  });
+
+  describe('scrolling back from a preview to scored gameweeks', () => {
+    // Opens my pairing's preview on the gameweek after the current one,
+    // optionally presses its own card in the list, then steps back two
+    // gameweeks (the second lands on a scored matchup whose data is new).
+    // Returns the scroll-to-top calls the steps caused.
+    async function scrollsOnStepBack(reselect: boolean) {
+      mockStore = memorySessionStore(SESSION);
+      const league = data.leagues.get(data.LEAGUE_ID) as Extract<
+        data.MockLeague,
+        { schedule: unknown }
+      >;
+      const gw = data.CURRENT_GW + 1;
+      const mine = league
+        .schedule()
+        .find((w) => w.gameweek === gw)!
+        .matchups.find(
+          (m) =>
+            (m.home.kind === 'team' && m.home.team.id === league.myTeam.id) ||
+            (m.away.kind === 'team' && m.away.team.id === league.myTeam.id),
+        )!;
+      const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo');
+      const toTopCalls = () =>
+        scrollTo.mock.calls.filter((c) => (c[0] as { y?: number } | undefined)?.y === 0).length;
+      try {
+        await renderRouter('./src/app', { initialUrl: `/leagues/${data.LEAGUE_ID}/matchup` });
+        await screen.findByTestId('matchup-detail', {}, { timeout: 5000 });
+        await fireEvent.press(screen.getByTestId('gw-next'));
+        await screen.findByTestId('matchup-preview', {}, { timeout: 5000 });
+        if (reselect) {
+          await fireEvent.press(screen.getByTestId(`matchup-row-${mine.id}`));
+          // The reselect scrolls once, at the press.
+          await waitFor(() => expect(toTopCalls()).toBe(1));
+        }
+        const before = toTopCalls();
+        for (const label of [`GW ${gw - 1}`, `GW ${gw - 2}`]) {
+          await fireEvent.press(screen.getByTestId('gw-prev'));
+          await waitFor(() => expect(screen.getByTestId('gw-label')).toHaveTextContent(label));
+          expect(
+            await screen.findByTestId('matchup-detail', {}, { timeout: 5000 }),
+          ).toBeOnTheScreen();
+          await act(async () => {});
+        }
+        return toTopCalls() - before;
+      } finally {
+        scrollTo.mockRestore();
+      }
+    }
+
+    it('stepping back without a reselect scrolls nothing (control)', async () => {
+      expect(await scrollsOnStepBack(false)).toBe(0);
+    });
+
+    it("reselecting the open preview leaves no scroll pending for a scored gameweek's data", async () => {
+      expect(await scrollsOnStepBack(true)).toBe(0);
+    });
   });
 });
 

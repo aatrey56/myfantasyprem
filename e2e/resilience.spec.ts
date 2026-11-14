@@ -1,6 +1,13 @@
 import { expect, test } from './fixtures';
 
-import { expectLeagueTab, LEAGUE, signIn, startWithScenario, useScenario } from './helpers';
+import {
+  expectLeagueTab,
+  LEAGUE,
+  onScreen,
+  signIn,
+  startWithScenario,
+  useScenario,
+} from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -77,7 +84,7 @@ test.describe('league home failures (MSW overrides)', () => {
     await page.addInitScript(() => localStorage.setItem('mfp.mockStale', '1'));
     await page.goto(`${LEAGUE}/league`);
     await expectLeagueTab(page);
-    const banner = page.getByTestId('stale-banner');
+    const banner = onScreen(page, 'stale-banner');
     await expect(banner).toHaveText(/^Player data delayed since \d\d:\d\d$/);
     await expect(banner).toHaveAttribute('aria-live', 'polite');
     await expect(banner).not.toHaveAttribute('role', 'alert');
@@ -87,7 +94,7 @@ test.describe('league home failures (MSW overrides)', () => {
     await page.goto(`${LEAGUE}/league`);
     await expectLeagueTab(page);
     await context.setOffline(true);
-    await expect(page.getByTestId('offline-banner')).toHaveText("You're offline");
+    await expect(onScreen(page, 'offline-banner')).toHaveText("You're offline");
     await context.setOffline(false);
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
@@ -96,7 +103,10 @@ test.describe('league home failures (MSW overrides)', () => {
 test.describe('phone 375px', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test('the bottom bar pads for the bottom safe-area inset', async ({ page }) => {
+  test('the bottom bar pads for the bottom safe-area inset', async ({ page, browserName }) => {
+    // Playwright can only fake safe-area insets through Chromium's CDP
+    // (Emulation.setSafeAreaInsetsOverride); WebKit has no way to set them.
+    test.skip(browserName !== 'chromium', 'safe-area inset emulation is CDP only');
     // Emulate a notched phone. env(safe-area-inset-*) is only non-zero with
     // viewport-fit=cover, so this also checks public/index.html.
     const cdp = await page.context().newCDPSession(page);

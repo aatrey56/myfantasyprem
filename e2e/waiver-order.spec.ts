@@ -7,7 +7,8 @@ test.beforeEach(async ({ page }) => signIn(page));
 /** The mock league the demo user runs as commissioner, in season. */
 const OFFICE = '/leagues/lg_01k7m2xq8rfv3c9a4t6wbn5hd0';
 
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 test.use({ viewport: { width: 375, height: 812 } });
 

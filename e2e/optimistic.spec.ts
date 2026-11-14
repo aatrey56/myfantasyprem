@@ -9,9 +9,10 @@ import { LEAGUE, signIn, useScenario } from './helpers';
  */
 test.beforeEach(async ({ page }) => signIn(page));
 
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 const visibleStarting = (page: Page, prefix: string) =>
-  page.locator(`[data-testid^="${prefix}"]:visible`);
+  page.locator(`[data-testid^="${prefix}"]:visible:not([inert] *)`);
 
 const PILL = '[data-testid^="lineup-swap-"]';
 const pillId = async (page: Page, section: string, index: number) =>
@@ -55,7 +56,9 @@ for (const vp of [
       page,
     }) => {
       await page.goto(`${LEAGUE}/players`);
-      const add = page.locator('[data-testid^="move-"]:visible[aria-label^="Add "]').first();
+      const add = page
+        .locator('[data-testid^="move-"]:visible:not([inert] *)[aria-label^="Add "]')
+        .first();
       await expect(add).toHaveAccessibleName(/^Add /);
       const id = (await add.getAttribute('data-testid'))!.replace('move-', '');
       const row = visible(page, `player-${id}`);

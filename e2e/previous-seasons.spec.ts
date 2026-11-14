@@ -4,7 +4,8 @@ import { LEAGUE, overflowingElements, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
-const visible = (page: Page, testId: string) => page.locator(`[data-testid="${testId}"]:visible`);
+const visible = (page: Page, testId: string) =>
+  page.locator(`[data-testid="${testId}"]:visible:not([inert] *)`);
 
 /**
  * Opens the first free agent's card whose mock history has seasons from
@@ -13,7 +14,7 @@ const visible = (page: Page, testId: string) => page.locator(`[data-testid="${te
 async function openVeteran(page: Page) {
   await page.goto(`${LEAGUE}/players`);
   // Available is on by default: only unowned players.
-  const rows = page.locator('[data-testid^="player-plr_"]:visible');
+  const rows = page.locator('[data-testid^="player-plr_"]:visible:not([inert] *)');
   await expect(rows.first()).toBeVisible();
   for (let i = 0; i < 12; i++) {
     await rows.nth(i).click();
