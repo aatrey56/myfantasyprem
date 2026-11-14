@@ -47,7 +47,7 @@
     "updates:publish": "node scripts/updates-publish.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "eslint": "9.39.5",
     "eslint-config-expo": "57.0.2",
     "eslint-config-prettier": "10.1.8",
