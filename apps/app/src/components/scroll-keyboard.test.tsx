@@ -65,7 +65,8 @@ function focusThenScroll(dismiss: Dismiss) {
 describe('scroll view keyboard props on the web', () => {
   it('react-native-web blurs the focused input on any scroll with on-drag', () => {
     // The behaviour the web must not opt into: this is what dropped the typing.
-    expect(document.activeElement).not.toBe(focusThenScroll('on-drag'));
+    const input = focusThenScroll('on-drag');
+    expect(document.activeElement).not.toBe(input);
   });
 
   it('keeps the field focused when the page scrolls, so typing lands in it', () => {
