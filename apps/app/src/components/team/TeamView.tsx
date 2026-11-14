@@ -623,7 +623,7 @@ function Lineup({
   isMine: boolean;
   home: Schemas['LeagueHome'];
 }) {
-  const { colors, spacing, fontFamilies } = useTheme();
+  const { colors, spacing, fontFamilies, layout } = useTheme();
   const toast = useToast();
   const myTags = useTagByPlayer(leagueId);
   const blocked = useBlockByPlayer(leagueId);
@@ -781,7 +781,9 @@ function Lineup({
     problemSlug(lineup.error) === 'lineup-private';
 
   // One row, as on Sleeper: "Starters ✎", the view toggle and the stepper;
-  // under it the hint and when the lineup locks.
+  // under it the hint and when the lineup locks. Until the lineup says which
+  // gameweek it is, an empty slot the stepper's size holds its place, so the
+  // heading and toggle do not move when it mounts.
   const header = (
     <View style={{ gap: 2 }} testID="lineup-header">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
@@ -804,7 +806,9 @@ function Lineup({
             max={home.settings.endGameweek}
             onChange={changeGw}
           />
-        ) : null}
+        ) : (
+          <View style={{ width: 2 * layout.touch + 52, height: layout.touch }} />
+        )}
       </View>
       {lineup.data && locksAt !== null ? (
         // Sibling texts, not nested: each keeps its own test id on iOS (Maestro).
