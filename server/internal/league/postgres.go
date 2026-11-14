@@ -314,6 +314,14 @@ func (p *Postgres) SaveScores(ctx context.Context, leagueID string, gw int, scor
 		// matchups and scores in separate statements, and a rescore
 		// committing between them would show it half-applied. A deleted
 		// league has nothing to save.
+		//
+		// The caller holds the gameweek's scoring lock (LockScores), so a
+		// long league transaction stalls the gameweek's scoring while this
+		// waits. That wait is bounded: league transactions do only database
+		// work, none takes the scoring lock (the order is always scoring
+		// lock, then league row, so no cycle), and production ends a stuck
+		// one after idle_in_transaction_session_timeout (5min,
+		// deploy/postgres/postgresql.conf).
 		var one int
 		err := tx.QueryRow(ctx, `SELECT 1 FROM leagues WHERE id = $1 FOR UPDATE`, leagueID).Scan(&one)
 		if errors.Is(err, pgx.ErrNoRows) {
