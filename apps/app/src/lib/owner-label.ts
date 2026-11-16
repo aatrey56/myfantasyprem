@@ -76,6 +76,14 @@ export interface OwnerChipLabel {
 }
 
 /**
+ * The person behind a team, short: the manager's first name, else the team
+ * name (an open seat, an emoji-only or initials-only manager name).
+ */
+export function ownerNameOf(team: { name: string; managerName: string }): string {
+  return firstNameOf(team.managerName) ?? teamLabelOf(team.name);
+}
+
+/**
  * What a player's owner chip says: `You` on my own team; otherwise the
  * manager's first name (the team name when there is no person) or, in
  * team-name mode, the team name.
@@ -87,10 +95,7 @@ export function ownerChipLabel(
 ): OwnerChipLabel {
   const color = userColor(team.name, team.avatarColor).bg;
   if (mine) return { text: 'You', color };
-  const text =
-    mode === 'team_name'
-      ? teamLabelOf(team.name)
-      : (firstNameOf(team.managerName) ?? teamLabelOf(team.name));
+  const text = mode === 'team_name' ? teamLabelOf(team.name) : ownerNameOf(team);
   return { text, color };
 }
 
