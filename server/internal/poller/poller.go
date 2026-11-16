@@ -500,12 +500,17 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		}
 	}
 	// Earlier gameweeks still marked (their rescore failed, perhaps before
-	// a restart): their rows are stored, so rescore them in full.
+	// a restart): their rows are stored, so rescore them in full, quietly
+	// like the catch-up whose rescore it repeats.
 	for _, g := range slices.Sorted(maps.Keys(p.rescore)) {
 		if g == gw {
 			continue
 		}
-		if err := p.rescoreGW(ctx, g, nil, true); err != nil {
+		sc := p.Scorer
+		if g < gw {
+			sc = p.quiet()
+		}
+		if _, err := p.rescoreWith(ctx, sc, g, nil, true); err != nil {
 			return "", 0, 0, err
 		}
 	}

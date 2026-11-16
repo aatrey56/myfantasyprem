@@ -28,6 +28,22 @@ type outageCase struct {
 	seed    int
 	// notified, if set, hears the scorer's changes after the restart.
 	notified *notes
+	// quietFails makes the restarted poller's first quiet rescore fail.
+	quietFails bool
+}
+
+// failOnce fails its first Recompute, then delegates.
+type failOnce struct {
+	poller.Recomputer
+	failed bool
+}
+
+func (f *failOnce) Recompute(ctx context.Context, gw int, changed []string, all bool) (league.RecomputeResult, error) {
+	if !f.failed {
+		f.failed = true
+		return league.RecomputeResult{}, errors.New("rescore failed")
+	}
+	return f.Recomputer.Recompute(ctx, gw, changed, all)
 }
 
 // notes is a league.Notifier that records changes.
@@ -74,6 +90,11 @@ func (c outageCase) run(t *testing.T) (leagueID, userID string) {
 		sc.Notify = c.notified
 	}
 	p := newPoller()
+	if c.quietFails {
+		q := *sc
+		q.Notify = nil
+		p.Quiet = &failOnce{Recomputer: &q}
+	}
 	for range 6 {
 		clock = clock.Add(7 * time.Hour) // past BootstrapInterval: every poll refreshes the season
 		p.Tick(ctx)
@@ -171,4 +192,20 @@ func TestBackfillRefusesUnfinishedGameweekUnlessForced(t *testing.T) {
 	if _, _, err := p.Backfill(ctx, 4, false); err != nil {
 		t.Fatalf("backfill of finished gameweek 4: %v", err)
 	}
+}
+
+// A quiet catch-up rescore that fails is repeated on the next poll, still
+// quietly: the retry does not notify either.
+func TestFailedQuietRescoreIsRetriedQuietly(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 5, notified: &notes{}, quietFails: true,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 5, partial: true, live: map[int]int{}}}
+		leagueID, userID := c.run(t)
+		for _, ch := range c.notified.changes {
+			if ch.Gameweek < 7 {
+				t.Errorf("catch-up retry notified %s for gameweek %d", ch.Kind, ch.Gameweek)
+			}
+		}
+		checkCounted(t, c, leagueID, userID)
+	})
 }
