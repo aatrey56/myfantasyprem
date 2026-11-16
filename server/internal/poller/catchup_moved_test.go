@@ -48,3 +48,20 @@ func TestFinishedGameweekPostponesFixtureMovedOut(t *testing.T) {
 		checkCounted(t, c, leagueID, userID)
 	})
 }
+
+// Gameweek 6 was voided: every player has 0 minutes, so the ingest
+// stores lines but no rows. It is fetched once, not on every refresh
+// (each with a full rescore of every league).
+func TestVoidedFinishedGameweekIsFetchedOnce(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 4,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 4, voided: true, live: map[int]int{}}}
+		c.run(t)
+		if rows, _ := repo.PlayerFixtures(context.Background(), 6); len(rows) != 0 {
+			t.Fatalf("setup: voided gameweek 6 has %d rows", len(rows))
+		}
+		if c.src.live[6] != 1 || c.src.live[5] != 1 {
+			t.Errorf("over six season refreshes: live calls %v, want gameweeks 5 and 6 once each", c.src.live)
+		}
+	})
+}

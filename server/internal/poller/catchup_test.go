@@ -31,8 +31,11 @@ type outage struct {
 	// upstream then moves out of the gameweek: no later fixture list or
 	// live payload has it.
 	moved bool
-	mu    sync.Mutex
-	live  map[int]int
+	// voided makes gameweek 6's live data list every player with 0
+	// minutes (a gameweek whose matches were all voided).
+	voided bool
+	mu     sync.Mutex
+	live   map[int]int
 }
 
 func (o *outage) GameweekStatus(ctx context.Context) (*provider.GameweekStatus, error) {
@@ -97,6 +100,14 @@ func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, er
 	o.live[gw]++
 	o.mu.Unlock()
 	l, err := o.StatsSource.EventLive(ctx, gw)
+	if err == nil && o.voided && gw == 6 {
+		cp := *l
+		cp.Players = nil
+		for _, pl := range l.Players {
+			cp.Players = append(cp.Players, provider.PlayerLive{PlayerExternalID: pl.PlayerExternalID})
+		}
+		return &cp, nil
+	}
 	if err != nil || !o.partial || gw != o.current {
 		return l, err
 	}

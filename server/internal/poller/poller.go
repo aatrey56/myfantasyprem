@@ -739,18 +739,22 @@ func (p *Poller) drop(g int) {
 	delete(p.failed, g)
 }
 
-// loaded reports whether a gameweek has stored rows and complete
-// gameweek lines and, once upstream marks it finished, is settled: every
+// loaded reports whether a gameweek has complete gameweek lines, stored
+// rows once anyone played, and, once upstream marks it finished, is settled: every
 // stored fixture over and no bonus provisional. A gameweek ingested while
 // it was under way (the server went down mid-gameweek) is not, so it is
 // fetched again rather than left live, out of the table, for good.
+//
+// A gameweek nobody played in (voided) has lines, all at 0 minutes, but
+// no rows: the lines are the ingest's record that it was read, so it is
+// not fetched and rescored again on every refresh.
 func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
-	rows, err := p.Stats.PlayerFixtures(ctx, g)
-	if err != nil || len(rows) == 0 {
-		return false
-	}
 	lines, err := p.Stats.PlayerGameweeks(ctx, g)
 	if err != nil || !p.linesComplete(g, lines) {
+		return false
+	}
+	rows, err := p.Stats.PlayerFixtures(ctx, g)
+	if err != nil || (len(rows) == 0 && slices.ContainsFunc(lines, func(l stats.PlayerGameweek) bool { return l.Minutes > 0 })) {
 		return false
 	}
 	if !w.Gameweeks[g].Finished {
