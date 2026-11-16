@@ -783,6 +783,35 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 	return nil
 }
 
+// Backfill fetches gameweek g's live data now, after a bootstrap refresh
+// (for its finished and checked flags), ingests it as a poll would and
+// rescores it in full: the admin backfill command, for a gameweek the
+// poller missed. It returns the players whose stats changed.
+func (p *Poller) Backfill(ctx context.Context, g int) (changed int, err error) {
+	st, err := p.Source.GameweekStatus(ctx)
+	if err != nil {
+		return 0, err
+	}
+	p.status = st
+	if err := p.refreshSeason(ctx, st); err != nil {
+		return 0, err
+	}
+	w, err := league.LoadWorld(ctx, p.Stats, -1)
+	if err != nil {
+		return 0, err
+	}
+	info := w.Gameweeks[g]
+	if g == st.Current {
+		info.BonusAdded, info.DataChecked = info.BonusAdded || st.BonusAdded, info.DataChecked || st.DataChecked
+	}
+	before := p.Metrics.RowsChanged.Value()
+	if err := p.settle(ctx, g, info); err != nil {
+		return 0, err
+	}
+	p.Log.InfoContext(ctx, "poller: gameweek backfilled", "gameweek", g, "current", st.Current)
+	return int(p.Metrics.RowsChanged.Value() - before), nil
+}
+
 // settle fetches a closed gameweek's live data, ingests it and rescores
 // every league for it.
 func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek) error {

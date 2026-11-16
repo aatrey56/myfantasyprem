@@ -2,6 +2,7 @@
 // (docs/RUNBOOK.md):
 //
 //	go run ./cmd/admin rescore -gw 7 [-league lg_...]   rescore a gameweek from the stored stats
+//	go run ./cmd/admin backfill -gw 9                   fetch a gameweek's live stats again, ingest and rescore it
 //	go run ./cmd/admin prune-snapshots [-keep 50]       drop old raw stat snapshots (final ones stay)
 //	go run ./cmd/admin tick                             do every due job once (draft clocks, waivers, trades)
 //	go run ./cmd/admin run-waivers -league lg_... -gw 9 process a gameweek's waiver claims now
@@ -37,6 +38,8 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/mirror"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications/webpush"
+	"github.com/aatrey56/myfantasyprem/server/internal/poller"
+	"github.com/aatrey56/myfantasyprem/server/internal/provider"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/realtime"
 	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
@@ -55,6 +58,7 @@ func main() {
 
 const usage = `usage: admin <command> [flags]
   rescore -gw N [-league ID]   rescore gameweek N (all in-season leagues, or one)
+  backfill -gw N [-league ID]  fetch gameweek N's live stats (POLLER_SOURCE: fpl or demo), ingest and rescore it
   prune-snapshots [-keep N]    keep the newest N raw snapshots per kind and gameweek (default 50)
   tick                         do every due job once
   run-waivers -league ID -gw N process gameweek N's waiver claims now
@@ -130,6 +134,32 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 			*gw, res.Leagues, len(res.ChangedTeams), len(res.Corrections))
 		for _, c := range res.Corrections {
 			fmt.Fprintf(out, "  %s %s: %d -> %d\n", c.LeagueID, c.TeamID, c.Previous, c.Points)
+		}
+	case "backfill":
+		// The poller's own catch-up path, once, for a gameweek it missed
+		// (the server was down for all of it): POLLER_SOURCE=demo reads
+		// the embedded demo world, otherwise FPL at the client's pace.
+		if *gw < 1 || *gw > 38 {
+			return errors.New("backfill needs -gw between 1 and 38")
+		}
+		var src provider.StatsSource = fpl.New(fpl.Options{BaseURL: getenv("FPL_BASE_URL"), UserAgent: getenv("FPL_USER_AGENT"), Logger: log})
+		providerName := "fpl"
+		if getenv("POLLER_SOURCE") == "demo" {
+			src, providerName = demo.Source(log), demo.ProviderName
+		}
+		sc := &league.Scorer{Leagues: leagues, Stats: st, Rules: scoring.StandardLineup(), Log: log, Notify: api.Notifier}
+		p := poller.New(src, stats.NewIngester(st, providerName, time.Now), st, sc, poller.Config{}, log)
+		changed, err := p.Backfill(ctx, *gw)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Backfilled gameweek %d: %d players' stats changed; rescored.\n", *gw, changed)
+		if *leagueID != "" {
+			teams, fixes, err := sc.RescoreLeague(ctx, *leagueID, *gw)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Rescored gameweek %d of %s: %d team scores changed, %d corrections.\n", *gw, *leagueID, len(teams), len(fixes))
 		}
 	case "prune-snapshots":
 		n, err := st.PruneSnapshots(ctx, *keep)

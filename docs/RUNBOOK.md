@@ -249,6 +249,27 @@ leagues`, and `poll failed; keeping the last good snapshot` (err,
   the gameweek's data was checked); by hand: `npm run admin --
 prune-snapshots -keep 50`.
 
+## Server was offline for a gameweek
+
+Symptom: a whole past gameweek shows 0 points, its matchups are still
+upcoming at 0-0, and `SELECT gameweek, count(*) FROM player_gameweek_stats
+GROUP BY 1` has no row for it.
+
+- The poller catches up by itself: on start and after every bootstrap
+  refresh (6-hourly, or when the current gameweek changes) it queues each
+  earlier gameweek FPL marks finished that has no (or incomplete) stats,
+  fetches one per poll (the next poll follows after 30 s while any are
+  left), ingests it as final and rescores it in full. Look for
+  `poller: finished gameweek has no stats; catching up` and `poller:
+earlier gameweek fetched and rescored` in the logs.
+- To do it now, from a machine with `DATABASE_URL` (and FPL reachable):
+  `npm run admin -- backfill -gw 9` (add `-league lg_...` to also print
+  that league's changes). It refreshes bootstrap, fetches the gameweek's
+  live stats (`POLLER_SOURCE=demo` reads the demo world instead), ingests
+  them and rescores every in-season league. It is idempotent.
+- Check: the gameweek's matchups are `final` with non-zero scores and the
+  standings show no phantom draws (an unscored matchup never counts).
+
 ## How to tell data is stale
 
 - API: every stats-derived response has `meta.stale`, `meta.dataAsOf` and

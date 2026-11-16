@@ -14,19 +14,19 @@ README.md, docs/ARCHITECTURE.md and docs/adr/.
 
 ## Root scripts
 
-| Script                                                             | Use                                                                                    |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `npm run gen`                                                      | Regenerate TS types and Go server from `api/openapi.yaml`.                             |
-| `npm run check`                                                    | lint, format check, typecheck, Jest, script tests, Go.                                 |
-| `npm run build:web`                                                | Production SPA into `apps/app/dist` (no mocks).                                        |
-| `npm run verify:prod-bundle`                                       | Fails if mock code reached `apps/app/dist`.                                            |
-| `npm run build:web:mocks`                                          | Mock SPA into `apps/app/dist-mocks` (Playwright uses it).                              |
-| `npx playwright test`                                              | e2e against `dist-mocks`.                                                              |
-| `npm run dev:web` / `npm run dev:web:mocks` / `npm run dev:server` | Local development.                                                                     |
-| `npm run dev:stack`                                                | Postgres + migrate + demo seed + API (demo data, no FPL).                              |
-| `npm run test:go:db`                                               | Go tests incl. Postgres suites (Docker, own container).                                |
-| `npm run admin -- <cmd>`                                           | `cmd/admin`: rescore, prune-snapshots, tick, run-waivers, fetch-history, shadow-check. |
-| `npm run test:e2e:server`                                          | Playwright smoke against the real API (Docker; not gated).                             |
+| Script                                                             | Use                                                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `npm run gen`                                                      | Regenerate TS types and Go server from `api/openapi.yaml`.                                       |
+| `npm run check`                                                    | lint, format check, typecheck, Jest, script tests, Go.                                           |
+| `npm run build:web`                                                | Production SPA into `apps/app/dist` (no mocks).                                                  |
+| `npm run verify:prod-bundle`                                       | Fails if mock code reached `apps/app/dist`.                                                      |
+| `npm run build:web:mocks`                                          | Mock SPA into `apps/app/dist-mocks` (Playwright uses it).                                        |
+| `npx playwright test`                                              | e2e against `dist-mocks`.                                                                        |
+| `npm run dev:web` / `npm run dev:web:mocks` / `npm run dev:server` | Local development.                                                                               |
+| `npm run dev:stack`                                                | Postgres + migrate + demo seed + API (demo data, no FPL).                                        |
+| `npm run test:go:db`                                               | Go tests incl. Postgres suites (Docker, own container).                                          |
+| `npm run admin -- <cmd>`                                           | `cmd/admin`: rescore, backfill, prune-snapshots, tick, run-waivers, fetch-history, shadow-check. |
+| `npm run test:e2e:server`                                          | Playwright smoke against the real API (Docker; not gated).                                       |
 
 `.office/checks` lists the gate: every line must pass from the repo root.
 

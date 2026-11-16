@@ -58,6 +58,23 @@ func TestAdminCommands(t *testing.T) {
 	if out := admin("rescore", "-gw", "3", "-league", seeded.LeagueID); !strings.Contains(out, "0 team scores changed") {
 		t.Fatalf("rescore one league = %q", out)
 	}
+	// backfill reads the demo source (never FPL): gameweek 6 is stored and
+	// unchanged, so nothing moves and its matchups stay final.
+	plainEnv := env
+	env = func(k string) string {
+		if k == "POLLER_SOURCE" {
+			return "demo"
+		}
+		return plainEnv(k)
+	}
+	if out := admin("backfill", "-gw", "6", "-league", seeded.LeagueID); !strings.Contains(out, "Backfilled gameweek 6: 0 players' stats changed") ||
+		!strings.Contains(out, "0 team scores changed, 0 corrections") {
+		t.Fatalf("backfill = %q", out)
+	}
+	if g, err := league.NewPostgres(pool).Game(ctx, seeded.LeagueID); err != nil || g.MatchupsIn(6)[0].State != "final" {
+		t.Fatalf("gameweek 6 after backfill: %v", err)
+	}
+	env = plainEnv
 	if out := admin("prune-snapshots", "-keep", "1"); !strings.Contains(out, "Deleted") {
 		t.Fatalf("prune = %q", out)
 	}
