@@ -76,9 +76,23 @@ func TestAdminCommands(t *testing.T) {
 		t.Fatalf("setup: bump gameweek 6 scores: %v (%d rows)", err, tag.RowsAffected())
 	}
 	n := tag.RowsAffected()
+	// Gameweek 6 is before the current one (7): its backfill is quiet, no
+	// matchups.updated or score.corrected event, notification or push.
+	sent := func() (n int) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM realtime_events) + (SELECT count(*) FROM notifications)
+			+ (SELECT count(*) FROM push_outbox)`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	sentBefore := sent()
 	if out := admin("backfill", "-gw", "6", "-league", seeded.LeagueID); !strings.Contains(out, "Backfilled gameweek 6: 0 players' stats changed") ||
 		!strings.Contains(out, fmt.Sprintf("Rescored gameweek 6 of %s: %d team scores changed, %d corrections.", seeded.LeagueID, n, n)) {
 		t.Fatalf("backfill = %q", out)
+	}
+	if after := sent(); after != sentBefore {
+		t.Errorf("backfill of old gameweek 6 sent %d events or notifications, want none", after-sentBefore)
 	}
 	if g, err := league.NewPostgres(pool).Game(ctx, seeded.LeagueID); err != nil || g.MatchupsIn(6)[0].State != "final" {
 		t.Fatalf("gameweek 6 after backfill: %v", err)

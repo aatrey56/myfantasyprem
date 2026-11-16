@@ -25,6 +25,15 @@ type outageCase struct {
 	users   auth.Service
 	src     *outage
 	seed    int
+	// notified, if set, hears the scorer's changes after the restart.
+	notified *notes
+}
+
+// notes is a league.Notifier that records changes.
+type notes struct{ changes []league.Change }
+
+func (n *notes) Notify(_ context.Context, changes ...league.Change) {
+	n.changes = append(n.changes, changes...)
 }
 
 func eachStore(t *testing.T, run func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service)) {
@@ -60,6 +69,9 @@ func (c outageCase) run(t *testing.T) (leagueID, userID string) {
 	}
 	c.src.current = 7
 	clear(c.src.live)
+	if c.notified != nil {
+		sc.Notify = c.notified
+	}
 	p := newPoller()
 	for range 6 {
 		clock = clock.Add(7 * time.Hour) // past BootstrapInterval: every poll refreshes the season
@@ -112,5 +124,24 @@ func TestRestartRefetchesPartlyIngestedFinishedGameweek(t *testing.T) {
 			t.Errorf("after the restart: live calls %v, want gameweeks 5 (partly ingested) and 6 (missing) once each", c.src.live)
 		}
 		checkCounted(t, c, leagueID, userID)
+	})
+}
+
+// The catch-up rescores gameweeks before the current one without telling
+// anyone: their scores move from 0 (never scored) or from a partial
+// ingest, which is not news and not a correction.
+func TestCatchUpOfOldGameweeksIsQuiet(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 5, notified: &notes{},
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 5, partial: true, live: map[int]int{}}}
+		c.run(t)
+		if c.src.live[5] != 1 {
+			t.Fatalf("setup: gameweek 5 fetched %d times", c.src.live[5])
+		}
+		for _, ch := range c.notified.changes {
+			if ch.Gameweek < 7 {
+				t.Errorf("catch-up notified %s for gameweek %d", ch.Kind, ch.Gameweek)
+			}
+		}
 	})
 }

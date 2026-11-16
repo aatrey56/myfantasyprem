@@ -148,6 +148,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 		if getenv("POLLER_SOURCE") == "demo" {
 			src, providerName = demo.Source(log), demo.ProviderName
 		}
+		// Notify is for the current gameweek only: Backfill rescores an
+		// earlier one quietly (Poller.Quiet).
 		sc := &league.Scorer{Leagues: leagues, Stats: st, Rules: scoring.StandardLineup(), Log: log, Notify: api.Notifier}
 		p := poller.New(src, stats.NewIngester(st, providerName, time.Now), st, sc, poller.Config{}, log)
 		changed, res, err := p.Backfill(ctx, *gw)
