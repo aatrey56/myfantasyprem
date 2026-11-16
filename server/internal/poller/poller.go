@@ -887,6 +887,41 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 	return nil
 }
 
+// MissingFinished refreshes the season (for upstream's finished flags)
+// and lists, oldest first, every gameweek up to the current one that
+// upstream marks finished but whose stats are missing, incomplete or not
+// settled: what the catch-up would queue (queueMissing, loaded), with the
+// current gameweek included once it is finished. A re-sync backfills them
+// before it verifies the league.
+func (p *Poller) MissingFinished(ctx context.Context) ([]int, error) {
+	st, err := p.Source.GameweekStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p.status = st
+	if err := p.refreshSeason(ctx, st); err != nil {
+		return nil, err
+	}
+	checked, err := p.Stats.StartsChecked(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p.startsChecked = checked
+	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
+	if err != nil {
+		return nil, err
+	}
+	var out []int
+	for _, g := range w.Gameweeks {
+		if g.Number < 1 || g.Number > st.Current || !g.Finished || p.loaded(ctx, w, g.Number) {
+			continue
+		}
+		out = append(out, g.Number)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 // Backfill fetches gameweek g's live data now, after a bootstrap refresh
 // (for its finished and checked flags), ingests it as a poll would and
 // rescores it in full: the admin backfill command, for a gameweek the

@@ -77,11 +77,74 @@ type Service struct {
 	// ShadowUntil ends the scheduled shadow checks (the switch-over);
 	// zero: no end.
 	ShadowUntil time.Time
+	// Backfill fills in, during a re-sync, the finished gameweeks whose
+	// stats are missing (the server was down for them), so the league is
+	// rescored and verified on them; nil: none.
+	Backfill Backfiller
 
 	// planned remembers the shadow checks this process scheduled, so the
 	// hourly planner does not schedule one twice on the in-memory
 	// scheduler (River also refuses a duplicate by its arguments).
 	planned sync.Map
+}
+
+// Backfiller fetches finished gameweeks' stats the poller has not loaded
+// (pollerwire.Backfiller): MissingFinished lists them, Backfill fetches,
+// ingests and rescores one (quietly before the current gameweek).
+type Backfiller interface {
+	MissingFinished(ctx context.Context) ([]int, error)
+	Backfill(ctx context.Context, gw int) error
+}
+
+// backfill fills in the finished gameweeks whose stats are missing. A
+// failure is logged and returned in failed, never as the re-sync's error:
+// the poller's catch-up retries the gameweek later.
+func (s *Service) backfill(ctx context.Context, leagueID string) (filled, failed []int) {
+	if s.Backfill == nil {
+		return nil, nil
+	}
+	gws, err := s.Backfill.MissingFinished(ctx)
+	if err != nil {
+		s.log().WarnContext(ctx, "re-sync: find missing gameweeks", "league", leagueID, "err", err)
+		return nil, nil
+	}
+	for _, gw := range gws {
+		if err := s.Backfill.Backfill(ctx, gw); err != nil {
+			if ctx.Err() != nil {
+				return filled, failed // shutting down: the re-sync fails too
+			}
+			s.log().WarnContext(ctx, "re-sync: backfill failed; the poller retries it", "league", leagueID, "gameweek", gw, "err", err)
+			failed = append(failed, gw)
+			continue
+		}
+		s.log().InfoContext(ctx, "re-sync: gameweek backfilled", "league", leagueID, "gameweek", gw)
+		filled = append(filled, gw)
+	}
+	return filled, failed
+}
+
+// gwList is "GW 9" or "GW 8 and 9" or "GW 7, 8 and 9".
+func gwList(gws []int) string {
+	ns := make([]string, len(gws))
+	for i, g := range gws {
+		ns[i] = strconv.Itoa(g)
+	}
+	if len(ns) == 1 {
+		return "GW " + ns[0]
+	}
+	return "GW " + strings.Join(ns[:len(ns)-1], ", ") + " and " + ns[len(ns)-1]
+}
+
+// backfillNote is the re-sync notice's sentence about the backfill.
+func backfillNote(filled, failed []int) string {
+	var parts []string
+	if len(filled) > 0 {
+		parts = append(parts, "Filled in "+gwList(filled)+".")
+	}
+	if len(failed) > 0 {
+		parts = append(parts, "Stats for "+gwList(failed)+" aren't available yet; they will fill in automatically.")
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *Service) now() time.Time {
@@ -490,6 +553,12 @@ func (s *Service) refresh(ctx context.Context, leagueID string, create *Import, 
 		}
 		fplLeague = l.FPLLeagueID
 	}
+	// A re-sync first fills in the finished gameweeks with no stats, so
+	// the rescore below and the verify score them.
+	var filled, failed []int
+	if create == nil {
+		filled, failed = s.backfill(ctx, leagueID)
+	}
 	w, snap, plan, err := s.plan(ctx, fplLeague, now, progress)
 	if err != nil {
 		return nil, err
@@ -574,6 +643,9 @@ func (s *Service) refresh(ctx context.Context, leagueID string, create *Import, 
 	rec.Note = ""
 	if create == nil {
 		rec.Note = cancelled.Note()
+		if n := backfillNote(filled, failed); n != "" {
+			rec.Note += " " + n
+		}
 	}
 	if err := s.Store.SaveSync(ctx, *rec); err != nil {
 		return nil, err

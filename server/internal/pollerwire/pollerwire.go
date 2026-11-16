@@ -5,7 +5,9 @@
 package pollerwire
 
 import (
+	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/demo"
@@ -57,4 +59,34 @@ func New(o Options) *poller.Poller {
 	p := poller.New(src, stats.NewIngester(o.Stats, providerName, time.Now), o.Stats, scorer, poller.Config{}, o.Log)
 	p.News = &notifications.News{Leagues: o.Leagues, Notifier: o.Notifier, Log: o.Log}
 	return p
+}
+
+// Backfiller fills in, for a re-sync (mirror.Service.Backfill), the
+// finished gameweeks the poller has not loaded. It has its own poller:
+// the running one's catch-up state is its loop's alone. Calls are
+// serialised here; the store's per-gameweek locks and fetch tickets
+// serialise its ingests with the running poller's.
+type Backfiller struct {
+	mu sync.Mutex
+	p  *poller.Poller
+}
+
+// NewBackfiller returns a Backfiller whose poller is New(o).
+func NewBackfiller(o Options) *Backfiller { return &Backfiller{p: New(o)} }
+
+// MissingFinished lists the finished gameweeks up to the current one
+// whose stats are missing or unsettled (Poller.MissingFinished).
+func (b *Backfiller) MissingFinished(ctx context.Context) ([]int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.p.MissingFinished(ctx)
+}
+
+// Backfill fetches, ingests and rescores finished gameweek gw
+// (Poller.Backfill; quiet before the current gameweek).
+func (b *Backfiller) Backfill(ctx context.Context, gw int) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, _, err := b.p.Backfill(ctx, gw, false)
+	return err
 }
