@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"time"
 
@@ -149,17 +150,33 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 		}
 		sc := &league.Scorer{Leagues: leagues, Stats: st, Rules: scoring.StandardLineup(), Log: log, Notify: api.Notifier}
 		p := poller.New(src, stats.NewIngester(st, providerName, time.Now), st, sc, poller.Config{}, log)
-		changed, err := p.Backfill(ctx, *gw)
+		changed, res, err := p.Backfill(ctx, *gw)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "Backfilled gameweek %d: %d players' stats changed; rescored.\n", *gw, changed)
 		if *leagueID != "" {
-			teams, fixes, err := sc.RescoreLeague(ctx, *leagueID, *gw)
+			// The backfill rescored every league; report this one's share
+			// of that rescore (a second one would find nothing to change).
+			ls, err := leagues.State(ctx, *leagueID)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "Rescored gameweek %d of %s: %d team scores changed, %d corrections.\n", *gw, *leagueID, len(teams), len(fixes))
+			if ls == nil {
+				return fmt.Errorf("no league %s", *leagueID)
+			}
+			teams, fixes := 0, 0
+			for _, t := range ls.League.Teams {
+				if slices.Contains(res.ChangedTeams, t.ID) {
+					teams++
+				}
+			}
+			for _, c := range res.Corrections {
+				if c.LeagueID == *leagueID {
+					fixes++
+				}
+			}
+			fmt.Fprintf(out, "Rescored gameweek %d of %s: %d team scores changed, %d corrections.\n", *gw, *leagueID, teams, fixes)
 		}
 	case "prune-snapshots":
 		n, err := st.PruneSnapshots(ctx, *keep)

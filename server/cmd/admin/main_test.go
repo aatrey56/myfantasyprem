@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -58,8 +59,10 @@ func TestAdminCommands(t *testing.T) {
 	if out := admin("rescore", "-gw", "3", "-league", seeded.LeagueID); !strings.Contains(out, "0 team scores changed") {
 		t.Fatalf("rescore one league = %q", out)
 	}
-	// backfill reads the demo source (never FPL): gameweek 6 is stored and
-	// unchanged, so nothing moves and its matchups stay final.
+	// backfill reads the demo source (never FPL): gameweek 6's stats are
+	// stored and unchanged, but every team's stored score is one point
+	// off, so the backfill's rescore puts back all n team scores, each a
+	// correction of a final score, and -league reports them.
 	plainEnv := env
 	env = func(k string) string {
 		if k == "POLLER_SOURCE" {
@@ -67,8 +70,14 @@ func TestAdminCommands(t *testing.T) {
 		}
 		return plainEnv(k)
 	}
+	tag, err := pool.Exec(ctx, `UPDATE team_gw_scores SET points = points + 1
+		WHERE gameweek = 6 AND team_id IN (SELECT id FROM teams WHERE league_id = $1)`, seeded.LeagueID)
+	if err != nil || tag.RowsAffected() == 0 {
+		t.Fatalf("setup: bump gameweek 6 scores: %v (%d rows)", err, tag.RowsAffected())
+	}
+	n := tag.RowsAffected()
 	if out := admin("backfill", "-gw", "6", "-league", seeded.LeagueID); !strings.Contains(out, "Backfilled gameweek 6: 0 players' stats changed") ||
-		!strings.Contains(out, "0 team scores changed, 0 corrections") {
+		!strings.Contains(out, fmt.Sprintf("Rescored gameweek 6 of %s: %d team scores changed, %d corrections.", seeded.LeagueID, n, n)) {
 		t.Fatalf("backfill = %q", out)
 	}
 	if g, err := league.NewPostgres(pool).Game(ctx, seeded.LeagueID); err != nil || g.MatchupsIn(6)[0].State != "final" {

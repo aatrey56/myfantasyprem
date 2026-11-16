@@ -542,6 +542,12 @@ func (p *Poller) ingestLive(ctx context.Context, live *provider.EventLive, st *p
 // rescoreGW rescores a gameweek. A failure marks it for a full rescore on
 // the next cycle, because the ingest that found the changes has committed.
 func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bool) error {
+	_, err := p.rescoreWith(ctx, p.Scorer, gw, changed, all)
+	return err
+}
+
+// rescoreWith is rescoreGW with the given scorer, returning its result.
+func (p *Poller) rescoreWith(ctx context.Context, sc Recomputer, gw int, changed []string, all bool) (league.RecomputeResult, error) {
 	if p.rescore == nil {
 		p.rescore = map[int]bool{}
 	}
@@ -552,18 +558,18 @@ func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bo
 	// the ClearRescore below, so that change is rescored too.
 	marks, err := p.Stats.RescorePending(ctx)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
-	res, err := p.Scorer.Recompute(ctx, gw, changed, all)
+	res, err := sc.Recompute(ctx, gw, changed, all)
 	if err != nil {
-		return err
+		return res, err
 	}
 	// The ingest that found changes marked the gameweek durably; clear the
 	// mark only now that its scores are correct.
 	if i := slices.IndexFunc(marks, func(m stats.RescoreMark) bool { return m.Gameweek == gw }); i >= 0 &&
 		(p.durable[gw] || len(changed) > 0) {
 		if err := p.Stats.ClearRescore(ctx, marks[i]); err != nil {
-			return err
+			return res, err
 		}
 		delete(p.durable, gw)
 	}
@@ -574,7 +580,7 @@ func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bo
 		p.Log.InfoContext(ctx, "rescored leagues", "gameweek", gw, "leagues", res.Leagues,
 			"skipped", res.Skipped, "teams_changed", len(res.ChangedTeams), "players_changed", len(changed))
 	}
-	return nil
+	return res, nil
 }
 
 // loadRescore merges the store's pending rescores into p.rescore.
@@ -714,7 +720,7 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		if err := p.Sleep(ctx, p.Config.BackfillPace); err != nil {
 			return false
 		}
-		if err := p.settle(ctx, g, w.Gameweeks[g]); err != nil {
+		if _, err := p.settle(ctx, g, w.Gameweeks[g]); err != nil {
 			p.failed[g] = true
 			p.Metrics.ReconcileFails.Add(1)
 			p.Log.WarnContext(ctx, "poller: reconcile failed; retrying next cycle", "gameweek", g, "err", err)
@@ -804,46 +810,47 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 // Backfill fetches gameweek g's live data now, after a bootstrap refresh
 // (for its finished and checked flags), ingests it as a poll would and
 // rescores it in full: the admin backfill command, for a gameweek the
-// poller missed. It returns the players whose stats changed.
-func (p *Poller) Backfill(ctx context.Context, g int) (changed int, err error) {
+// poller missed. It returns the players whose stats changed and the
+// rescore's result (every league).
+func (p *Poller) Backfill(ctx context.Context, g int) (changed int, res league.RecomputeResult, err error) {
 	st, err := p.Source.GameweekStatus(ctx)
 	if err != nil {
-		return 0, err
+		return 0, res, err
 	}
 	p.status = st
 	if err := p.refreshSeason(ctx, st); err != nil {
-		return 0, err
+		return 0, res, err
 	}
 	w, err := league.LoadWorld(ctx, p.Stats, -1)
 	if err != nil {
-		return 0, err
+		return 0, res, err
 	}
 	info := w.Gameweeks[g]
 	if g == st.Current {
 		info.BonusAdded, info.DataChecked = info.BonusAdded || st.BonusAdded, info.DataChecked || st.DataChecked
 	}
 	before := p.Metrics.RowsChanged.Value()
-	if err := p.settle(ctx, g, info); err != nil {
-		return 0, err
+	if res, err = p.settle(ctx, g, info); err != nil {
+		return 0, res, err
 	}
 	p.Log.InfoContext(ctx, "poller: gameweek backfilled", "gameweek", g, "current", st.Current)
-	return int(p.Metrics.RowsChanged.Value() - before), nil
+	return int(p.Metrics.RowsChanged.Value() - before), res, nil
 }
 
 // settle fetches a closed gameweek's live data, ingests it and rescores
 // every league for it.
-func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek) error {
+func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek) (league.RecomputeResult, error) {
 	live, err := p.Source.EventLive(ctx, g)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
 	st := &provider.GameweekStatus{Current: g, BonusAdded: info.BonusAdded, DataChecked: info.DataChecked}
 	changed, err := p.ingestLive(ctx, live, st)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
 	p.Metrics.RowsChanged.Add(int64(len(changed)))
-	return p.rescoreGW(ctx, g, changed, true)
+	return p.rescoreWith(ctx, p.Scorer, g, changed, true)
 }
 
 // kickedOff reports whether any fixture of the gameweek has started or is
