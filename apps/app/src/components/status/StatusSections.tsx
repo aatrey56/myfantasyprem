@@ -9,6 +9,7 @@ import { Button, IconButton } from '../Button';
 import { Card } from '../Card';
 import { Chip, Pill } from '../Chip';
 import { EmptyState } from '../EmptyState';
+import { OwnerChip } from '../OwnerChip';
 import { ChevronLeft, ChevronRight, TriangleAlert, Users } from '../icons';
 import { pressFeedback, type PressState } from '../pressable';
 import { PressableLink } from '../PressableLink';
@@ -18,7 +19,7 @@ import { shortName } from '../team/LineupViews';
 import { HazardIcon, STATUS_COLORS, StopIcon } from './StatusIcons';
 import { useLayout } from '@/hooks/useLayout';
 import { formText } from '@/lib/form';
-import { clubColors, initialsOf } from '@/lib/identity';
+import { clubColors } from '@/lib/identity';
 import { scoreStateLabel } from '@/lib/matchup';
 import {
   attentionHref,
@@ -881,9 +882,12 @@ export function FixturesCard({
 export function InjuriesCard({
   players,
   onOpen,
+  myTeamId,
 }: {
   players: readonly Schemas['StatusFlaggedPlayer'][];
   onOpen: (playerId: string) => void;
+  /** My team in this league: its players' owner chip says `You`. */
+  myTeamId?: string;
 }) {
   const { colors, spacing, radii } = useTheme();
   return (
@@ -962,16 +966,24 @@ export function InjuriesCard({
                 <AppText variant="meta" muted style={{ width: 40 }}>
                   {f.player.club.code}
                 </AppText>
-                <AppText
-                  variant="meta"
-                  weight="semibold"
-                  muted
-                  accessibilityLabel={f.owner ? `Owned by ${f.owner.name}` : 'Not owned'}
-                  {...({ title: f.owner?.name ?? 'Not owned' } as object)}
-                  style={{ width: 32, textAlign: 'right' }}
-                >
-                  {f.owner ? initialsOf(f.owner.name) : '–'}
-                </AppText>
+                {f.owner ? (
+                  <OwnerChip
+                    team={f.owner}
+                    mine={f.owner.id === myTeamId}
+                    a11y={`Owned by ${f.owner.name}`}
+                    testID={`injury-owner-${f.player.id}`}
+                  />
+                ) : (
+                  <AppText
+                    variant="meta"
+                    weight="semibold"
+                    muted
+                    accessibilityLabel="Not owned"
+                    style={{ width: 32, textAlign: 'right' }}
+                  >
+                    –
+                  </AppText>
+                )}
               </View>
             );
           })}

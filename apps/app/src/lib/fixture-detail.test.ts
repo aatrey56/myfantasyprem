@@ -60,10 +60,10 @@ describe('ownerBadges', () => {
       owner('lg_b', 'Sunday League Heroes', true),
       owner('lg_c', 'pub team'),
     ]);
-    expect(badges.map((b) => [b.initials, b.mine])).toEqual([
-      ['SL', true],
-      ['GA', false],
-      ['PT', false],
+    expect(badges.map((b) => [b.team.name, b.mine])).toEqual([
+      ['Sunday League Heroes', true],
+      ["Gaffer's Army", false],
+      ['pub team', false],
     ]);
     expect(badges[0]!.a11y).toBe('Sunday League Heroes in League lg_b (your team)');
     expect(badges[1]!.a11y).toBe("Gaffer's Army in League lg_a");

@@ -1,7 +1,5 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 
-import { initialsOf } from './identity';
-
 type Stats = Schemas['FixturePlayerStats'];
 type Owner = Schemas['FixtureOwner'];
 
@@ -82,8 +80,8 @@ export function matchEvents(s: Stats): MatchEvent[] {
 
 export interface OwnerBadge {
   key: string;
-  /** The owning team's initials: `SL` for Sunday League Heroes. */
-  initials: string;
+  /** The owning team: its manager and name label the chip. */
+  team: Owner['team'];
   mine: boolean;
   /** `Sunday League Heroes in The Sunday Draft (your team)`. */
   a11y: string;
@@ -96,7 +94,7 @@ export function ownerBadges(owners: readonly Owner[]): OwnerBadge[] {
     .sort((a, b) => Number(b.o.mine) - Number(a.o.mine) || a.i - b.i)
     .map(({ o }) => ({
       key: `${o.leagueId}/${o.team.id}`,
-      initials: initialsOf(o.team.name),
+      team: o.team,
       mine: o.mine,
       a11y: `${o.team.name} in ${o.leagueName}${o.mine ? ' (your team)' : ''}`,
     }));
