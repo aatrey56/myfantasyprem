@@ -2,6 +2,7 @@ package poller_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -43,8 +44,11 @@ type outage struct {
 	// over makes the current gameweek's fixtures finished, so the poller
 	// waits as it does between gameweeks (hours) rather than live.
 	over bool
-	mu   sync.Mutex
-	live map[int]int
+	// failFirst makes the first live request for that gameweek fail (a
+	// transient error); later ones succeed.
+	failFirst int
+	mu        sync.Mutex
+	live      map[int]int
 }
 
 func (o *outage) GameweekStatus(ctx context.Context) (*provider.GameweekStatus, error) {
@@ -144,7 +148,11 @@ const (
 func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, error) {
 	o.mu.Lock()
 	o.live[gw]++
+	first := o.live[gw] == 1
 	o.mu.Unlock()
+	if first && o.failFirst != 0 && gw == o.failFirst {
+		return nil, errors.New("transient failure")
+	}
 	l, err := o.StatsSource.EventLive(ctx, gw)
 	if err == nil && (o.zeroed || (o.blank && o.current >= 6)) && gw == 6 {
 		cp := *l

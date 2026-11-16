@@ -30,7 +30,7 @@
 // gameweek's final live payload is fetched again (late corrections), and
 // gameweeks with no stored rows, or lines without starts, are backfilled, BackfillPerTick per cycle
 // and at most two requests per second. Gameweeks that failed go to the
-// back of the queue, and while gameweeks never tried remain the next
+// back of the queue, least recently tried first, and while gameweeks never tried remain the next
 // cycle comes after LiveInterval, not the mode's wait of hours. Upstream's bootstrap lists only
 // upcoming fixtures, so a past gameweek's fixtures (teams, kickoff, status
 // and score) come from its live payload.
@@ -191,9 +191,12 @@ type Poller struct {
 	// false: only while no rows are stored).
 	planned bool
 	pending map[int]bool
-	// failed holds queued gameweeks whose last fetch failed; they go to
-	// the back of the queue so they cannot starve the others.
-	failed map[int]bool
+	// tried holds, for queued gameweeks whose fetch failed, the attempt
+	// number (attempts at the time) of their last fetch. Gameweeks not
+	// yet tried go first, then failed ones least recently tried first, so
+	// one that keeps failing cannot starve the others.
+	tried    map[int]int
+	attempts int
 	// catchupFails counts consecutive polls whose catch-up fetch failed;
 	// while gameweeks are queued the next poll follows after the backoff
 	// for that many failures instead of the mode's wait.
@@ -713,7 +716,8 @@ func (p *Poller) queueMissing(ctx context.Context, current int) {
 }
 
 // reconcile fetches up to BackfillPerTick queued gameweeks, most recent
-// first, paced politely; gameweeks that failed before go last. Failures
+// first, paced politely; gameweeks that failed before go last, least
+// recently tried first. Failures
 // are logged and retried; they do not fail the poll (the current
 // gameweek's data is good) and never replace stored rows (the ingest
 // rejects incomplete snapshots). It reports whether the budget ran out
@@ -736,16 +740,13 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		p.Log.WarnContext(ctx, "poller: reconcile: load", "err", err)
 		return false
 	}
-	if p.failed == nil {
-		p.failed = map[int]bool{}
+	if p.tried == nil {
+		p.tried = map[int]int{}
 	}
 	queue := slices.Collect(maps.Keys(p.pending))
 	slices.SortFunc(queue, func(a, b int) int {
-		if p.failed[a] != p.failed[b] {
-			if p.failed[a] {
-				return 1
-			}
-			return -1
+		if p.tried[a] != p.tried[b] {
+			return p.tried[a] - p.tried[b]
 		}
 		return b - a
 	})
@@ -765,16 +766,17 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 			continue
 		}
 		if done >= p.Config.BackfillPerTick {
-			return slices.ContainsFunc(queue[i:], func(g int) bool { return !p.failed[g] })
+			return slices.ContainsFunc(queue[i:], func(g int) bool { return p.tried[g] == 0 })
 		}
 		done++
+		p.attempts++
 		if err := p.Sleep(ctx, p.Config.BackfillPace); err != nil {
 			return false
 		}
 		// Quiet: every queued gameweek is before the current one.
 		if _, err := p.settle(ctx, g, w.Gameweeks[g], p.quiet()); err != nil {
 			failed = true
-			p.failed[g] = true
+			p.tried[g] = p.attempts
 			p.Metrics.ReconcileFails.Add(1)
 			lvl := slog.LevelWarn
 			if errors.Is(err, stats.ErrIncomplete) {
@@ -795,7 +797,7 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		// guess.
 		if after, err := league.LoadWorld(ctx, p.Stats, -1); err != nil || !p.loaded(ctx, after, g) {
 			failed = true
-			p.failed[g] = true
+			p.tried[g] = p.attempts
 			p.Metrics.ReconcileFails.Add(1)
 			p.Log.WarnContext(ctx, "poller: finished gameweek still unsettled after a fetch; retrying with backoff",
 				"gameweek", g, "current", current, "err", err)
@@ -815,7 +817,7 @@ func (p *Poller) Pending() int { return len(p.pending) }
 // drop removes a gameweek from the backfill queue.
 func (p *Poller) drop(g int) {
 	delete(p.pending, g)
-	delete(p.failed, g)
+	delete(p.tried, g)
 }
 
 // loaded reports whether a gameweek has complete gameweek lines, stored
