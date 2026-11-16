@@ -27,10 +27,12 @@ type outage struct {
 	// partial makes the current gameweek's live data show its second
 	// half of fixtures still in play (the server went down mid-gameweek).
 	partial bool
-	// moved lists an extra gameweek 6 fixture while current < 6, which
-	// upstream then moves out of the gameweek: no later fixture list or
-	// live payload has it.
-	moved bool
+	// moved lists an extra gameweek 6 fixture while current < 6 that no
+	// later live payload has. movedGone: no later fixture list has it
+	// either (nothing says where it went). movedPostponed: later fixture
+	// lists give it no gameweek and no kickoff (event null), as FPL
+	// reports a postponed match.
+	moved string
 	// voided makes gameweek 6's live data list every player with 0
 	// minutes (a gameweek whose matches were all voided).
 	voided bool
@@ -78,15 +80,22 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 		}
 		out = append(out, f)
 	}
-	if o.moved && o.current < 6 {
-		for _, f := range out {
-			if f.Gameweek == 6 {
-				kick := f.KickoffAt.Add(48 * time.Hour)
-				out = append(out, provider.Fixture{ExternalID: movedFixture, Gameweek: 6, KickoffAt: &kick,
-					HomeClubExternalID: f.AwayClubExternalID, AwayClubExternalID: f.HomeClubExternalID,
-					Status: provider.FixtureScheduled})
-				break
+	if o.moved != "" {
+		for _, f := range fs {
+			if f.Gameweek != 6 {
+				continue
 			}
+			mf := provider.Fixture{ExternalID: movedFixture, HomeClubExternalID: f.AwayClubExternalID,
+				AwayClubExternalID: f.HomeClubExternalID, Status: provider.FixturePostponed}
+			switch {
+			case o.current < 6:
+				kick := f.KickoffAt.Add(48 * time.Hour)
+				mf.Gameweek, mf.KickoffAt, mf.Status = 6, &kick, provider.FixtureScheduled
+			case o.moved != movedPostponed:
+				return out, nil
+			}
+			out = append(out, mf)
+			break
 		}
 	}
 	return out, nil
@@ -94,6 +103,12 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 
 // movedFixture is the external id of outage.moved's fixture.
 const movedFixture = "moved-1"
+
+// outage.moved values.
+const (
+	movedGone      = "gone"
+	movedPostponed = "postponed"
+)
 
 func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, error) {
 	o.mu.Lock()

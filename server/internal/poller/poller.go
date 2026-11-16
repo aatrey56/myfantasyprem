@@ -779,6 +779,18 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		if err := p.markStartsChecked(ctx, g); err != nil {
 			p.Log.WarnContext(ctx, "poller: reconcile: mark starts checked", "gameweek", g, "err", err)
 		}
+		// Upstream finished it, but what it sent does not settle it (a
+		// fixture still scheduled that nothing says was moved, say): keep
+		// it queued and fetch it again after the backoff, rather than
+		// guess.
+		if after, err := league.LoadWorld(ctx, p.Stats, -1); err != nil || !p.loaded(ctx, after, g) {
+			failed = true
+			p.failed[g] = true
+			p.Metrics.ReconcileFails.Add(1)
+			p.Log.WarnContext(ctx, "poller: finished gameweek still unsettled after a fetch; retrying with backoff",
+				"gameweek", g, "current", current, "err", err)
+			continue
+		}
 		p.drop(g)
 		p.Metrics.Reconciled.Add(1)
 		p.Log.InfoContext(ctx, "poller: earlier gameweek fetched and rescored", "gameweek", g, "current", current)

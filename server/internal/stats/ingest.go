@@ -325,29 +325,6 @@ func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *prov
 		byID[fx.ID] = fx
 		updated = append(updated, fx)
 	}
-	// Once upstream marks the gameweek finished, a stored fixture its live
-	// data no longer lists was moved out of it: postponed, as upstream
-	// reports one before kickoff (no gameweek, no kickoff time), so it no
-	// longer holds the gameweek's state at live. A payload with no
-	// fixtures proves nothing.
-	if len(live.Fixtures) > 0 {
-		finished, err := in.finished(ctx, live.Gameweek)
-		if err != nil {
-			return nil, err
-		}
-		listed := map[string]bool{}
-		for _, f := range updated {
-			listed[f.ID] = true
-		}
-		for id, f := range byID {
-			if !finished || listed[id] || f.Over() || f.Status == FixturePostponed {
-				continue
-			}
-			f.Gameweek, f.KickoffAt, f.Status = 0, nil, FixturePostponed
-			delete(byID, id)
-			updated = append(updated, f)
-		}
-	}
 	clubFixtures := map[string][]Fixture{}
 	for _, f := range byID {
 		if f.Status == FixturePostponed {
@@ -447,16 +424,6 @@ func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *prov
 		return nil, err
 	}
 	return changed, nil
-}
-
-// finished reports whether upstream marks gameweek gw finished.
-func (in *Ingester) finished(ctx context.Context, gw int) (bool, error) {
-	gws, err := in.Repo.Gameweeks(ctx)
-	if err != nil {
-		return false, err
-	}
-	i := slices.IndexFunc(gws, func(g Gameweek) bool { return g.Number == gw })
-	return i >= 0 && gws[i].Finished, nil
 }
 
 // playerGameweek is a player's gameweek line as upstream gives it.
