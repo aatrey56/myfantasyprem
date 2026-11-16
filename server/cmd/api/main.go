@@ -220,6 +220,13 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, read
 	}
 	api := httpapi.NewAPI(opts)
 	mir.Notify = api.Notifier
+	if cfg.PollerEnabled {
+		// A re-sync fills in the finished gameweeks the poller has not
+		// loaded, with its own poller on the same source and hooks.
+		mir.Backfill = pollerwire.NewBackfiller(pollerwire.Options{Source: cfg.PollerSource, FPLBaseURL: cfg.FPLBaseURL,
+			FPLUserAgent: cfg.FPLUserAgent, Leagues: opts.Leagues, Stats: opts.Stats, Notify: api.Notifier, Notifier: notifier,
+			Log: logger.With("component", "resync-backfill", "source", cfg.PollerSource)})
+	}
 
 	// Bind first, so a busy address fails before any goroutine starts.
 	ln, err := net.Listen("tcp", cfg.Addr)

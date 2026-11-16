@@ -92,15 +92,22 @@ func (m *idMap) resolve(ext string) string {
 // gameweek. It is idempotent. When another ingest maps a new upstream id
 // first (ErrIDTaken) it starts over with that ingest's ids.
 func (in *Ingester) Season(ctx context.Context, b *provider.Bootstrap, fixtures []provider.Fixture, st *provider.GameweekStatus) error {
+	return in.SeasonAsOf(ctx, nil, b, fixtures, st)
+}
+
+// SeasonAsOf is Season for fixtures fetched after asOf was read
+// (Repo.LiveIssued): a fixture of a gameweek ingested live since keeps
+// its stored status and scores (Batch.FixturesAsOf). nil: no check.
+func (in *Ingester) SeasonAsOf(ctx context.Context, asOf map[int]int64, b *provider.Bootstrap, fixtures []provider.Fixture, st *provider.GameweekStatus) error {
 	for attempt := 1; ; attempt++ {
-		err := in.season(ctx, b, fixtures, st)
+		err := in.season(ctx, asOf, b, fixtures, st)
 		if !errors.Is(err, ErrIDTaken) || attempt == 3 {
 			return err
 		}
 	}
 }
 
-func (in *Ingester) season(ctx context.Context, b *provider.Bootstrap, fixtures []provider.Fixture, st *provider.GameweekStatus) error {
+func (in *Ingester) season(ctx context.Context, asOf map[int]int64, b *provider.Bootstrap, fixtures []provider.Fixture, st *provider.GameweekStatus) error {
 	clubs, err := in.idMap(ctx, "club", "clb")
 	if err != nil {
 		return err
@@ -114,7 +121,7 @@ func (in *Ingester) season(ctx context.Context, b *provider.Bootstrap, fixtures 
 		return err
 	}
 	in.useRules(ctx, RulesFromTable(b.Settings.Scoring))
-	batch := Batch{Provider: in.Provider}
+	batch := Batch{Provider: in.Provider, FixturesAsOf: asOf}
 	for _, c := range b.Clubs {
 		batch.Clubs = append(batch.Clubs, Club{ID: clubs.resolve(c.ExternalID), Code: c.ShortName, Name: c.Name})
 	}

@@ -541,8 +541,14 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 	return mode, interval, gw, nil
 }
 
-// refreshSeason fetches and ingests bootstrap and fixtures.
+// refreshSeason fetches and ingests bootstrap and fixtures. The live
+// tickets issued before the fetch keep its fixtures from reverting what a
+// newer live ingest (another poller's) stored (Ingester.SeasonAsOf).
 func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus) error {
+	asOf, err := p.Stats.LiveIssued(ctx)
+	if err != nil {
+		return err
+	}
 	b, err := p.Source.Bootstrap(ctx)
 	if err != nil {
 		return err
@@ -555,7 +561,7 @@ func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus)
 	if p.News != nil {
 		before = p.players(ctx)
 	}
-	if err := p.Ingester.Season(ctx, b, fixtures, st); err != nil {
+	if err := p.Ingester.SeasonAsOf(ctx, asOf, b, fixtures, st); err != nil {
 		return err
 	}
 	p.lastBootstrap, p.seasonGW = p.Now(), st.Current
@@ -885,6 +891,57 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 	}
 	p.startsChecked[g] = true
 	return nil
+}
+
+// MissingFinished refreshes the season (for upstream's finished flags)
+// and lists, oldest first, every gameweek up to the current one that
+// upstream marks finished but whose stats are missing, incomplete or not
+// settled: what the catch-up would queue (queueMissing, loaded), with the
+// current gameweek included once it is finished. A re-sync backfills them
+// before it verifies the league.
+func (p *Poller) MissingFinished(ctx context.Context) ([]int, error) {
+	st, err := p.Source.GameweekStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p.status = st
+	if err := p.refreshSeason(ctx, st); err != nil {
+		return nil, err
+	}
+	checked, err := p.Stats.StartsChecked(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p.startsChecked = checked
+	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
+	if err != nil {
+		return nil, err
+	}
+	var out []int
+	for _, g := range w.Gameweeks {
+		if g.Number < 1 || g.Number > st.Current || !g.Finished || p.loaded(ctx, w, g.Number) {
+			continue
+		}
+		out = append(out, g.Number)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// Settled reports whether gameweek g's stored stats are complete and
+// settled (loaded), from the store alone: after a Backfill, whether it
+// filled the gameweek in.
+func (p *Poller) Settled(ctx context.Context, g int) (bool, error) {
+	checked, err := p.Stats.StartsChecked(ctx)
+	if err != nil {
+		return false, err
+	}
+	p.startsChecked = checked
+	w, err := league.LoadWorld(ctx, p.Stats, -1)
+	if err != nil {
+		return false, err
+	}
+	return p.loaded(ctx, w, g), nil
 }
 
 // Backfill fetches gameweek g's live data now, after a bootstrap refresh
