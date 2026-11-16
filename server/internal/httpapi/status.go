@@ -133,11 +133,12 @@ func attentionInput(v *view, teamID, userID string, next int) statuspage.Attenti
 }
 
 // rankChange is how many places the team moved with the league's last
-// completed gameweek; 0 before it has two.
+// gameweek that counts in the table (completed and scored); 0 before it
+// has two.
 func rankChange(v *view, teamID string) int {
 	var played []int
 	for gw := 38; gw >= 1 && len(played) < 2; gw-- {
-		if v.w.Completed(gw) && len(v.g.MatchupsIn(gw)) > 0 {
+		if slices.ContainsFunc(v.g.MatchupsIn(gw), v.w.Counts) {
 			played = append(played, gw)
 		}
 	}
