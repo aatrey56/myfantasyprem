@@ -42,6 +42,8 @@ export function firstNameOf(name: string): string | null {
     .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}'’.-]+$/gu, ''))
     .filter((w) => /\p{L}/u.test(w));
   if (words.length === 0) return null;
+  // Initials only ("A.", "A B") name no one: the chip falls back to the team.
+  if (words.every((w) => INITIAL.test(w))) return null;
   if (words.length === 1) return stripDot(words[0]!);
   let i = 0;
   while (i < words.length - 1 && TITLE.test(words[i]!)) i++;

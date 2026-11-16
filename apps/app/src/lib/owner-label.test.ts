@@ -28,13 +28,21 @@ describe('firstNameOf', () => {
 
   it('shows a single word as it is', () => {
     expect(firstNameOf('Sam')).toBe('Sam');
-    expect(firstNameOf('Ö')).toBe('Ö');
+    expect(firstNameOf('Öz')).toBe('Öz');
     expect(firstNameOf('Dr')).toBe('Dr');
   });
 
   it('is null for initials only, so the chip falls back to the team name', () => {
     expect(firstNameOf('A B')).toBeNull();
     expect(firstNameOf('A. B.')).toBeNull();
+    // A single initial, alone or after an emoji, names no one either.
+    expect(firstNameOf('A.')).toBeNull();
+    expect(firstNameOf('J')).toBeNull();
+    expect(firstNameOf('Ö')).toBeNull();
+    expect(firstNameOf('⚽ A.')).toBeNull();
+    expect(ownerChipLabel(team('Park The Bus FC', 'A.'), false, 'first_name').text).toBe(
+      'Park The Bus FC',
+    );
     expect(ownerChipLabel(team('Park The Bus FC', 'A B'), false, 'first_name').text).toBe(
       'Park The Bus FC',
     );

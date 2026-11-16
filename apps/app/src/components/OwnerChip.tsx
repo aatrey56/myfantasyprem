@@ -41,7 +41,9 @@ export function OwnerChip({
         flexShrink: mine ? 0 : 1,
         minWidth: 0,
         maxWidth: OWNER_CHIP_MAX_WIDTH,
-        height: 20,
+        // Grows with the user's text size rather than clipping it.
+        minHeight: 20,
+        paddingVertical: 1,
         paddingHorizontal: 6,
         flexDirection: 'row',
         alignItems: 'center',
