@@ -350,11 +350,20 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 			gw = &g
 		}
 		if newer[f.Gameweek] {
-			// A newer live snapshot set its status and scores: keep them.
+			// A newer live snapshot's progress stays: a started, finished or
+			// in-play fixture keeps its status and scores. An unplayed one
+			// takes the season's status (postponed, rescheduled).
 			batch.Queue(`INSERT INTO fixtures (id, season, gameweek, home_club_id, away_club_id, kickoff_at, status, home_score, away_score)
 			             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			             ON CONFLICT (id) DO UPDATE SET gameweek = EXCLUDED.gameweek, home_club_id = EXCLUDED.home_club_id,
-			               away_club_id = EXCLUDED.away_club_id, kickoff_at = EXCLUDED.kickoff_at, updated_at = now()`,
+			               away_club_id = EXCLUDED.away_club_id, kickoff_at = EXCLUDED.kickoff_at,
+			               status = CASE WHEN fixtures.status IN ('live', 'finished_provisional', 'finished')
+			                             THEN fixtures.status ELSE EXCLUDED.status END,
+			               home_score = CASE WHEN fixtures.status IN ('live', 'finished_provisional', 'finished')
+			                                 THEN fixtures.home_score ELSE EXCLUDED.home_score END,
+			               away_score = CASE WHEN fixtures.status IN ('live', 'finished_provisional', 'finished')
+			                                 THEN fixtures.away_score ELSE EXCLUDED.away_score END,
+			               updated_at = now()`,
 				f.ID, Season, gw, f.HomeClubID, f.AwayClubID, f.KickoffAt, f.Status, f.HomeScore, f.AwayScore)
 			continue
 		}

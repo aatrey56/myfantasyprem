@@ -100,3 +100,90 @@ func firstIn(fxs []Fixture, gw int) string {
 	}
 	return ""
 }
+
+// FPL postpones a fixture by clearing its kickoff and keeping its event
+// number. A season refresh that carries this, racing a newer live ingest of
+// that gameweek, must still postpone the unplayed fixture; only played
+// fixtures keep their live state.
+func TestSeasonPostponesUnplayedFixtureDespiteNewerLive(t *testing.T) {
+	impls(t, func(t *testing.T, repo Repo) {
+		in, src, st := ingestAll(t, repo)
+		fixtures, err := src.Fixtures(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := src.Bootstrap(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A gameweek 2 match the season still lists as unplayed.
+		target := ""
+		unplayed := make([]provider.Fixture, len(fixtures))
+		for i, f := range fixtures {
+			if f.Gameweek == 2 && target == "" {
+				target = f.ExternalID
+				f.Status, f.HomeScore, f.AwayScore = provider.FixtureScheduled, nil, nil
+			}
+			unplayed[i] = f
+		}
+		if target == "" {
+			t.Fatal("no gameweek 2 fixture")
+		}
+		if err := in.Season(ctx, b, unplayed, st); err != nil {
+			t.Fatal(err)
+		}
+		asOf, err := repo.LiveIssued(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ticket, err := repo.LiveTicket(ctx, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		live, err := src.EventLive(ctx, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The live payload also lists it unplayed.
+		for i, f := range live.Fixtures {
+			if f.ExternalID == target {
+				live.Fixtures[i].Status = provider.FixtureScheduled
+				live.Fixtures[i].HomeScore, live.Fixtures[i].AwayScore = nil, nil
+			}
+		}
+		if _, err := in.LiveTicket(ctx, ticket, live, st); err != nil {
+			t.Fatal(err)
+		}
+		season := make([]provider.Fixture, len(unplayed))
+		for i, f := range unplayed {
+			if f.ExternalID == target {
+				f.Status, f.KickoffAt = provider.FixturePostponed, nil
+			}
+			season[i] = f
+		}
+		if err := in.SeasonAsOf(ctx, asOf, b, season, st); err != nil {
+			t.Fatal(err)
+		}
+		after, err := repo.Fixtures(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		postponed := 0
+		for _, f := range after {
+			if f.Gameweek != 2 {
+				continue
+			}
+			if f.Status == FixturePostponed {
+				postponed++
+				if f.KickoffAt != nil {
+					t.Errorf("postponed fixture %s kickoff %v, want none", f.ID, f.KickoffAt)
+				}
+			} else if f.KickoffAt == nil {
+				t.Errorf("fixture %s is %s with no kickoff, want postponed", f.ID, f.Status)
+			}
+		}
+		if postponed != 1 {
+			t.Errorf("%d postponed gameweek 2 fixtures, want the 1 the season postponed", postponed)
+		}
+	})
+}

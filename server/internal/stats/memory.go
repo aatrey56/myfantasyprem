@@ -281,7 +281,9 @@ func (m *Memory) Apply(_ context.Context, b Batch) error {
 		m.gameweeks[g.Number] = g
 	}
 	for _, f := range b.Fixtures {
-		if old, ok := m.fixtures[f.ID]; ok && b.FixturesAsOf != nil && m.ingested[f.Gameweek] > b.FixturesAsOf[f.Gameweek] {
+		if old, ok := m.fixtures[f.ID]; ok && b.FixturesAsOf != nil && m.ingested[f.Gameweek] > b.FixturesAsOf[f.Gameweek] && old.Started() {
+			// Only live progress outranks the season; an unplayed fixture
+			// takes the season's status.
 			f.Status, f.HomeScore, f.AwayScore = old.Status, old.HomeScore, old.AwayScore
 		}
 		m.fixtures[f.ID] = f
