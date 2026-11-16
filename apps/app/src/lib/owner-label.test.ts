@@ -1,4 +1,6 @@
-import { firstNameOf, ownerChipLabel, parseOwnerLabel } from './owner-label';
+import { AVATAR_PALETTE, contrastRatio, userColor } from './identity';
+import { firstNameOf, ownerChipColors, ownerChipLabel, parseOwnerLabel } from './owner-label';
+import { darkColors } from '@/theme';
 
 const team = (name: string, managerName: string) => ({ name, managerName });
 
@@ -91,6 +93,33 @@ describe('ownerChipLabel', () => {
     expect(ownerChipLabel(team("Gaffer's Army", 'Priya N.'), false, 'team_name').text).toBe(
       "Gaffer's Army",
     );
+  });
+});
+
+describe('owner chip colour', () => {
+  it("uses the team's avatar colour: the stored one, else the hashed one", () => {
+    expect(
+      ownerChipLabel({ ...team('Team A', 'Sam'), avatarColor: '#22C55E' }, false, 'first_name')
+        .color,
+    ).toBe('#22C55E');
+    expect(ownerChipLabel(team('Team A', 'Sam'), false, 'first_name').color).toBe(
+      userColor('Team A').bg,
+    );
+    expect(
+      ownerChipLabel({ ...team('Team A', 'Sam'), avatarColor: 'red' }, false, 'first_name').color,
+    ).toBe(userColor('Team A').bg);
+  });
+
+  // The app has one (dark) theme; every palette colour, yellow included,
+  // keeps the chip text at WCAG AA.
+  it.each([...AVATAR_PALETTE])('keeps chip text readable on %s (4.5:1)', (color) => {
+    const { background, text } = ownerChipColors(color, false, darkColors);
+    expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps You readable on the accent', () => {
+    const { background, text } = ownerChipColors('#EAB308', true, darkColors);
+    expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

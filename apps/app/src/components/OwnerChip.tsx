@@ -2,8 +2,8 @@ import { View } from 'react-native';
 
 import { AppText } from './AppText';
 import { useOwnerLabelMode } from '@/hooks/useOwnerLabelMode';
-import { ownerChipLabel } from '@/lib/owner-label';
-import { tint, useTheme } from '@/theme';
+import { ownerChipColors, ownerChipLabel, type OwnerTeam } from '@/lib/owner-label';
+import { useTheme } from '@/theme';
 
 /** The widest a chip gets; a longer name ends in an ellipsis. */
 export const OWNER_CHIP_MAX_WIDTH = 96;
@@ -19,7 +19,7 @@ export function OwnerChip({
   a11y,
   testID,
 }: {
-  team: { name: string; managerName: string };
+  team: OwnerTeam;
   mine: boolean;
   /** The full owner, read out in place of the shortened text. */
   a11y?: string;
@@ -28,6 +28,7 @@ export function OwnerChip({
   const { colors, radii } = useTheme();
   const [mode] = useOwnerLabelMode();
   const { text, color } = ownerChipLabel(team, mine, mode);
+  const fill = ownerChipColors(color, mine, colors);
   return (
     <View
       testID={testID ?? (mine ? 'owner-badge-mine' : 'owner-badge')}
@@ -44,8 +45,8 @@ export function OwnerChip({
         alignItems: 'center',
         borderRadius: radii.sm,
         borderWidth: 1,
-        borderColor: mine ? colors.accent : tint(color, colors.surface, 0.55),
-        backgroundColor: mine ? colors.accent : tint(color, colors.surface, 0.18),
+        borderColor: fill.border,
+        backgroundColor: fill.background,
       }}
     >
       <AppText
@@ -53,7 +54,7 @@ export function OwnerChip({
         weight="bold"
         numberOfLines={1}
         aria-hidden
-        color={mine ? colors.onAccent : colors.text}
+        color={fill.text}
         style={{ flexShrink: 1 }}
       >
         {text}

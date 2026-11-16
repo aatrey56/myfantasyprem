@@ -1,4 +1,5 @@
 import { userColor } from './identity';
+import { tint, type ColorTokens } from '@/theme/tokens';
 
 /** How an owner chip names a team's manager: `Sam` or `Sunday League Heroes`. */
 export type OwnerLabelMode = 'first_name' | 'team_name';
@@ -60,6 +61,13 @@ export function teamLabelOf(name: string): string {
   return name.trim() || 'Team';
 }
 
+/** The team a chip names. `avatarColor` when the API sends one. */
+export interface OwnerTeam {
+  name: string;
+  managerName: string;
+  avatarColor?: string | null;
+}
+
 export interface OwnerChipLabel {
   /** `You`, `Sam` or the team name. */
   text: string;
@@ -73,15 +81,32 @@ export interface OwnerChipLabel {
  * team-name mode, the team name.
  */
 export function ownerChipLabel(
-  team: { name: string; managerName: string },
+  team: OwnerTeam,
   mine: boolean,
   mode: OwnerLabelMode,
 ): OwnerChipLabel {
-  const color = userColor(team.name).bg;
+  const color = userColor(team.name, team.avatarColor).bg;
   if (mine) return { text: 'You', color };
   const text =
     mode === 'team_name'
       ? teamLabelOf(team.name)
       : (firstNameOf(team.managerName) ?? teamLabelOf(team.name));
   return { text, color };
+}
+
+/**
+ * A chip's fill, border and text: a light tint of the avatar colour over
+ * the surface with the body text colour, or solid accent for `You`.
+ */
+export function ownerChipColors(
+  color: string,
+  mine: boolean,
+  colors: Pick<ColorTokens, 'accent' | 'onAccent' | 'surface' | 'text'>,
+): { background: string; border: string; text: string } {
+  if (mine) return { background: colors.accent, border: colors.accent, text: colors.onAccent };
+  return {
+    background: tint(color, colors.surface, 0.18),
+    border: tint(color, colors.surface, 0.55),
+    text: colors.text,
+  };
 }
