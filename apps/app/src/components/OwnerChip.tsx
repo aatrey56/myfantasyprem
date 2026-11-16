@@ -32,6 +32,8 @@ export function OwnerChip({
   return (
     <View
       testID={testID ?? (mine ? 'owner-badge-mine' : 'owner-badge')}
+      // One element to VoiceOver and TalkBack, read by the full owner.
+      accessible
       accessibilityLabel={a11y ?? `${team.name}${mine ? ' (your team)' : ''}`}
       {...({ title: team.name } as object)}
       style={{
