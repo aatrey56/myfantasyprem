@@ -1,9 +1,9 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 import { QueryClientContext } from '@tanstack/react-query';
 import { useContext, type ComponentProps } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 
-import { AppText } from '../AppText';
+import { AppText, MAX_FONT_SCALE } from '../AppText';
 import { pressFeedback, type PressState } from '../pressable';
 import { PressableLink } from '../PressableLink';
 import { WinChanceBar } from '../projections/WinChance';
@@ -21,7 +21,7 @@ import {
   type AnySide,
   type TeamRecord,
 } from '@/lib/matchup';
-import { useTheme } from '@/theme';
+import { lineHeights, useTheme } from '@/theme';
 
 type Side = AnySide;
 
@@ -198,6 +198,18 @@ function Card({
   );
 }
 
+/**
+ * Two lines of team name at the system text size (capped as body text is),
+ * so a larger text setting never clips the second line.
+ */
+export function nameMinHeight(fontScale: number): number {
+  const scale = Math.min(
+    MAX_FONT_SCALE.body,
+    Math.max(1, Number.isFinite(fontScale) ? fontScale : 1),
+  );
+  return Math.ceil(lineHeights.body * scale) * 2;
+}
+
 function Names({
   side,
   records,
@@ -207,7 +219,7 @@ function Names({
   records: ReadonlyMap<string, TeamRecord>;
   align: 'left' | 'right';
 }) {
-  const { lineHeights } = useTheme();
+  const { fontScale } = useWindowDimensions();
   return (
     <View
       style={{
@@ -223,7 +235,7 @@ function Names({
         weight="bold"
         numberOfLines={2}
         testID={`matchup-name-${align}`}
-        style={{ textAlign: align, maxWidth: '100%', minHeight: lineHeights.body * 2 }}
+        style={{ textAlign: align, maxWidth: '100%', minHeight: nameMinHeight(fontScale) }}
       >
         {sideName(side)}
       </AppText>
