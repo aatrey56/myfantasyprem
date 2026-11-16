@@ -287,8 +287,8 @@ type Repo interface {
 	Status(ctx context.Context) (st Status, ok bool, err error)
 	PollState(ctx context.Context) (PollState, error)
 
-	// LiveTicket issues gameweek gw's next live fetch ticket: higher than
-	// every ticket issued for it before, by any process. Taken before a
+	// LiveTicket issues gameweek gw's next live fetch ticket for Season:
+	// higher than every ticket issued for it before, by any process. Taken before a
 	// fetch, it orders snapshots by when they were asked for, not by
 	// clocks that can step back.
 	LiveTicket(ctx context.Context, gw int) (int64, error)

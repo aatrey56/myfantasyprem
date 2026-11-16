@@ -419,6 +419,7 @@ const liveLock = 0x6c697665 // "live"
 // claimTicket refuses (ErrStale) a live snapshot whose fetch ticket is
 // lower than the highest one applied for gameweek gw, and records it
 // otherwise (ticket 0: no check, the gameweek is only marked ingested).
+// Tickets are per season (Season).
 // The gameweek's lock, held to the end of the transaction, makes the
 // check and the row writes one step against a concurrent ingest (the
 // poller and an admin backfill).
@@ -426,10 +427,10 @@ func claimTicket(ctx context.Context, tx pgx.Tx, gw int, ticket int64) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, liveLock, gw); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO live_fetched (gameweek, issued, ingested) VALUES ($1, $2, $2)
-	                          ON CONFLICT (gameweek) DO UPDATE
+	tag, err := tx.Exec(ctx, `INSERT INTO live_fetched (season, gameweek, issued, ingested) VALUES ($1, $2, $3, $3)
+	                          ON CONFLICT (season, gameweek) DO UPDATE
 	                          SET ingested = GREATEST(live_fetched.ingested, EXCLUDED.ingested)
-	                          WHERE EXCLUDED.ingested = 0 OR COALESCE(live_fetched.ingested, 0) <= EXCLUDED.ingested`, gw, ticket)
+	                          WHERE EXCLUDED.ingested = 0 OR COALESCE(live_fetched.ingested, 0) <= EXCLUDED.ingested`, Season, gw, ticket)
 	if err != nil {
 		return err
 	}
@@ -441,9 +442,9 @@ func claimTicket(ctx context.Context, tx pgx.Tx, gw int, ticket int64) error {
 
 func (p *Postgres) LiveTicket(ctx context.Context, gw int) (int64, error) {
 	var t int64
-	err := p.pool.QueryRow(ctx, `INSERT INTO live_fetched (gameweek, issued) VALUES ($1, 1)
-	                             ON CONFLICT (gameweek) DO UPDATE SET issued = live_fetched.issued + 1
-	                             RETURNING issued`, gw).Scan(&t)
+	err := p.pool.QueryRow(ctx, `INSERT INTO live_fetched (season, gameweek, issued) VALUES ($1, $2, 1)
+	                             ON CONFLICT (season, gameweek) DO UPDATE SET issued = live_fetched.issued + 1
+	                             RETURNING issued`, Season, gw).Scan(&t)
 	return t, err
 }
 

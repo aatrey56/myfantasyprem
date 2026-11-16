@@ -27,7 +27,7 @@ type Memory struct {
 	version   int64                // the last mark version
 	external  map[[3]string]string // provider, entity, external id -> id
 	snapshots map[[2]any][]byte    // kind, gameweek -> last payload
-	issued    map[int]int64        // gameweek -> last live ticket issued
+	issued    map[int]int64        // gameweek -> last live ticket issued (Memory holds one season)
 	ingested  map[int]int64        // gameweek -> highest live ticket applied
 	// SnapshotCount counts stored (deduplicated) snapshots, for tests.
 	SnapshotCount int
