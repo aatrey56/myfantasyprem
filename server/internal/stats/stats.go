@@ -261,11 +261,12 @@ type LiveRows struct {
 	Rows     []PlayerFixture
 	// Players replaces the gameweek's PlayerGameweek rows when not nil.
 	Players []PlayerGameweek
-	// FetchedAt is when upstream sent the snapshot. When set, Apply
-	// refuses (ErrStale) a snapshot fetched before the newest one already
-	// applied for the gameweek, and records it otherwise. Zero: no check
-	// (a source that does not stamp its data).
-	FetchedAt time.Time
+	// Ticket is the fetch ticket (Repo.LiveTicket) taken before the
+	// snapshot was fetched. When set, Apply refuses (ErrStale) a snapshot
+	// whose ticket is lower than one already applied for the gameweek, and
+	// records it otherwise; an equal ticket is the same fetch retried. 0:
+	// no check (a caller that does not order its fetches, the demo seed).
+	Ticket int64
 }
 
 // Repo stores tier-1 data.
@@ -285,6 +286,12 @@ type Repo interface {
 	// Status returns the season position; ok is false before any ingest.
 	Status(ctx context.Context) (st Status, ok bool, err error)
 	PollState(ctx context.Context) (PollState, error)
+
+	// LiveTicket issues gameweek gw's next live fetch ticket: higher than
+	// every ticket issued for it before, by any process. Taken before a
+	// fetch, it orders snapshots by when they were asked for, not by
+	// clocks that can step back.
+	LiveTicket(ctx context.Context, gw int) (int64, error)
 
 	// ExternalIDs maps upstream ids to ours for one provider and entity.
 	ExternalIDs(ctx context.Context, provider, entity string) (map[string]string, error)

@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"slices"
 	"sync"
-	"time"
 )
 
 // Memory is the in-memory Repo, for unit tests and the database-less dev
@@ -28,7 +27,8 @@ type Memory struct {
 	version   int64                // the last mark version
 	external  map[[3]string]string // provider, entity, external id -> id
 	snapshots map[[2]any][]byte    // kind, gameweek -> last payload
-	fetched   map[int]time.Time    // gameweek -> newest live FetchedAt applied
+	issued    map[int]int64        // gameweek -> last live ticket issued
+	ingested  map[int]int64        // gameweek -> highest live ticket applied
 	// SnapshotCount counts stored (deduplicated) snapshots, for tests.
 	SnapshotCount int
 }
@@ -221,6 +221,16 @@ func sameRow(a, b PlayerFixture) bool {
 	return reflect.DeepEqual(a, b)
 }
 
+func (m *Memory) LiveTicket(_ context.Context, gw int) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.issued == nil {
+		m.issued = map[int]int64{}
+	}
+	m.issued[gw]++
+	return m.issued[gw], nil
+}
+
 func (m *Memory) Apply(_ context.Context, b Batch) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -230,14 +240,14 @@ func (m *Memory) Apply(_ context.Context, b Batch) error {
 		}
 	}
 	// Under m.mu, like the rows it guards: the check and the write are one.
-	if lv := b.Live; lv != nil && !lv.FetchedAt.IsZero() {
-		if m.fetched[lv.Gameweek].After(lv.FetchedAt) {
+	if lv := b.Live; lv != nil {
+		if lv.Ticket > 0 && m.ingested[lv.Gameweek] > lv.Ticket {
 			return ErrStale
 		}
-		if m.fetched == nil {
-			m.fetched = map[int]time.Time{}
+		if m.ingested == nil {
+			m.ingested = map[int]int64{}
 		}
-		m.fetched[lv.Gameweek] = lv.FetchedAt
+		m.ingested[lv.Gameweek] = max(m.ingested[lv.Gameweek], lv.Ticket)
 	}
 	for _, mp := range b.Mappings {
 		m.external[[3]string{b.Provider, mp.Entity, mp.ExternalID}] = mp.ID

@@ -293,8 +293,8 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 			return err
 		}
 	}
-	if lv := b.Live; lv != nil && !lv.FetchedAt.IsZero() {
-		if err := claimFresh(ctx, tx, lv.Gameweek, lv.FetchedAt); err != nil {
+	if lv := b.Live; lv != nil {
+		if err := claimTicket(ctx, tx, lv.Gameweek, lv.Ticket); err != nil {
 			return err
 		}
 	}
@@ -416,18 +416,20 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 // gameweek) that serialise live ingests of one gameweek across processes.
 const liveLock = 0x6c697665 // "live"
 
-// claimFresh refuses (ErrStale) a live snapshot fetched before the newest
-// one applied for gameweek gw, and records it otherwise. The gameweek's
-// lock, held to the end of the transaction, makes the check and the
-// row writes one step against a concurrent ingest (the poller and an
-// admin backfill).
-func claimFresh(ctx context.Context, tx pgx.Tx, gw int, at time.Time) error {
+// claimTicket refuses (ErrStale) a live snapshot whose fetch ticket is
+// lower than the highest one applied for gameweek gw, and records it
+// otherwise (ticket 0: no check, the gameweek is only marked ingested).
+// The gameweek's lock, held to the end of the transaction, makes the
+// check and the row writes one step against a concurrent ingest (the
+// poller and an admin backfill).
+func claimTicket(ctx context.Context, tx pgx.Tx, gw int, ticket int64) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, liveLock, gw); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO live_fetched (gameweek, fetched_at) VALUES ($1, $2)
-	                          ON CONFLICT (gameweek) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
-	                          WHERE live_fetched.fetched_at <= EXCLUDED.fetched_at`, gw, at)
+	tag, err := tx.Exec(ctx, `INSERT INTO live_fetched (gameweek, issued, ingested) VALUES ($1, $2, $2)
+	                          ON CONFLICT (gameweek) DO UPDATE
+	                          SET ingested = GREATEST(live_fetched.ingested, EXCLUDED.ingested)
+	                          WHERE EXCLUDED.ingested = 0 OR COALESCE(live_fetched.ingested, 0) <= EXCLUDED.ingested`, gw, ticket)
 	if err != nil {
 		return err
 	}
@@ -435,6 +437,14 @@ func claimFresh(ctx context.Context, tx pgx.Tx, gw int, at time.Time) error {
 		return ErrStale
 	}
 	return nil
+}
+
+func (p *Postgres) LiveTicket(ctx context.Context, gw int) (int64, error) {
+	var t int64
+	err := p.pool.QueryRow(ctx, `INSERT INTO live_fetched (gameweek, issued) VALUES ($1, 1)
+	                             ON CONFLICT (gameweek) DO UPDATE SET issued = live_fetched.issued + 1
+	                             RETURNING issued`, gw).Scan(&t)
+	return t, err
 }
 
 // mintLock is the advisory lock key that serialises ingests minting ids.

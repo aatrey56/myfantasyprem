@@ -475,6 +475,10 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 
 	newGW := gw != p.lastGW
 	if mode != stats.ModeIdle || newGW || w.Started(gw) || p.rescore[gw] {
+		ticket, err := p.Stats.LiveTicket(ctx, gw)
+		if err != nil {
+			return "", 0, 0, err
+		}
 		live, err := p.Source.EventLive(ctx, gw)
 		switch {
 		case errors.Is(err, provider.ErrNotFound) && !kickedOff(w, gw, now):
@@ -488,7 +492,7 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		case err != nil:
 			return "", 0, 0, err
 		default:
-			changed, err := p.ingestLive(ctx, live, st)
+			changed, err := p.ingestLive(ctx, ticket, live, st)
 			if err != nil {
 				return "", 0, 0, err
 			}
@@ -564,8 +568,10 @@ func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus)
 // ingestLive ingests one gameweek's live data. If it names a player added
 // upstream since the last bootstrap ingest, bootstrap is refreshed at once
 // and the ingest retried. (Fixtures come with the live data itself.)
-func (p *Poller) ingestLive(ctx context.Context, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
-	changed, err := p.Ingester.Live(ctx, live, st)
+// ticket is the fetch ticket taken before live was fetched; the retry
+// keeps it, being the same snapshot.
+func (p *Poller) ingestLive(ctx context.Context, ticket int64, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
+	changed, err := p.Ingester.LiveTicket(ctx, ticket, live, st)
 	if !errors.Is(err, stats.ErrUnmapped) {
 		return changed, err
 	}
@@ -575,7 +581,7 @@ func (p *Poller) ingestLive(ctx context.Context, live *provider.EventLive, st *p
 	if err := p.refreshSeason(ctx, p.status); err != nil {
 		return nil, err
 	}
-	return p.Ingester.Live(ctx, live, st)
+	return p.Ingester.LiveTicket(ctx, ticket, live, st)
 }
 
 // rescoreGW rescores a gameweek. A failure marks it for a full rescore on
@@ -934,12 +940,16 @@ func (p *Poller) Backfill(ctx context.Context, g int, force bool) (changed int, 
 // settle fetches a closed gameweek's live data, ingests it and rescores
 // every league for it with sc.
 func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek, sc Recomputer) (league.RecomputeResult, error) {
+	ticket, err := p.Stats.LiveTicket(ctx, g)
+	if err != nil {
+		return league.RecomputeResult{}, err
+	}
 	live, err := p.Source.EventLive(ctx, g)
 	if err != nil {
 		return league.RecomputeResult{}, err
 	}
 	st := &provider.GameweekStatus{Current: g, BonusAdded: info.BonusAdded, DataChecked: info.DataChecked}
-	changed, err := p.ingestLive(ctx, live, st)
+	changed, err := p.ingestLive(ctx, ticket, live, st)
 	if err != nil {
 		return league.RecomputeResult{}, err
 	}
