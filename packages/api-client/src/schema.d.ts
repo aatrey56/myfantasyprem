@@ -2145,10 +2145,17 @@ export interface components {
         /**
          * @description Client settings.
          * @example {
-         *       "brandedAssets": true
+         *       "brandedAssets": true,
+         *       "signIn": {
+         *         "email": false,
+         *         "apple": false,
+         *         "google": false,
+         *         "claimLink": true
+         *       }
          *     }
          */
         AppConfig: {
+            signIn: components["schemas"]["SignInMethods"];
             /**
              * @description Whether `/v1/assets/*` serves official crests, shirts and player
              *     photos (the server's BRANDED_ASSETS). A build may still turn
@@ -2160,6 +2167,28 @@ export interface components {
              *     PushManager.subscribe; null when Web Push is not configured.
              */
             webPushPublicKey?: string | null;
+        };
+        /**
+         * @description Which ways of signing in this server accepts. A client shows only
+         *     these; with none of email, Apple or Google on, people get in only
+         *     through a claim link or a sign-in link sent to them.
+         */
+        SignInMethods: {
+            /**
+             * @description Magic link and code by email (`POST /v1/auth/email`): an email
+             *     provider is configured (EMAIL_PROVIDER resend, or log in
+             *     development).
+             */
+            email: boolean;
+            /** @description Sign in with Apple (APPLE_CLIENT_IDS is set). */
+            apple: boolean;
+            /** @description Sign in with Google (GOOGLE_CLIENT_IDS is set). */
+            google: boolean;
+            /**
+             * @description A seat's claim link signs a signed-out person in
+             *     (CLAIM_LINK_SIGNIN).
+             */
+            claimLink: boolean;
         };
         AppConfigResponse: {
             data: components["schemas"]["AppConfig"];

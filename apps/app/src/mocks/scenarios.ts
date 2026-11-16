@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw';
 
 import { findFixture, isInSeason, leagues } from './data';
-import { fixtureDetail, ok, problem } from './handlers';
+import { fixtureDetail, MOCK_SIGN_IN, ok, problem } from './handlers';
 import { mockPhase, type InSeasonLeague } from './league';
 import { leagueStatus } from './status';
 
@@ -78,7 +78,19 @@ export const scenarios = {
       await delay(SLOW_LIST_MS);
     }),
   ],
-  'branded-off': [http.get('*/v1/config', () => ok({ brandedAssets: false }))],
+  'branded-off': [
+    http.get('*/v1/config', () => ok({ brandedAssets: false, signIn: MOCK_SIGN_IN })),
+  ],
+  // Production's setup: no email, Apple or Google sign-in, so the sign-in
+  // page says the league is invite-only (claim and sign-in links still work).
+  'sign-in-invite-only': [
+    http.get('*/v1/config', () =>
+      ok({
+        brandedAssets: true,
+        signIn: { email: false, apple: false, google: false, claimLink: true },
+      }),
+    ),
+  ],
   // Switched on, but every image is missing: the generic shirts as fallback.
   'assets-missing': [http.get(ASSETS, imageMissing)],
   // The Status page moved on server-side (up 7 places): shows once the tab refetches.

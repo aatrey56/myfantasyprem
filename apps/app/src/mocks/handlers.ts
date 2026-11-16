@@ -126,6 +126,9 @@ export const UNKNOWN_FPL_LEAGUE_ID = 404404;
  */
 export const NO_FPL_DATA_FPL_LEAGUE_ID = 409409;
 
+/** The mocks accept every way of signing in (GET /v1/config `signIn`). */
+export const MOCK_SIGN_IN = { email: true, apple: true, google: true, claimLink: true };
+
 const IMPORT_UNAVAILABLE = {
   status: 409,
   title: 'Import unavailable',
@@ -1408,6 +1411,8 @@ const leagueHandlers = [
   http.get<never, never, DefaultBodyType>('*/v1/config', () =>
     ok({
       brandedAssets: true,
+      // Every sign-in method on (scenario `sign-in-invite-only` turns them off).
+      signIn: MOCK_SIGN_IN,
       // A throwaway P-256 key: the mocks never send a push.
       webPushPublicKey:
         'BNmYBLtPWZMm8yvbbIb_bcpdTnA-G-bRy3geLONz6j8KkyQkGHBrbM_tMD4aIr-S9ckpYux3utXJAosiIzi1h0E',
