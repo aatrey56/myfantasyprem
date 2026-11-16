@@ -2,6 +2,7 @@ package poller
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -308,4 +309,35 @@ func TestRealDraftFinishedGameweekIsFinal(t *testing.T) {
 			t.Errorf("poll state = %+v", ps)
 		}
 	})
+}
+
+// A catch-up fetch that hits an upstream error is retried with the
+// poller's backoff (LiveInterval 30 s, doubling per failing poll, capped
+// at MaxBackoff 10 min), not after the idle wait of hours; once it
+// succeeds the wait is the mode's again.
+func TestCatchUpRetriesAfterUpstreamErrorWithBackoff(t *testing.T) {
+	f := newFixtureAt(t, stats.NewMemory(), realDir, realClock)
+	for g := 1; g <= 5; g++ {
+		f.src.liveErr[g] = fmt.Errorf("fpl: GET /event/%d/live: %w: status 503", g, provider.ErrUpstream)
+	}
+	// Queued 5..1, one fetch per poll, each fails: 30 s, 1 min, 2 min,
+	// 4 min, 8 min, then capped at 10 min.
+	want := []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 10 * time.Minute}
+	for i, w := range want {
+		got := f.p.Tick(ctx)
+		if got != w {
+			t.Fatalf("poll %d: wait %v, want %v", i+1, got, w)
+		}
+		f.advance(got)
+	}
+	clear(f.src.liveErr)
+	var last time.Duration
+	for range 5 {
+		last = f.p.Tick(ctx)
+		f.advance(last)
+	}
+	if f.src.calls["live/1"] == 0 || last <= 10*time.Minute {
+		t.Errorf("after recovery: gameweek 1 fetched %d times, wait %v (want the idle wait, over 10 min)",
+			f.src.calls["live/1"], last)
+	}
 }

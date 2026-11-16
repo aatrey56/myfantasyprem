@@ -194,6 +194,10 @@ type Poller struct {
 	// failed holds queued gameweeks whose last fetch failed; they go to
 	// the back of the queue so they cannot starve the others.
 	failed map[int]bool
+	// catchupFails counts consecutive polls whose catch-up fetch failed;
+	// while gameweeks are queued the next poll follows after the backoff
+	// for that many failures instead of the mode's wait.
+	catchupFails int
 	// startsChecked holds the gameweeks re-read without getting starts
 	// (stats.Repo.StartsChecked).
 	startsChecked map[int]bool
@@ -518,6 +522,10 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		// on soon rather than after an idle or unchecked wait of hours.
 		interval = min(interval, p.Config.LiveInterval)
 	}
+	if p.catchupFails > 0 && len(p.pending) > 0 {
+		// A catch-up fetch failed: retry after minutes, not hours.
+		interval = min(interval, p.backoff(p.Config.LiveInterval, p.catchupFails))
+	}
 	return mode, interval, gw, nil
 }
 
@@ -701,8 +709,17 @@ func (p *Poller) queueMissing(ctx context.Context, current int) {
 // while a gameweek not yet tried was still queued.
 func (p *Poller) reconcile(ctx context.Context, current int) bool {
 	if len(p.pending) == 0 {
+		p.catchupFails = 0
 		return false
 	}
+	failed := false
+	defer func() {
+		if failed {
+			p.catchupFails++
+		} else {
+			p.catchupFails = 0
+		}
+	}()
 	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
 	if err != nil {
 		p.Log.WarnContext(ctx, "poller: reconcile: load", "err", err)
@@ -745,6 +762,7 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		}
 		// Quiet: every queued gameweek is before the current one.
 		if _, err := p.settle(ctx, g, w.Gameweeks[g], p.quiet()); err != nil {
+			failed = true
 			p.failed[g] = true
 			p.Metrics.ReconcileFails.Add(1)
 			p.Log.WarnContext(ctx, "poller: reconcile failed; retrying next cycle", "gameweek", g, "err", err)
