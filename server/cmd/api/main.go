@@ -32,10 +32,9 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications/webpush"
 	"github.com/aatrey56/myfantasyprem/server/internal/poller"
-	"github.com/aatrey56/myfantasyprem/server/internal/provider"
+	"github.com/aatrey56/myfantasyprem/server/internal/pollerwire"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/realtime"
-	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 	"github.com/aatrey56/myfantasyprem/server/internal/store"
 	"github.com/aatrey56/myfantasyprem/server/internal/tags"
@@ -355,18 +354,8 @@ func historySource(cfg config.Config, log *slog.Logger) (history.Source, string)
 // and corrections go to notify (realtime).
 func newPoller(cfg config.Config, opts httpapi.Options, notify league.Notifier, n *notifications.Notifier, logger *slog.Logger) *poller.Poller {
 	log := logger.With("component", "poller", "source", cfg.PollerSource)
-	var src provider.StatsSource
-	providerName := cfg.PollerSource
-	if cfg.PollerSource == config.SourceDemo {
-		src = demo.Source(log)
-		providerName = demo.ProviderName
-	} else {
-		src = fpl.New(fpl.Options{BaseURL: cfg.FPLBaseURL, UserAgent: cfg.FPLUserAgent, Logger: log})
-	}
-	scorer := &league.Scorer{Leagues: opts.Leagues, Stats: opts.Stats, Rules: scoring.StandardLineup(), Log: log, Notify: notify,
-		Live: notifications.NewLive(n, log)}
-	p := poller.New(src, stats.NewIngester(opts.Stats, providerName, time.Now), opts.Stats, scorer, poller.Config{}, log)
-	p.News = &notifications.News{Leagues: opts.Leagues, Notifier: n, Log: log}
+	p := pollerwire.New(pollerwire.Options{Source: cfg.PollerSource, FPLBaseURL: cfg.FPLBaseURL, FPLUserAgent: cfg.FPLUserAgent,
+		Leagues: opts.Leagues, Stats: opts.Stats, Notify: notify, Notifier: n, Log: log})
 	p.Metrics = poller.PublishedMetrics()
 	return p
 }

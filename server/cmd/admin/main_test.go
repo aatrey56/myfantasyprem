@@ -15,6 +15,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/history"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/mirror"
+	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
@@ -213,5 +214,29 @@ func TestHistoryLine(t *testing.T) {
 	done := history.Result{Fetched: 2, Skipped: 3, Missing: 1}
 	if got := historyLine(done); got != "History: 2 players fetched, 3 already current, 1 with none upstream, 0 failed.\n" {
 		t.Errorf("done = %q", got)
+	}
+}
+
+// The backfill's poller carries the API poller's Live and News hooks
+// (pollerwire builds both): a backfill of the current gameweek stores its
+// goals and assists, so a later poll finds nothing changed and would never
+// send those notifications if the backfill did not.
+func TestBackfillPollerNotifiesLikeTheAPIPoller(t *testing.T) {
+	n := notifications.NewNotifier(notifications.NewMemory(time.Now))
+	p := backfillPoller(func(k string) string {
+		if k == "POLLER_SOURCE" {
+			return "demo"
+		}
+		return ""
+	}, league.NewMemory(), stats.NewMemory(), nil, n, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sc, ok := p.Scorer.(*league.Scorer)
+	if !ok {
+		t.Fatalf("scorer %T, want *league.Scorer", p.Scorer)
+	}
+	if _, ok := sc.Live.(*notifications.Live); !ok {
+		t.Errorf("backfill scorer Live hook %T, want *notifications.Live", sc.Live)
+	}
+	if _, ok := p.News.(*notifications.News); !ok {
+		t.Errorf("backfill News hook %T, want *notifications.News", p.News)
 	}
 }

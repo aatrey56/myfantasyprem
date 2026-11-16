@@ -40,7 +40,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications/webpush"
 	"github.com/aatrey56/myfantasyprem/server/internal/poller"
-	"github.com/aatrey56/myfantasyprem/server/internal/provider"
+	"github.com/aatrey56/myfantasyprem/server/internal/pollerwire"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/realtime"
 	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
@@ -146,15 +146,11 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 		if *gw < 1 || *gw > 38 {
 			return errors.New("backfill needs -gw between 1 and 38")
 		}
-		var src provider.StatsSource = fpl.New(fpl.Options{BaseURL: getenv("FPL_BASE_URL"), UserAgent: getenv("FPL_USER_AGENT"), Logger: log})
-		providerName := "fpl"
-		if getenv("POLLER_SOURCE") == "demo" {
-			src, providerName = demo.Source(log), demo.ProviderName
-		}
-		// Notify is for the current gameweek only: Backfill rescores an
-		// earlier one quietly (Poller.Quiet).
-		sc := &league.Scorer{Leagues: leagues, Stats: st, Rules: scoring.StandardLineup(), Log: log, Notify: api.Notifier}
-		p := poller.New(src, stats.NewIngester(st, providerName, time.Now), st, sc, poller.Config{}, log)
+		// Built as cmd/api builds its poller: a backfill of the current
+		// gameweek sends the goal, assist and clean-sheet notifications a
+		// poll would (a later poll finds nothing changed); an earlier one
+		// is rescored quietly.
+		p := backfillPoller(getenv, leagues, st, api.Notifier, notifications.NewNotifier(notifications.NewPostgres(pool, time.Now)), log)
 		changed, res, err := p.Backfill(ctx, *gw, *force)
 		if err != nil {
 			return err
@@ -312,4 +308,12 @@ func historyLine(res history.Result) string {
 	}
 	return fmt.Sprintf("History: %d players fetched, %d already current, %d with none upstream, %d failed.\n",
 		res.Fetched, res.Skipped, res.Missing, res.Failed)
+}
+
+// backfillPoller is the poller the backfill command runs: POLLER_SOURCE=demo
+// reads the embedded demo world, otherwise FPL at the client's pace.
+func backfillPoller(getenv func(string) string, leagues league.Repo, st stats.Repo, notify league.Notifier,
+	n *notifications.Notifier, log *slog.Logger) *poller.Poller {
+	return pollerwire.New(pollerwire.Options{Source: getenv("POLLER_SOURCE"), FPLBaseURL: getenv("FPL_BASE_URL"),
+		FPLUserAgent: getenv("FPL_USER_AGENT"), Leagues: leagues, Stats: st, Notify: notify, Notifier: n, Log: log})
 }
