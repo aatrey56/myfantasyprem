@@ -34,7 +34,8 @@ export function OwnerChip({
       accessibilityLabel={a11y ?? `${team.name}${mine ? ' (your team)' : ''}`}
       {...({ title: team.name } as object)}
       style={{
-        flexShrink: 1,
+        // `You` never shrinks; a name gives way to an ellipsis.
+        flexShrink: mine ? 0 : 1,
         minWidth: 0,
         maxWidth: OWNER_CHIP_MAX_WIDTH,
         height: 20,

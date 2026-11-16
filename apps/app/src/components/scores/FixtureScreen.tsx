@@ -269,7 +269,12 @@ function FixturePlayerRow({
   onPress?: () => void;
 }) {
   const { colors, spacing } = useTheme();
+  const { isWide } = useLayout();
   const badges = ownerBadges(p.owners);
+  // Readable chips over all of them: the rest as a count (all read out).
+  const limit = isWide ? 4 : 2;
+  const shown = badges.length > limit ? badges.slice(0, limit - 1) : badges;
+  const more = badges.length - shown.length;
   const mine = badges.some((b) => b.mine);
   const events = matchEvents(p.stats);
   const ownedBy = badges.map((b) => b.a11y).join(', ');
@@ -328,14 +333,26 @@ function FixturePlayerRow({
           style={{
             flexDirection: 'row',
             flexShrink: 1,
+            alignItems: 'center',
             justifyContent: 'flex-end',
             gap: 4,
             maxWidth: '45%',
           }}
         >
-          {badges.map((b) => (
+          {shown.map((b) => (
             <OwnerChip key={b.key} team={b.team} mine={b.mine} a11y={b.a11y} />
           ))}
+          {more > 0 ? (
+            <AppText
+              variant="caption"
+              weight="bold"
+              muted
+              testID="owner-badges-more"
+              style={{ flexShrink: 0 }}
+            >
+              {`+${more}`}
+            </AppText>
+          ) : null}
         </View>
       ) : null}
       <AppText
