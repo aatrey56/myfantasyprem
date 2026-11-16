@@ -97,6 +97,13 @@ func TestAdminCommands(t *testing.T) {
 	if g, err := league.NewPostgres(pool).Game(ctx, seeded.LeagueID); err != nil || g.MatchupsIn(6)[0].State != "final" {
 		t.Fatalf("gameweek 6 after backfill: %v", err)
 	}
+	// Gameweek 8 is not finished in the demo season (7 is current): it is
+	// refused without -force, and nothing is fetched or stored.
+	var refused bytes.Buffer
+	if err := run(ctx, []string{"backfill", "-gw", "8"}, env, &refused, io.Discard); err == nil ||
+		!strings.Contains(err.Error(), "gameweek not finished upstream: gameweek 8") || refused.Len() != 0 {
+		t.Fatalf("backfill of unfinished gameweek 8: err %v, out %q", err, refused.String())
+	}
 	env = plainEnv
 	if out := admin("prune-snapshots", "-keep", "1"); !strings.Contains(out, "Deleted") {
 		t.Fatalf("prune = %q", out)

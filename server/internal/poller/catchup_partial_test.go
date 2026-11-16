@@ -2,6 +2,7 @@ package poller_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -144,4 +145,30 @@ func TestCatchUpOfOldGameweeksIsQuiet(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Backfill refuses a gameweek upstream has not finished (it would store
+// partial data as if final) unless forced.
+func TestBackfillRefusesUnfinishedGameweekUnlessForced(t *testing.T) {
+	ctx := context.Background()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := stats.NewMemory()
+	src := &outage{StatsSource: demo.Source(quiet), current: 5, partial: true, live: map[int]int{}}
+	sc := &league.Scorer{Leagues: league.NewMemory(), Stats: repo, Rules: scoring.StandardLineup(), Log: quiet}
+	p := poller.New(src, stats.NewIngester(repo, demo.ProviderName, time.Now), repo, sc, poller.Config{}, quiet)
+	if _, _, err := p.Backfill(ctx, 5, false); !errors.Is(err, poller.ErrNotFinished) {
+		t.Fatalf("backfill of unfinished gameweek 5: err %v, want ErrNotFinished", err)
+	}
+	if src.live[5] != 0 {
+		t.Fatalf("refused backfill fetched gameweek 5 %d times", src.live[5])
+	}
+	if _, _, err := p.Backfill(ctx, 5, true); err != nil {
+		t.Fatalf("forced backfill: %v", err)
+	}
+	if rows, _ := repo.PlayerFixtures(ctx, 5); src.live[5] != 1 || len(rows) == 0 {
+		t.Fatalf("forced backfill: %d fetches, %d rows", src.live[5], len(rows))
+	}
+	if _, _, err := p.Backfill(ctx, 4, false); err != nil {
+		t.Fatalf("backfill of finished gameweek 4: %v", err)
+	}
 }

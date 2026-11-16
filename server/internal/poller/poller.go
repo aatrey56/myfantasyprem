@@ -46,6 +46,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -94,6 +95,10 @@ func (c Config) withDefaults() Config {
 	}
 	return c
 }
+
+// ErrNotFinished: Backfill was asked for a gameweek upstream has not
+// finished.
+var ErrNotFinished = errors.New("poller: gameweek not finished upstream")
 
 // Recomputer rescores leagues; *league.Scorer implements it.
 type Recomputer interface {
@@ -829,9 +834,12 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 // Backfill fetches gameweek g's live data now, after a bootstrap refresh
 // (for its finished and checked flags), ingests it as a poll would and
 // rescores it in full: the admin backfill command, for a gameweek the
-// poller missed. A gameweek before the current one is rescored quietly. It returns the players whose stats changed and the
-// rescore's result (every league).
-func (p *Poller) Backfill(ctx context.Context, g int) (changed int, res league.RecomputeResult, err error) {
+// poller missed. It returns the players whose stats changed and the
+// rescore's result (every league). A gameweek before the current one is
+// rescored quietly. It refuses (ErrNotFinished) a gameweek upstream has
+// not finished, whose data would be stored and scored as it stands,
+// unless force is set.
+func (p *Poller) Backfill(ctx context.Context, g int, force bool) (changed int, res league.RecomputeResult, err error) {
 	st, err := p.Source.GameweekStatus(ctx)
 	if err != nil {
 		return 0, res, err
@@ -845,6 +853,10 @@ func (p *Poller) Backfill(ctx context.Context, g int) (changed int, res league.R
 		return 0, res, err
 	}
 	info := w.Gameweeks[g]
+	if !info.Finished && !force {
+		return 0, res, fmt.Errorf("%w: gameweek %d (current %d); -force backfills its data as it stands",
+			ErrNotFinished, g, st.Current)
+	}
 	if g == st.Current {
 		info.BonusAdded, info.DataChecked = info.BonusAdded || st.BonusAdded, info.DataChecked || st.DataChecked
 	}

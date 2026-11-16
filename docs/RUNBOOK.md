@@ -262,11 +262,40 @@ GROUP BY 1` has no row for it.
   left), ingests it as final and rescores it in full. Look for
   `poller: finished gameweek has no stats; catching up` and `poller:
 earlier gameweek fetched and rescored` in the logs.
+  A gameweek FPL finished whose stored fixtures still say live or
+  scheduled, or whose bonus is provisional (the server went down
+  mid-gameweek), is fetched again the same way; a stored fixture missing
+  from a finished gameweek's live data is stored as `postponed`.
+  Caught-up gameweeks before the current one are rescored quietly: no
+  `matchups.updated`, `score.corrected` or push notifications.
 - To do it now, from a machine with `DATABASE_URL` (and FPL reachable):
-  `npm run admin -- backfill -gw 9` (add `-league lg_...` to also print
-  that league's changes). It refreshes bootstrap, fetches the gameweek's
-  live stats (`POLLER_SOURCE=demo` reads the demo world instead), ingests
-  them and rescores every in-season league. It is idempotent.
+  `npm run admin -- backfill -gw 9`. It refreshes bootstrap, fetches the
+  gameweek's live stats (`POLLER_SOURCE=demo` reads the demo world
+  instead), ingests them and rescores every in-season league. It is
+  idempotent. It prints exactly one line:
+
+  ```
+  Backfilled gameweek 9: 12 players' stats changed; rescored.
+  ```
+
+  With `-league lg_...` a second line gives that league's share of the
+  same rescore (no second rescore runs):
+
+  ```
+  Rescored gameweek 9 of lg_...: 3 team scores changed, 3 corrections.
+  ```
+
+  A gameweek before the current one is backfilled quietly (no
+  notifications, as above); the current gameweek notifies as a poll
+  would. A gameweek FPL has not finished is refused, so partial data is
+  not stored as final by mistake (on stderr, exit status 1):
+
+  ```
+  admin: poller: gameweek not finished upstream: gameweek 12 (current 12); -force backfills its data as it stands
+  ```
+
+  Add `-force` only when you mean to ingest it as it stands.
+
 - Check: the gameweek's matchups are `final` with non-zero scores and the
   standings show no phantom draws (an unscored matchup never counts).
 

@@ -59,7 +59,9 @@ func main() {
 
 const usage = `usage: admin <command> [flags]
   rescore -gw N [-league ID]   rescore gameweek N (all in-season leagues, or one)
-  backfill -gw N [-league ID]  fetch gameweek N's live stats (POLLER_SOURCE: fpl or demo), ingest and rescore it
+  backfill -gw N [-league ID] [-force]
+                               fetch finished gameweek N's live stats (POLLER_SOURCE: fpl or demo), ingest
+                               and rescore it; -force: one FPL has not finished
   prune-snapshots [-keep N]    keep the newest N raw snapshots per kind and gameweek (default 50)
   tick                         do every due job once
   run-waivers -league ID -gw N process gameweek N's waiver claims now
@@ -94,6 +96,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 	name := fs.String("name", "", "display name for a new account (session)")
 	existing := fs.Bool("existing", false, "refuse to create an account for an unknown email (session)")
 	all := fs.Bool("all", false, "refetch every player (fetch-history)")
+	force := fs.Bool("force", false, "backfill a gameweek FPL has not finished, as it stands (backfill)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -152,7 +155,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 		// earlier one quietly (Poller.Quiet).
 		sc := &league.Scorer{Leagues: leagues, Stats: st, Rules: scoring.StandardLineup(), Log: log, Notify: api.Notifier}
 		p := poller.New(src, stats.NewIngester(st, providerName, time.Now), st, sc, poller.Config{}, log)
-		changed, res, err := p.Backfill(ctx, *gw)
+		changed, res, err := p.Backfill(ctx, *gw, *force)
 		if err != nil {
 			return err
 		}
