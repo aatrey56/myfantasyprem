@@ -824,20 +824,15 @@ func (p *Poller) drop(g int) {
 // under way (the server went down mid-gameweek) is not, so it is fetched
 // again rather than left live, out of the table, for good.
 //
-// A gameweek upstream finished with no fixture left in it (a blank, or one
-// whose matches were all moved out: event null or another gameweek) is
-// settled once its live data was read (World.Blank, which also makes its
-// matchups final 0-0 in the standings): it has nothing to load, so it is
-// not fetched and rescored again on every refresh. Rows are not optional
-// otherwise: a gameweek whose fixtures were played has players with
-// minutes, and the ingest rejects a payload that says nobody played.
+// Rows are not optional: a gameweek whose fixtures were played has players
+// with minutes, and the ingest rejects a payload that says nobody played.
+// A finished gameweek with no fixture in it at all (a full blank, which
+// FPL has never had) is never loaded: it stays upcoming, out of the
+// standings, and the catch-up retries it with backoff.
 func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
 	lines, err := p.Stats.PlayerGameweeks(ctx, g)
 	if err != nil {
 		return false
-	}
-	if w.Blank(g) {
-		return true
 	}
 	if !p.linesComplete(g, lines) {
 		return false

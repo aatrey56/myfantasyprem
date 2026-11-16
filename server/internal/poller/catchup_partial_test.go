@@ -1,6 +1,7 @@
 package poller_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -30,6 +31,10 @@ type outageCase struct {
 	notified *notes
 	// quietFails makes the restarted poller's first quiet rescore fail.
 	quietFails bool
+	// waits, if set, gets the wait each restarted poll returned.
+	waits *[]time.Duration
+	// polls is the number of polls after the restart (default 6).
+	polls int
 }
 
 // failOnce fails its first Recompute, then delegates.
@@ -95,9 +100,12 @@ func (c outageCase) run(t *testing.T) (leagueID, userID string) {
 		q.Notify = nil
 		p.Quiet = &failOnce{Recomputer: &q}
 	}
-	for range 6 {
+	for range cmp.Or(c.polls, 6) {
 		clock = clock.Add(7 * time.Hour) // past BootstrapInterval: every poll refreshes the season
-		p.Tick(ctx)
+		wait := p.Tick(ctx)
+		if c.waits != nil {
+			*c.waits = append(*c.waits, wait)
+		}
 	}
 	return res.LeagueID, res.UserIDs[0]
 }

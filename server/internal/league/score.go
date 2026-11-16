@@ -111,23 +111,8 @@ func (w *World) ClubFixtures(clubID string, gw int) []stats.Fixture {
 	return out
 }
 
-// Blank reports whether gw is a verified blank: upstream finished it, no
-// fixture is left in it (none, or all postponed or moved out), and its
-// live data was read. Its matchups are played at 0-0 (a player with no
-// fixture scores 0). Without the read it is not: a past gameweek's
-// fixtures are known only from its live data, so a gameweek not read yet
-// also has none, and must not count as 0-0.
-func (w *World) Blank(gw int) bool {
-	g := w.Gameweeks[gw]
-	return g.Finished && g.LiveIngested && len(w.byGW[gw]) == 0
-}
-
-// State is the gameweek's score state (ADR 0005). A verified blank
-// (Blank) is final: nothing is left to play or correct.
+// State is the gameweek's score state (ADR 0005).
 func (w *World) State(gw int) scoring.ScoreState {
-	if w.Blank(gw) {
-		return scoring.StateFinal
-	}
 	var progress []scoring.FixtureProgress
 	for _, f := range w.byGW[gw] {
 		progress = append(progress, scoring.FixtureProgress{Started: f.Started(), Finished: f.Over()})

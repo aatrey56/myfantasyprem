@@ -40,8 +40,11 @@ type outage struct {
 	// give its fixtures no gameweek (event null) and its live data lists
 	// none, every player at 0 minutes.
 	blank bool
-	mu    sync.Mutex
-	live  map[int]int
+	// over makes the current gameweek's fixtures finished, so the poller
+	// waits as it does between gameweeks (hours) rather than live.
+	over bool
+	mu   sync.Mutex
+	live map[int]int
 }
 
 func (o *outage) GameweekStatus(ctx context.Context) (*provider.GameweekStatus, error) {
@@ -82,6 +85,9 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 		if f.Gameweek > o.current {
 			f.Status, f.HomeScore, f.AwayScore = provider.FixtureScheduled, nil, nil
 		}
+		if o.over && f.Gameweek == o.current {
+			f = finish(f)
+		}
 		out = append(out, f)
 	}
 	if o.blank && o.current >= 6 {
@@ -113,6 +119,19 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 	return out, nil
 }
 
+// finish returns f finished, its missing scores 0.
+func finish(f provider.Fixture) provider.Fixture {
+	zero := 0
+	f.Status = provider.FixtureFinished
+	if f.HomeScore == nil {
+		f.HomeScore = &zero
+	}
+	if f.AwayScore == nil {
+		f.AwayScore = &zero
+	}
+	return f
+}
+
 // movedFixture is the external id of outage.moved's fixture.
 const movedFixture = "moved-1"
 
@@ -135,6 +154,14 @@ func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, er
 		cp.Players = nil
 		for _, pl := range l.Players {
 			cp.Players = append(cp.Players, provider.PlayerLive{PlayerExternalID: pl.PlayerExternalID})
+		}
+		return &cp, nil
+	}
+	if err == nil && o.over && gw == o.current {
+		cp := *l
+		cp.Fixtures = nil
+		for _, f := range l.Fixtures {
+			cp.Fixtures = append(cp.Fixtures, finish(f))
 		}
 		return &cp, nil
 	}

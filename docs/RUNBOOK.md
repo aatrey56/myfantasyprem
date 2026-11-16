@@ -271,8 +271,9 @@ earlier gameweek fetched and rescored` in the logs.
 unsettled after a fetch; retrying with backoff`). A payload where nobody
   played a minute although fixtures are finished is refused
   (`stats: incomplete live snapshot`, logged at error) and retried the
-  same way. A finished gameweek with no fixture left in it (a blank) is
-  settled after one fetch.
+  same way. A finished gameweek with no fixture left in it at all (a full
+  blank; FPL has never had one) never settles: it stays upcoming, out of
+  the table, and is retried with backoff (at most every 10 minutes).
   Caught-up gameweeks before the current one are rescored quietly: no
   `matchups.updated`, `score.corrected` or push notifications.
 - To do it now, from a machine with `DATABASE_URL` (and FPL reachable):

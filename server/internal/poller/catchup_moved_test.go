@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/auth"
 	"github.com/aatrey56/myfantasyprem/server/internal/demo"
@@ -101,35 +103,43 @@ func TestAllZeroStatsForPlayedFixturesAreRejected(t *testing.T) {
 	})
 }
 
-// Gameweek 6 is a blank: FPL finished it and its fixture list moves
+// Gameweek 6 is a full blank: FPL finished it and its fixture list moves
 // every one of its fixtures out (event null), so nothing was played and
-// every player is at 0 minutes. It is settled after one fetch, not
-// requeued on every refresh.
+// every player is at 0 minutes. FPL has never had one, so it is not
+// scored as anything: it is never loaded, its matchups stay upcoming and
+// out of the table, and the catch-up keeps fetching it at the failure
+// backoff, never in a tight loop. Gameweek 7, current, is over, so the
+// poller is not in live mode and the backoff sets the pace.
 //
-// Its matchups count as played: FPL Draft plays every scheduled H2H
-// matchup, and a player with no fixture scores 0 (RESEARCH.md §7), so
-// each is 0-0, final, a draw (an average side's floor(mean of 0s) is 0
-// too). The table has six played for every team, gameweek 6 one draw.
-func TestBlankFinishedGameweekIsFetchedOnce(t *testing.T) {
+//	poll  fetches  wait
+//	1     6        30 s   (6 failed once)
+//	2     5        10 m   (5 caught up: no failure this poll)
+//	3-9   6        30 s, 1, 2, 4, 8, 10, 10 m (doubling, capped)
+func TestBlankFinishedGameweekStaysOutOfTheTable(t *testing.T) {
 	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
 		ctx := context.Background()
-		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 4,
-			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 4, blank: true, live: map[int]int{}}}
+		var waits []time.Duration
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 4, waits: &waits, polls: 9,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 4, blank: true, over: true, live: map[int]int{}}}
 		leagueID, userID := c.run(t)
 		if rows, _ := repo.PlayerFixtures(ctx, 6); len(rows) != 0 {
 			t.Fatalf("setup: blank gameweek 6 has %d rows", len(rows))
 		}
-		if c.src.live[6] != 1 || c.src.live[5] != 1 {
-			t.Errorf("over six season refreshes: live calls %v, want gameweeks 5 and 6 once each", c.src.live)
+		if c.src.live[5] != 1 || c.src.live[6] != 8 {
+			t.Errorf("over 9 polls: live calls %v, want gameweek 5 once and 6 on every other poll (8)", c.src.live)
 		}
-		checkCounted(t, c, leagueID, userID)
+		m := time.Minute
+		want := []time.Duration{30 * time.Second, 10 * m, 30 * time.Second, m, 2 * m, 4 * m, 8 * m, 10 * m, 10 * m}
+		if !slices.Equal(waits, want) {
+			t.Errorf("waits after each poll %v, want %v", waits, want)
+		}
 		g, err := leagues.Repo().Game(ctx, leagueID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, m := range g.MatchupsIn(6) {
-			if m.HomePoints != 0 || m.AwayPoints != 0 {
-				t.Errorf("blank gameweek 6 matchup %s: %d-%d, want 0-0", m.ID, m.HomePoints, m.AwayPoints)
+			if m.State != scoring.StateUpcoming {
+				t.Errorf("blank gameweek 6 matchup %s: state %s, want upcoming", m.ID, m.State)
 			}
 		}
 		l, err := leagues.Get(ctx, userID, leagueID)
@@ -140,16 +150,9 @@ func TestBlankFinishedGameweekIsFetchedOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		before := map[string]league.StandingRow{}
-		for _, r := range league.StandingsThrough(l, g, w, 5) {
-			before[r.TeamID] = r
-		}
 		for _, r := range league.StandingsThrough(l, g, w, 6) {
-			b := before[r.TeamID]
-			// 0-0: one draw, nothing for or against.
-			if r.Draws != b.Draws+1 || r.Wins != b.Wins || r.Losses != b.Losses || r.PointsFor != b.PointsFor || r.PointsAgainst != b.PointsAgainst {
-				t.Errorf("team %s gameweek 6: W%d D%d L%d %d-%d after W%d D%d L%d %d-%d, want one more draw only", r.TeamID,
-					r.Wins, r.Draws, r.Losses, r.PointsFor, r.PointsAgainst, b.Wins, b.Draws, b.Losses, b.PointsFor, b.PointsAgainst)
+			if r.Played != 5 {
+				t.Errorf("team %s: played %d through gameweek 6, want 5 (blank gameweek 6 left out)", r.TeamID, r.Played)
 			}
 		}
 	})

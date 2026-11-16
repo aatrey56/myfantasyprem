@@ -69,16 +69,14 @@ func (p *Postgres) Players(ctx context.Context) ([]Player, error) {
 
 func (p *Postgres) Gameweeks(ctx context.Context) ([]Gameweek, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT g.number, g.name, g.deadline_at, g.waiver_deadline_at, g.trade_deadline_at, g.finished, g.bonus_added, g.data_checked,
-		        lf.ingested IS NOT NULL
-		 FROM gameweeks g LEFT JOIN live_fetched lf ON lf.gameweek = g.number
-		 WHERE g.season = $1 ORDER BY g.number`, Season)
+		`SELECT number, name, deadline_at, waiver_deadline_at, trade_deadline_at, finished, bonus_added, data_checked
+		 FROM gameweeks WHERE season = $1 ORDER BY number`, Season)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Gameweek, error) {
 		var g Gameweek
-		err := r.Scan(&g.Number, &g.Name, &g.DeadlineAt, &g.WaiverDeadlineAt, &g.TradeDeadlineAt, &g.Finished, &g.BonusAdded, &g.DataChecked, &g.LiveIngested)
+		err := r.Scan(&g.Number, &g.Name, &g.DeadlineAt, &g.WaiverDeadlineAt, &g.TradeDeadlineAt, &g.Finished, &g.BonusAdded, &g.DataChecked)
 		g.DeadlineAt, g.WaiverDeadlineAt, g.TradeDeadlineAt = g.DeadlineAt.UTC(), g.WaiverDeadlineAt.UTC(), g.TradeDeadlineAt.UTC()
 		return g, err
 	})
