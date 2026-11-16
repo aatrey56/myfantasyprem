@@ -122,7 +122,7 @@ func gw6Settled(t *testing.T, e *env, leagueID string) {
 func TestResyncBackfillsFinishedGameweek(t *testing.T) {
 	shown := &atomic.Bool{}
 	realEnvsFS(t, toggleFS{shown}, func(t *testing.T, e *env) {
-		shown.Store(false)
+		defer shown.Store(false) // hidden again for the next store's setup
 		_, st, _ := importReal(t, e)
 		if rows, _ := e.stats.PlayerFixtures(ctx, 6); len(rows) != 0 {
 			t.Fatal("gameweek 6 ingested before upstream had it")
@@ -168,7 +168,7 @@ func TestResyncWithNothingMissingBackfillsNothing(t *testing.T) {
 func TestResyncBackfillFailureIsNotedAndCaughtUpLater(t *testing.T) {
 	shown := &atomic.Bool{}
 	realEnvsFS(t, toggleFS{shown}, func(t *testing.T, e *env) {
-		shown.Store(false)
+		defer shown.Store(false) // hidden again for the next store's setup
 		_, st, _ := importReal(t, e)
 		shown.Store(true)
 		b := withBackfiller(e)
