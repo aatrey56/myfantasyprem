@@ -781,6 +781,10 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 	return false
 }
 
+// Pending is the number of earlier gameweeks queued to fetch (the
+// catch-up after a start, a rollover or an outage), failing ones included.
+func (p *Poller) Pending() int { return len(p.pending) }
+
 // drop removes a gameweek from the backfill queue.
 func (p *Poller) drop(g int) {
 	delete(p.pending, g)

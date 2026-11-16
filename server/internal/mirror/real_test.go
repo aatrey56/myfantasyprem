@@ -20,6 +20,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/mirror"
 	"github.com/aatrey56/myfantasyprem/server/internal/poller"
+	"github.com/aatrey56/myfantasyprem/server/internal/poller/pollertest"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
@@ -100,10 +101,7 @@ func realEnvsFS(t *testing.T, fsys fs.FS, test func(t *testing.T, e *env)) {
 		p := poller.New(e.src, stats.NewIngester(e.stats, "fpl", e.now), e.stats, noRescore{}, poller.Config{}, quiet())
 		p.Now = e.now
 		p.Sleep = func(context.Context, time.Duration) error { return nil }
-		// One earlier gameweek per poll (poller.Config.BackfillPerTick).
-		for range realGameweeks + 2 {
-			p.Tick(ctx)
-		}
+		pollertest.TickUntilIdle(t, ctx, p)
 		for gw := 1; gw <= realGameweeks; gw++ {
 			_, hidden := fs.Stat(fsys, "event/"+strconv.Itoa(gw)+"/live.json")
 			if rows, _ := e.stats.PlayerFixtures(ctx, gw); len(rows) == 0 && hidden == nil {
