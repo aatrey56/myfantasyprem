@@ -13,11 +13,13 @@ import { Bell, LogOut, Trash } from '@/components/icons';
 import { ListRow } from '@/components/ListRow';
 import { QueryStatus } from '@/components/QueryStatus';
 import { Screen } from '@/components/Screen';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { SectionHeader } from '@/components/SectionHeader';
 import { ConfirmDialog } from '@/components/Sheet';
 import { Skeleton } from '@/components/Skeleton';
 import { TextField } from '@/components/TextField';
 import { useToast } from '@/components/Toast';
+import { useOwnerLabelMode } from '@/hooks/useOwnerLabelMode';
 import { describeError, fieldErrors } from '@/lib/errors';
 import { formatMonthYear } from '@/lib/time';
 import { useTheme } from '@/theme';
@@ -43,6 +45,7 @@ export default function AccountScreen() {
   const [confirming, setConfirming] = useState(false);
   // An account from a claim link has no way back in after signing out.
   const [signingOut, setSigningOut] = useState(false);
+  const [ownerLabel, setOwnerLabel] = useOwnerLabelMode();
 
   return (
     <Screen title="Account" freshness={freshness} maxWidth={640}>
@@ -137,6 +140,27 @@ export default function AccountScreen() {
           chevron
           testID="account-notifications"
         />
+        <View
+          testID="owner-label-setting"
+          style={{
+            gap: spacing.sm,
+            padding: spacing.lg,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <AppText weight="semibold">Show owners as</AppText>
+          <SegmentedControl
+            kind="radio"
+            accessibilityLabel="Show owners as"
+            value={ownerLabel}
+            onChange={setOwnerLabel}
+            segments={[
+              { value: 'first_name', label: 'First name', testID: 'owner-label-first-name' },
+              { value: 'team_name', label: 'Team name', testID: 'owner-label-team-name' },
+            ]}
+          />
+        </View>
         <AppUpdatesRow divider />
       </Card>
 

@@ -15,6 +15,7 @@ import {
   type AnySide,
   type TeamRecord,
 } from '@/lib/matchup';
+import { ownerNameOf } from '@/lib/owner-label';
 import { showProjections } from '@/lib/projections';
 import { useTheme } from '@/theme';
 
@@ -270,16 +271,19 @@ export function Emblem({
 /**
  * `Manager • 3-2-1 ▼2L (#5)` under a team name; mirrored on the right
  * (`3-2-1 ▼2L (#5) • Manager`). The league average explains itself instead.
+ * `short`: the manager as an owner chip names them (first name, else the team).
  */
 export function sublineText(
   side: AnySide,
   records: ReadonlyMap<string, TeamRecord> | undefined,
   align: 'left' | 'right',
+  short = false,
 ): string {
   const team = teamOf(side);
   if (!team) return side.kind === 'average' ? 'Average of all teams' : '';
   const rec = records?.get(team.id);
-  const parts = [team.managerName, rec ? recordLine(rec) : ''].filter(Boolean);
+  const manager = short ? ownerNameOf(team) : team.managerName;
+  const parts = [manager, rec ? recordLine(rec) : ''].filter(Boolean);
   return (align === 'left' ? parts : parts.reverse()).join(' • ');
 }
 
@@ -287,23 +291,27 @@ export function sublineText(
  * The subline on one line: the manager's name (cut short first when space
  * runs out) and the record, whose streak arrow is in the win or loss colour
  * (the letters after it say the same in words: `▼2L`). Mirrored on the right.
+ * `stacked` (the narrow matchup cards): the manager as an owner chip names
+ * them, then the record on its own line, so neither is cut short.
  */
 export function Subline({
   side,
   records,
   align,
   testID = `subline-${align}`,
+  stacked,
 }: {
   side: AnySide;
   records: ReadonlyMap<string, TeamRecord> | undefined;
   align: 'left' | 'right';
   testID?: string;
+  stacked?: boolean;
 }) {
   const { colors } = useTheme();
   const team = teamOf(side);
   const rec = team ? records?.get(team.id) : undefined;
   if (!team || !rec) {
-    const text = sublineText(side, records, align);
+    const text = sublineText(side, records, align, stacked);
     return text ? (
       <AppText
         variant="meta"
@@ -339,10 +347,27 @@ export function Subline({
     </AppText>
   );
   const manager = (
-    <AppText variant="meta" muted numberOfLines={1} style={{ flexShrink: 1 }}>
-      {team.managerName}
+    <AppText
+      variant="meta"
+      muted
+      numberOfLines={1}
+      style={{ flexShrink: 1, ...(stacked ? { maxWidth: '100%', textAlign: align } : null) }}
+      testID={stacked ? `${testID}-manager` : undefined}
+    >
+      {stacked ? ownerNameOf(team) : team.managerName}
     </AppText>
   );
+  if (stacked) {
+    return (
+      <View
+        testID={testID}
+        style={{ alignItems: align === 'left' ? 'flex-start' : 'flex-end', maxWidth: '100%' }}
+      >
+        {manager}
+        {record}
+      </View>
+    );
+  }
   const dot = (
     <AppText variant="meta" muted style={{ flexShrink: 0 }}>
       {' • '}

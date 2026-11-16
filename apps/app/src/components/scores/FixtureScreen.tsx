@@ -7,6 +7,7 @@ import { ClubCrest, PositionBadge } from '../Badges';
 import { Card } from '../Card';
 import { Pill } from '../Chip';
 import { EmptyState } from '../EmptyState';
+import { OwnerChip } from '../OwnerChip';
 import { CalendarX, Clock } from '../icons';
 import { PlayerSheet } from '../players/PlayerCard';
 import { playerCardLabel } from '../players/PlayerCardContext';
@@ -25,6 +26,7 @@ import {
   mineCount,
   minutesText,
   ownerBadges,
+  ownerChips,
   type MatchEvent,
 } from '@/lib/fixture-detail';
 import {
@@ -42,7 +44,7 @@ type Player = Schemas['FixturePlayer'];
 /**
  * A fixture's box score (SCORES → a fixture): the scoreboard, then each
  * club's players with what they did and their FPL points. Players on a
- * team in one of my leagues carry that team's initials; my own are
+ * team in one of my leagues carry an owner chip; my own are
  * emphasised. A player opens his card in the league that has him (mine
  * first), else in my first league. Polls while the gameweek is live and
  * the screen has focus (useFixture).
@@ -255,7 +257,7 @@ function BoxScore({
 }
 
 /**
- * One player: position, name, what he did, minutes, the owners' initials
+ * One player: position, name, what he did, minutes, the owners' chips
  * and his FPL points. On one of my teams: an accent edge and tint.
  */
 function FixturePlayerRow({
@@ -268,7 +270,11 @@ function FixturePlayerRow({
   onPress?: () => void;
 }) {
   const { colors, spacing } = useTheme();
+  const { isWide } = useLayout();
   const badges = ownerBadges(p.owners);
+  // Readable chips over all of them: the rest as a count. The row's label
+  // reads out every owner, so the count is hidden from screen readers.
+  const { shown, more } = ownerChips(badges, isWide ? 4 : 2);
   const mine = badges.some((b) => b.mine);
   const events = matchEvents(p.stats);
   const ownedBy = badges.map((b) => b.a11y).join(', ');
@@ -326,15 +332,29 @@ function FixturePlayerRow({
           testID="owner-badges"
           style={{
             flexDirection: 'row',
-            flexWrap: 'wrap',
+            flexShrink: 1,
+            alignItems: 'center',
             justifyContent: 'flex-end',
             gap: 4,
-            maxWidth: 112,
+            maxWidth: '45%',
           }}
         >
-          {badges.map((b) => (
-            <OwnerBadgeView key={b.key} initials={b.initials} mine={b.mine} />
+          {shown.map((b) => (
+            <OwnerChip key={b.key} team={b.team} mine={b.mine} a11y={b.a11y} />
           ))}
+          {more > 0 ? (
+            <AppText
+              variant="caption"
+              weight="bold"
+              muted
+              testID="owner-badges-more"
+              aria-hidden
+              importantForAccessibility="no-hide-descendants"
+              style={{ flexShrink: 0 }}
+            >
+              {`+${more}`}
+            </AppText>
+          ) : null}
         </View>
       ) : null}
       <AppText
@@ -364,31 +384,6 @@ function EventTag({ event: e }: { event: MatchEvent }) {
     >
       <AppText variant="caption" weight="semibold" numeric color={fg}>
         {e.label}
-      </AppText>
-    </View>
-  );
-}
-
-/** A team's initials in a square badge: solid accent for mine, outlined otherwise. */
-function OwnerBadgeView({ initials, mine }: { initials: string; mine: boolean }) {
-  const { colors, radii } = useTheme();
-  return (
-    <View
-      testID={mine ? 'owner-badge-mine' : 'owner-badge'}
-      style={{
-        minWidth: 24,
-        height: 20,
-        paddingHorizontal: 3,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: radii.sm,
-        borderWidth: 1,
-        borderColor: mine ? colors.accent : colors.border,
-        backgroundColor: mine ? colors.accent : colors.surfaceRaised,
-      }}
-    >
-      <AppText variant="caption" weight="bold" color={mine ? colors.onAccent : colors.textMuted}>
-        {initials}
       </AppText>
     </View>
   );

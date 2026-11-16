@@ -73,7 +73,9 @@ export type Scenario =
   | 'status-rank-up'
   | 'news-503'
   | 'transactions-locked'
-  | 'players-slow';
+  | 'players-slow'
+  | 'long-team-names'
+  | 'shared-owners';
 
 /** Applies a scenario from the first request on (set before the page loads). */
 export async function startWithScenario(page: Page, scenario: Scenario) {

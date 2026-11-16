@@ -5,7 +5,7 @@
  * club colours, no Premier League or Sleeper colours.
  */
 
-const AVATAR_PALETTE = [
+export const AVATAR_PALETTE = [
   '#2F6FED',
   '#8B5CF6',
   '#EC4899',
@@ -70,6 +70,12 @@ function luminance(hex: string): number {
     .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+/** WCAG 2.x contrast ratio of two #RRGGBB colours (1 to 21). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
 }
 
 /** Dark or light text, whichever contrasts more with `bg`. */
