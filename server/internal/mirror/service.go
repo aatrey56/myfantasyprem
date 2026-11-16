@@ -99,13 +99,15 @@ type Backfiller interface {
 }
 
 // backfilled is what a re-sync's backfill did: the gameweeks filled in,
-// still unsettled after their backfill, and failed.
+// still unsettled after their backfill, and failed; unchecked when the
+// missing ones could not be listed.
 type backfilled struct {
 	filled, updating, failed []int
+	unchecked                bool
 }
 
 // backfill fills in the finished gameweeks whose stats are missing. A
-// failure is logged and returned in failed, never as the re-sync's error: the poller's
+// failure is logged and noted, never the re-sync's error: the poller's
 // catch-up retries the gameweek later.
 func (s *Service) backfill(ctx context.Context, leagueID string) (r backfilled) {
 	if s.Backfill == nil {
@@ -114,6 +116,7 @@ func (s *Service) backfill(ctx context.Context, leagueID string) (r backfilled) 
 	gws, err := s.Backfill.MissingFinished(ctx)
 	if err != nil {
 		s.log().WarnContext(ctx, "re-sync: find missing gameweeks", "league", leagueID, "err", err)
+		r.unchecked = true
 		return r
 	}
 	for _, gw := range gws {
@@ -154,6 +157,9 @@ func gwList(gws []int) string {
 // note is the re-sync notice's sentence about the backfill.
 func (r backfilled) note() string {
 	var parts []string
+	if r.unchecked {
+		parts = append(parts, "Couldn't check for missing gameweeks; they'll fill in automatically.")
+	}
 	if len(r.filled) > 0 {
 		parts = append(parts, "Filled in "+gwList(r.filled)+".")
 	}

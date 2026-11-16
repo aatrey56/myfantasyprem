@@ -35,17 +35,21 @@ func (f toggleFS) ReadFile(name string) ([]byte, error) { return fs.ReadFile(f.c
 
 // backfiller is pollerwire.Backfiller's job, on the test's source: a
 // poller of its own with the real scorer. It counts Backfill calls; fail
-// makes them fail, and noop makes
+// makes them fail, missErr makes MissingFinished fail, and noop makes
 // them succeed without ingesting (the gameweek stays unsettled, as when a
 // fixture is missing from the live payload).
 type backfiller struct {
-	p     *poller.Poller
-	calls []int
-	fail  error
-	noop  bool
+	p       *poller.Poller
+	calls   []int
+	fail    error
+	missErr error
+	noop    bool
 }
 
 func (b *backfiller) MissingFinished(ctx context.Context) ([]int, error) {
+	if b.missErr != nil {
+		return nil, b.missErr
+	}
 	return b.p.MissingFinished(ctx)
 }
 
@@ -230,6 +234,28 @@ func TestResyncBackfillStillUnsettledIsNotFilled(t *testing.T) {
 		rec, _ := e.svc.Store.Sync(ctx, st.League.ID)
 		if rec == nil || rec.LastError != "" || strings.Contains(rec.Note, "Filled in") ||
 			!strings.HasSuffix(rec.Note, " GW 6 is still updating; it will fill in automatically.") {
+			t.Fatalf("sync record %+v", rec)
+		}
+	})
+}
+
+// When the missing gameweeks cannot be listed (bootstrap down), the
+// re-sync still succeeds and its notice says they were not checked.
+func TestResyncMissingCheckFailureIsNoted(t *testing.T) {
+	realEnvs(t, func(t *testing.T, e *env) {
+		_, st, _ := importReal(t, e)
+		b := withBackfiller(e)
+		b.missErr = errors.New("bootstrap down")
+		*e.clock = e.clock.Add(20 * time.Minute)
+		if err := e.svc.Resync(ctx, st.League.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(b.calls) != 0 {
+			t.Errorf("backfill calls %v, want none", b.calls)
+		}
+		rec, _ := e.svc.Store.Sync(ctx, st.League.ID)
+		if rec == nil || rec.LastError != "" ||
+			!strings.HasSuffix(rec.Note, " Couldn't check for missing gameweeks; they'll fill in automatically.") {
 			t.Fatalf("sync record %+v", rec)
 		}
 	})
