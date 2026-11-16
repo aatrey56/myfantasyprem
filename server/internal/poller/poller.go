@@ -770,7 +770,11 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 			failed = true
 			p.failed[g] = true
 			p.Metrics.ReconcileFails.Add(1)
-			p.Log.WarnContext(ctx, "poller: reconcile failed; retrying next cycle", "gameweek", g, "err", err)
+			lvl := slog.LevelWarn
+			if errors.Is(err, stats.ErrIncomplete) {
+				lvl = slog.LevelError // upstream sent data we refuse to settle on
+			}
+			p.Log.Log(ctx, lvl, "poller: reconcile failed; retrying with backoff", "gameweek", g, "err", err)
 			if errors.Is(err, provider.ErrUpstream) {
 				return false // upstream is struggling: stop for this cycle
 			}
@@ -809,21 +813,24 @@ func (p *Poller) drop(g int) {
 }
 
 // loaded reports whether a gameweek has complete gameweek lines, stored
-// rows once anyone played, and, once upstream marks it finished, is settled: every
-// stored fixture over and no bonus provisional. A gameweek ingested while
-// it was under way (the server went down mid-gameweek) is not, so it is
-// fetched again rather than left live, out of the table, for good.
+// rows, and, once upstream marks it finished, is settled: every stored
+// fixture over and no bonus provisional. A gameweek ingested while it was
+// under way (the server went down mid-gameweek) is not, so it is fetched
+// again rather than left live, out of the table, for good.
 //
-// A gameweek nobody played in (voided) has lines, all at 0 minutes, but
-// no rows: the lines are the ingest's record that it was read, so it is
-// not fetched and rescored again on every refresh.
+// Rows are not optional: a gameweek whose fixtures were played has
+// players with minutes, and the ingest rejects a payload that says nobody
+// played.
 func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
 	lines, err := p.Stats.PlayerGameweeks(ctx, g)
-	if err != nil || !p.linesComplete(g, lines) {
+	if err != nil {
+		return false
+	}
+	if !p.linesComplete(g, lines) {
 		return false
 	}
 	rows, err := p.Stats.PlayerFixtures(ctx, g)
-	if err != nil || (len(rows) == 0 && slices.ContainsFunc(lines, func(l stats.PlayerGameweek) bool { return l.Minutes > 0 })) {
+	if err != nil || len(rows) == 0 {
 		return false
 	}
 	if !w.Gameweeks[g].Finished {

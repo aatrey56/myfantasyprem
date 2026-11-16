@@ -33,9 +33,13 @@ type outage struct {
 	// lists give it no gameweek and no kickoff (event null), as FPL
 	// reports a postponed match.
 	moved string
-	// voided makes gameweek 6's live data list every player with 0
-	// minutes (a gameweek whose matches were all voided).
-	voided bool
+	// zeroed makes gameweek 6's live data list every player with 0
+	// minutes although its fixtures say finished (a broken payload).
+	zeroed bool
+	// blank makes gameweek 6 a blank once current >= 6: fixture lists
+	// give its fixtures no gameweek (event null) and its live data lists
+	// none, every player at 0 minutes.
+	blank bool
 	mu     sync.Mutex
 	live   map[int]int
 }
@@ -80,6 +84,14 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 		}
 		out = append(out, f)
 	}
+	if o.blank && o.current >= 6 {
+		for _, f := range fs {
+			if f.Gameweek == 6 {
+				f.Gameweek, f.KickoffAt, f.Status, f.HomeScore, f.AwayScore = 0, nil, provider.FixturePostponed, nil, nil
+				out = append(out, f)
+			}
+		}
+	}
 	if o.moved != "" {
 		for _, f := range fs {
 			if f.Gameweek != 6 {
@@ -115,8 +127,11 @@ func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, er
 	o.live[gw]++
 	o.mu.Unlock()
 	l, err := o.StatsSource.EventLive(ctx, gw)
-	if err == nil && o.voided && gw == 6 {
+	if err == nil && (o.zeroed || (o.blank && o.current >= 6)) && gw == 6 {
 		cp := *l
+		if o.blank {
+			cp.Fixtures = nil
+		}
 		cp.Players = nil
 		for _, pl := range l.Players {
 			cp.Players = append(cp.Players, provider.PlayerLive{PlayerExternalID: pl.PlayerExternalID})

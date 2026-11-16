@@ -444,17 +444,24 @@ func playerGameweek(playerID string, gw int, pl provider.PlayerLive) PlayerGamew
 }
 
 // complete rejects a snapshot that would wipe out stored data: no players
-// once any fixture of the gameweek has started, or fewer than half the
-// stored rows (upstream lists every player once a gameweek is under way,
-// and rows only disappear one at a time, through corrections).
+// once any fixture of the gameweek has started, nobody with a minute once
+// one is over (a played match is not voided by the stats saying so), or
+// fewer than half the stored rows (upstream lists every player once a
+// gameweek is under way, and rows only disappear one at a time, through
+// corrections).
 func complete(live *provider.EventLive, fixtures map[string]Fixture, before, rows []PlayerFixture) error {
-	started := false
+	started, over := false, false
 	for _, f := range fixtures {
-		started = started || f.Started()
+		if f.Status != FixturePostponed {
+			started, over = started || f.Started(), over || f.Over()
+		}
 	}
 	switch {
 	case started && len(live.Players) == 0:
 		return fmt.Errorf("%w: %w: gameweek %d has started but lists no players",
+			ErrIncomplete, provider.ErrInvalid, live.Gameweek)
+	case over && !slices.ContainsFunc(live.Players, func(pl provider.PlayerLive) bool { return pl.Minutes > 0 }):
+		return fmt.Errorf("%w: %w: gameweek %d has finished fixtures but nobody played a minute",
 			ErrIncomplete, provider.ErrInvalid, live.Gameweek)
 	case len(before) >= minRowsForDropCheck && 2*len(rows) < len(before):
 		return fmt.Errorf("%w: %w: gameweek %d has %d rows, %d stored",
