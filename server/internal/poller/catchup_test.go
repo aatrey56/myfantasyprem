@@ -92,7 +92,6 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 // movedFixture is the external id of outage.moved's fixture.
 const movedFixture = "moved-1"
 
-
 func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, error) {
 	o.mu.Lock()
 	o.live[gw]++
