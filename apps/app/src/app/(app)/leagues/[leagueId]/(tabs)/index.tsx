@@ -157,7 +157,7 @@ function StatusBody({ leagueId, home, page }: { leagueId: string; home: Home; pa
     <View style={{ gap: spacing.xl, width: isDesktop ? 360 : undefined }}>
       <LeagueTableCard rows={leagueTable(home)} leagueId={leagueId} />
       <FixturesCard current={fixtures.current} next={fixtures.next} />
-      <InjuriesCard players={page.injuries} onOpen={open} />
+      <InjuriesCard players={page.injuries} onOpen={open} myTeamId={myTeamId} />
     </View>
   );
   return (

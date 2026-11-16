@@ -1485,7 +1485,7 @@ const statusHandlers = [
  * A fixture's box score: who played (or was booked), and who of the two
  * clubs is owned in the demo user's in-season leagues, by points.
  */
-function fixtureDetail(fixture: Schemas['GameweekFixture']): Schemas['FixtureDetail'] {
+export function fixtureDetail(fixture: Schemas['GameweekFixture']): Schemas['FixtureDetail'] {
   const mine = [...data.leagues.values()].flatMap((l) => {
     const row = data.isInSeason(l) ? l.myLeague() : undefined;
     return row && data.isInSeason(l)

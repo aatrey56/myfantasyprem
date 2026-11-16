@@ -1,7 +1,5 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 
-import { initialsOf } from './identity';
-
 type Stats = Schemas['FixturePlayerStats'];
 type Owner = Schemas['FixtureOwner'];
 
@@ -82,8 +80,8 @@ export function matchEvents(s: Stats): MatchEvent[] {
 
 export interface OwnerBadge {
   key: string;
-  /** The owning team's initials: `SL` for Sunday League Heroes. */
-  initials: string;
+  /** The owning team: its manager and name label the chip. */
+  team: Owner['team'];
   mine: boolean;
   /** `Sunday League Heroes in The Sunday Draft (your team)`. */
   a11y: string;
@@ -96,10 +94,28 @@ export function ownerBadges(owners: readonly Owner[]): OwnerBadge[] {
     .sort((a, b) => Number(b.o.mine) - Number(a.o.mine) || a.i - b.i)
     .map(({ o }) => ({
       key: `${o.leagueId}/${o.team.id}`,
-      initials: initialsOf(o.team.name),
+      team: o.team,
       mine: o.mine,
       a11y: `${o.team.name} in ${o.leagueName}${o.mine ? ' (your team)' : ''}`,
     }));
+}
+
+/**
+ * The chips a box-score row shows: one `You` however many of my teams have
+ * the player (its label lists them all), then up to `limit` chips in all;
+ * `more` counts the owners left out.
+ */
+export function ownerChips(
+  badges: readonly OwnerBadge[],
+  limit: number,
+): { shown: OwnerBadge[]; more: number } {
+  const mine = badges.filter((b) => b.mine);
+  const chips = [
+    ...(mine.length > 0 ? [{ ...mine[0]!, a11y: mine.map((b) => b.a11y).join(', ') }] : []),
+    ...badges.filter((b) => !b.mine),
+  ];
+  const shown = chips.slice(0, limit);
+  return { shown, more: chips.length - shown.length };
 }
 
 /**
