@@ -90,3 +90,11 @@ func (b *Backfiller) Backfill(ctx context.Context, gw int) error {
 	_, _, err := b.p.Backfill(ctx, gw, false)
 	return err
 }
+
+// Settled reports whether finished gameweek gw's stats are complete and
+// settled (Poller.Settled).
+func (b *Backfiller) Settled(ctx context.Context, gw int) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.p.Settled(ctx, gw)
+}

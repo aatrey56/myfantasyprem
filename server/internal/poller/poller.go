@@ -928,6 +928,22 @@ func (p *Poller) MissingFinished(ctx context.Context) ([]int, error) {
 	return out, nil
 }
 
+// Settled reports whether gameweek g's stored stats are complete and
+// settled (loaded), from the store alone: after a Backfill, whether it
+// filled the gameweek in.
+func (p *Poller) Settled(ctx context.Context, g int) (bool, error) {
+	checked, err := p.Stats.StartsChecked(ctx)
+	if err != nil {
+		return false, err
+	}
+	p.startsChecked = checked
+	w, err := league.LoadWorld(ctx, p.Stats, -1)
+	if err != nil {
+		return false, err
+	}
+	return p.loaded(ctx, w, g), nil
+}
+
 // Backfill fetches gameweek g's live data now, after a bootstrap refresh
 // (for its finished and checked flags), ingests it as a poll would and
 // rescores it in full: the admin backfill command, for a gameweek the

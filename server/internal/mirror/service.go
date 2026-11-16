@@ -90,37 +90,53 @@ type Service struct {
 
 // Backfiller fetches finished gameweeks' stats the poller has not loaded
 // (pollerwire.Backfiller): MissingFinished lists them, Backfill fetches,
-// ingests and rescores one (quietly before the current gameweek).
+// ingests and rescores one (quietly before the current gameweek), and
+// Settled reports whether one is filled in now.
 type Backfiller interface {
 	MissingFinished(ctx context.Context) ([]int, error)
 	Backfill(ctx context.Context, gw int) error
+	Settled(ctx context.Context, gw int) (bool, error)
+}
+
+// backfilled is what a re-sync's backfill did: the gameweeks filled in,
+// still unsettled after their backfill, and failed.
+type backfilled struct {
+	filled, updating, failed []int
 }
 
 // backfill fills in the finished gameweeks whose stats are missing. A
-// failure is logged and returned in failed, never as the re-sync's error:
-// the poller's catch-up retries the gameweek later.
-func (s *Service) backfill(ctx context.Context, leagueID string) (filled, failed []int) {
+// failure is logged and returned in failed, never as the re-sync's error: the poller's
+// catch-up retries the gameweek later.
+func (s *Service) backfill(ctx context.Context, leagueID string) (r backfilled) {
 	if s.Backfill == nil {
-		return nil, nil
+		return r
 	}
 	gws, err := s.Backfill.MissingFinished(ctx)
 	if err != nil {
 		s.log().WarnContext(ctx, "re-sync: find missing gameweeks", "league", leagueID, "err", err)
-		return nil, nil
+		return r
 	}
 	for _, gw := range gws {
 		if err := s.Backfill.Backfill(ctx, gw); err != nil {
 			if ctx.Err() != nil {
-				return filled, failed // shutting down: the re-sync fails too
+				return r // shutting down: the re-sync fails too
 			}
 			s.log().WarnContext(ctx, "re-sync: backfill failed; the poller retries it", "league", leagueID, "gameweek", gw, "err", err)
-			failed = append(failed, gw)
+			r.failed = append(r.failed, gw)
+			continue
+		}
+		// Ingested and rescored, but maybe not settled (a fixture missing
+		// from the live payload): the poller's catch-up finishes it.
+		settled, err := s.Backfill.Settled(ctx, gw)
+		if err != nil || !settled {
+			s.log().InfoContext(ctx, "re-sync: gameweek backfilled, not settled yet", "league", leagueID, "gameweek", gw, "err", err)
+			r.updating = append(r.updating, gw)
 			continue
 		}
 		s.log().InfoContext(ctx, "re-sync: gameweek backfilled", "league", leagueID, "gameweek", gw)
-		filled = append(filled, gw)
+		r.filled = append(r.filled, gw)
 	}
-	return filled, failed
+	return r
 }
 
 // gwList is "GW 9" or "GW 8 and 9" or "GW 7, 8 and 9".
@@ -135,14 +151,21 @@ func gwList(gws []int) string {
 	return "GW " + strings.Join(ns[:len(ns)-1], ", ") + " and " + ns[len(ns)-1]
 }
 
-// backfillNote is the re-sync notice's sentence about the backfill.
-func backfillNote(filled, failed []int) string {
+// note is the re-sync notice's sentence about the backfill.
+func (r backfilled) note() string {
 	var parts []string
-	if len(filled) > 0 {
-		parts = append(parts, "Filled in "+gwList(filled)+".")
+	if len(r.filled) > 0 {
+		parts = append(parts, "Filled in "+gwList(r.filled)+".")
 	}
-	if len(failed) > 0 {
-		parts = append(parts, "Stats for "+gwList(failed)+" aren't available yet; they will fill in automatically.")
+	switch len(r.updating) {
+	case 0:
+	case 1:
+		parts = append(parts, gwList(r.updating)+" is still updating; it will fill in automatically.")
+	default:
+		parts = append(parts, gwList(r.updating)+" are still updating; they will fill in automatically.")
+	}
+	if len(r.failed) > 0 {
+		parts = append(parts, "Stats for "+gwList(r.failed)+" aren't available yet; they will fill in automatically.")
 	}
 	return strings.Join(parts, " ")
 }
@@ -555,9 +578,9 @@ func (s *Service) refresh(ctx context.Context, leagueID string, create *Import, 
 	}
 	// A re-sync first fills in the finished gameweeks with no stats, so
 	// the rescore below and the verify score them.
-	var filled, failed []int
+	var bf backfilled
 	if create == nil {
-		filled, failed = s.backfill(ctx, leagueID)
+		bf = s.backfill(ctx, leagueID)
 	}
 	w, snap, plan, err := s.plan(ctx, fplLeague, now, progress)
 	if err != nil {
@@ -643,7 +666,7 @@ func (s *Service) refresh(ctx context.Context, leagueID string, create *Import, 
 	rec.Note = ""
 	if create == nil {
 		rec.Note = cancelled.Note()
-		if n := backfillNote(filled, failed); n != "" {
+		if n := bf.note(); n != "" {
 			rec.Note += " " + n
 		}
 	}

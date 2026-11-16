@@ -35,11 +35,14 @@ func (f toggleFS) ReadFile(name string) ([]byte, error) { return fs.ReadFile(f.c
 
 // backfiller is pollerwire.Backfiller's job, on the test's source: a
 // poller of its own with the real scorer. It counts Backfill calls; fail
-// makes them fail.
+// makes them fail, and noop makes
+// them succeed without ingesting (the gameweek stays unsettled, as when a
+// fixture is missing from the live payload).
 type backfiller struct {
 	p     *poller.Poller
 	calls []int
 	fail  error
+	noop  bool
 }
 
 func (b *backfiller) MissingFinished(ctx context.Context) ([]int, error) {
@@ -51,9 +54,14 @@ func (b *backfiller) Backfill(ctx context.Context, gw int) error {
 	if b.fail != nil {
 		return b.fail
 	}
+	if b.noop {
+		return nil
+	}
 	_, _, err := b.p.Backfill(ctx, gw, false)
 	return err
 }
+
+func (b *backfiller) Settled(ctx context.Context, gw int) (bool, error) { return b.p.Settled(ctx, gw) }
 
 func newPoller(e *env) *poller.Poller {
 	sc := &league.Scorer{Leagues: e.leagues, Stats: e.stats, Rules: scoring.StandardLineup(), Log: quiet()}
@@ -199,5 +207,30 @@ func TestResyncBackfillFailureIsNotedAndCaughtUpLater(t *testing.T) {
 			t.Errorf("caught-up gameweek backfilled again: %v", b.calls)
 		}
 		gw6Settled(t, e, st.League.ID)
+	})
+}
+
+// A backfill that succeeds but leaves the gameweek unsettled is not
+// reported as filled in: the notice says it is still updating.
+func TestResyncBackfillStillUnsettledIsNotFilled(t *testing.T) {
+	shown := &atomic.Bool{}
+	realEnvsFS(t, toggleFS{shown}, func(t *testing.T, e *env) {
+		defer shown.Store(false) // hidden again for the next store's setup
+		_, st, _ := importReal(t, e)
+		shown.Store(true)
+		b := withBackfiller(e)
+		b.noop = true
+		*e.clock = e.clock.Add(20 * time.Minute)
+		if err := e.svc.Resync(ctx, st.League.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(b.calls) != 1 || b.calls[0] != 6 {
+			t.Errorf("backfill calls %v, want [6]", b.calls)
+		}
+		rec, _ := e.svc.Store.Sync(ctx, st.League.ID)
+		if rec == nil || rec.LastError != "" || strings.Contains(rec.Note, "Filled in") ||
+			!strings.HasSuffix(rec.Note, " GW 6 is still updating; it will fill in automatically.") {
+			t.Fatalf("sync record %+v", rec)
+		}
 	})
 }
