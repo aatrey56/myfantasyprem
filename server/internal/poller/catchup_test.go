@@ -40,8 +40,8 @@ type outage struct {
 	// give its fixtures no gameweek (event null) and its live data lists
 	// none, every player at 0 minutes.
 	blank bool
-	mu     sync.Mutex
-	live   map[int]int
+	mu    sync.Mutex
+	live  map[int]int
 }
 
 func (o *outage) GameweekStatus(ctx context.Context) (*provider.GameweekStatus, error) {
