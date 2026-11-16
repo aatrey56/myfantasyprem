@@ -4381,8 +4381,10 @@ components:
     AppConfig:
       description: Client settings.
       type: object
-      required: [brandedAssets]
+      required: [brandedAssets, signIn]
       properties:
+        signIn:
+          $ref: '#/components/schemas/SignInMethods'
         brandedAssets:
           type: boolean
           description: |
@@ -4396,6 +4398,32 @@ components:
             PushManager.subscribe; null when Web Push is not configured.
       example:
         brandedAssets: true
+        signIn: { email: false, apple: false, google: false, claimLink: true }
+    SignInMethods:
+      description: |
+        Which ways of signing in this server accepts. A client shows only
+        these; with none of email, Apple or Google on, people get in only
+        through a claim link or a sign-in link sent to them.
+      type: object
+      required: [email, apple, google, claimLink]
+      properties:
+        email:
+          type: boolean
+          description: |
+            Magic link and code by email (`POST /v1/auth/email`): an email
+            provider is configured (EMAIL_PROVIDER resend, or log in
+            development).
+        apple:
+          type: boolean
+          description: Sign in with Apple (APPLE_CLIENT_IDS is set).
+        google:
+          type: boolean
+          description: Sign in with Google (GOOGLE_CLIENT_IDS is set).
+        claimLink:
+          type: boolean
+          description: |
+            A seat's claim link signs a signed-out person in
+            (CLAIM_LINK_SIGNIN).
     AppConfigResponse:
       type: object
       required: [data, meta]

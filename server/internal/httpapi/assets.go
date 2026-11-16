@@ -7,16 +7,28 @@ import (
 	"strings"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/assets"
+	"github.com/aatrey56/myfantasyprem/server/internal/auth"
 )
 
 // imageCacheControl lets browsers and proxies keep an image for a week.
 const imageCacheControl = "public, max-age=604800"
 
-// GetAppConfig reports the client settings: whether branded images are on.
+// GetAppConfig reports the client settings: whether branded images are
+// on, the Web Push key and which sign-in methods work.
 func (s *Server) GetAppConfig(context.Context, GetAppConfigRequestObject) (GetAppConfigResponseObject, error) {
 	now := s.now().UTC()
+	_, noEmail := s.sender.(auth.DisabledSender)
 	return GetAppConfig200JSONResponse{
-		Data: AppConfig{BrandedAssets: s.assets.On(), WebPushPublicKey: nullString(s.webPushKey)},
+		Data: AppConfig{
+			BrandedAssets:    s.assets.On(),
+			WebPushPublicKey: nullString(s.webPushKey),
+			SignIn: SignInMethods{
+				Email:     s.sender != nil && !noEmail,
+				Apple:     s.apple.Configured(),
+				Google:    s.google.Configured(),
+				ClaimLink: s.claimSignIn,
+			},
+		},
 		Meta: Meta{DataAsOf: now, ServerTime: now},
 	}, nil
 }
