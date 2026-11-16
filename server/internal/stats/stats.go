@@ -261,6 +261,11 @@ type LiveRows struct {
 	Rows     []PlayerFixture
 	// Players replaces the gameweek's PlayerGameweek rows when not nil.
 	Players []PlayerGameweek
+	// FetchedAt is when upstream sent the snapshot. When set, Apply
+	// refuses (ErrStale) a snapshot fetched before the newest one already
+	// applied for the gameweek, and records it otherwise. Zero: no check
+	// (a source that does not stamp its data).
+	FetchedAt time.Time
 }
 
 // Repo stores tier-1 data.

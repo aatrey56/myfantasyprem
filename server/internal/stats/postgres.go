@@ -293,6 +293,11 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 			return err
 		}
 	}
+	if lv := b.Live; lv != nil && !lv.FetchedAt.IsZero() {
+		if err := claimFresh(ctx, tx, lv.Gameweek, lv.FetchedAt); err != nil {
+			return err
+		}
+	}
 	batch := &pgx.Batch{}
 	for _, c := range b.Clubs {
 		batch.Queue(`INSERT INTO clubs (id, season, code, name) VALUES ($1, $2, $3, $4)
@@ -403,6 +408,31 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 		if err := saveSnapshot(ctx, tx, s); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// liveLock is the first key of the advisory locks (the second is the
+// gameweek) that serialise live ingests of one gameweek across processes.
+const liveLock = 0x6c697665 // "live"
+
+// claimFresh refuses (ErrStale) a live snapshot fetched before the newest
+// one applied for gameweek gw, and records it otherwise. The gameweek's
+// lock, held to the end of the transaction, makes the check and the
+// row writes one step against a concurrent ingest (the poller and an
+// admin backfill).
+func claimFresh(ctx context.Context, tx pgx.Tx, gw int, at time.Time) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, liveLock, gw); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO live_fetched (gameweek, fetched_at) VALUES ($1, $2)
+	                          ON CONFLICT (gameweek) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+	                          WHERE live_fetched.fetched_at <= EXCLUDED.fetched_at`, gw, at)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrStale
 	}
 	return nil
 }

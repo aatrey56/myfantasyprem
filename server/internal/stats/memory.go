@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"time"
 )
 
 // Memory is the in-memory Repo, for unit tests and the database-less dev
@@ -27,6 +28,7 @@ type Memory struct {
 	version   int64                // the last mark version
 	external  map[[3]string]string // provider, entity, external id -> id
 	snapshots map[[2]any][]byte    // kind, gameweek -> last payload
+	fetched   map[int]time.Time    // gameweek -> newest live FetchedAt applied
 	// SnapshotCount counts stored (deduplicated) snapshots, for tests.
 	SnapshotCount int
 }
@@ -226,6 +228,16 @@ func (m *Memory) Apply(_ context.Context, b Batch) error {
 		if id, ok := m.external[[3]string{b.Provider, mp.Entity, mp.ExternalID}]; ok && id != mp.ID {
 			return ErrIDTaken
 		}
+	}
+	// Under m.mu, like the rows it guards: the check and the write are one.
+	if lv := b.Live; lv != nil && !lv.FetchedAt.IsZero() {
+		if m.fetched[lv.Gameweek].After(lv.FetchedAt) {
+			return ErrStale
+		}
+		if m.fetched == nil {
+			m.fetched = map[int]time.Time{}
+		}
+		m.fetched[lv.Gameweek] = lv.FetchedAt
 	}
 	for _, mp := range b.Mappings {
 		m.external[[3]string{b.Provider, mp.Entity, mp.ExternalID}] = mp.ID

@@ -25,6 +25,11 @@ var ErrUnmapped = errors.New("stats: live data references an unknown player or f
 // of the batch was applied: resolve the ids again and rebuild it.
 var ErrIDTaken = errors.New("stats: an upstream id was mapped by another ingest")
 
+// ErrStale means a live snapshot was fetched before the one already
+// stored for its gameweek (an admin backfill racing the poller, say).
+// Nothing of the batch was applied: the stored rows are newer.
+var ErrStale = errors.New("stats: live snapshot older than the stored one")
+
 // ErrIncomplete means a live snapshot is missing data the stored one has:
 // no players although the gameweek has kicked off, or far fewer rows than
 // are stored. It is rejected so bad data never zeroes a score (ADR 0005);
@@ -410,7 +415,7 @@ func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *prov
 	batch := Batch{
 		Provider: in.Provider,
 		Fixtures: updated,
-		Live:     &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats},
+		Live:     &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats, FetchedAt: live.FetchedAt},
 		Mappings: fxs.added,
 	}
 	if len(changed) > 0 {
