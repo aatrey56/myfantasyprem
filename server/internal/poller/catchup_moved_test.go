@@ -104,18 +104,53 @@ func TestAllZeroStatsForPlayedFixturesAreRejected(t *testing.T) {
 // Gameweek 6 is a blank: FPL finished it and its fixture list moves
 // every one of its fixtures out (event null), so nothing was played and
 // every player is at 0 minutes. It is settled after one fetch, not
-// requeued on every refresh (World.State calls a gameweek with no
-// fixtures upcoming).
+// requeued on every refresh.
+//
+// Its matchups count as played: FPL Draft plays every scheduled H2H
+// matchup, and a player with no fixture scores 0 (RESEARCH.md §7), so
+// each is 0-0, final, a draw (an average side's floor(mean of 0s) is 0
+// too). The table has six played for every team, gameweek 6 one draw.
 func TestBlankFinishedGameweekIsFetchedOnce(t *testing.T) {
 	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		ctx := context.Background()
 		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 4,
 			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 4, blank: true, live: map[int]int{}}}
-		c.run(t)
-		if rows, _ := repo.PlayerFixtures(context.Background(), 6); len(rows) != 0 {
+		leagueID, userID := c.run(t)
+		if rows, _ := repo.PlayerFixtures(ctx, 6); len(rows) != 0 {
 			t.Fatalf("setup: blank gameweek 6 has %d rows", len(rows))
 		}
 		if c.src.live[6] != 1 || c.src.live[5] != 1 {
 			t.Errorf("over six season refreshes: live calls %v, want gameweeks 5 and 6 once each", c.src.live)
+		}
+		checkCounted(t, c, leagueID, userID)
+		g, err := leagues.Repo().Game(ctx, leagueID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range g.MatchupsIn(6) {
+			if m.HomePoints != 0 || m.AwayPoints != 0 {
+				t.Errorf("blank gameweek 6 matchup %s: %d-%d, want 0-0", m.ID, m.HomePoints, m.AwayPoints)
+			}
+		}
+		l, err := leagues.Get(ctx, userID, leagueID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, err := league.LoadWorld(ctx, repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := map[string]league.StandingRow{}
+		for _, r := range league.StandingsThrough(l, g, w, 5) {
+			before[r.TeamID] = r
+		}
+		for _, r := range league.StandingsThrough(l, g, w, 6) {
+			b := before[r.TeamID]
+			// 0-0: one draw, nothing for or against.
+			if r.Draws != b.Draws+1 || r.Wins != b.Wins || r.Losses != b.Losses || r.PointsFor != b.PointsFor || r.PointsAgainst != b.PointsAgainst {
+				t.Errorf("team %s gameweek 6: W%d D%d L%d %d-%d after W%d D%d L%d %d-%d, want one more draw only", r.TeamID,
+					r.Wins, r.Draws, r.Losses, r.PointsFor, r.PointsAgainst, b.Wins, b.Draws, b.Losses, b.PointsFor, b.PointsAgainst)
+			}
 		}
 	})
 }

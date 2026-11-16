@@ -75,7 +75,11 @@ func (m *Memory) Players(context.Context) ([]Player, error) {
 func (m *Memory) Gameweeks(context.Context) ([]Gameweek, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return values(m.gameweeks, func(a, b Gameweek) int { return cmp.Compare(a.Number, b.Number) }), nil
+	gws := values(m.gameweeks, func(a, b Gameweek) int { return cmp.Compare(a.Number, b.Number) })
+	for i := range gws {
+		_, gws[i].LiveIngested = m.ingested[gws[i].Number]
+	}
+	return gws, nil
 }
 
 func (m *Memory) Fixtures(context.Context) ([]Fixture, error) {

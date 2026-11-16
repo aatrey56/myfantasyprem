@@ -2,7 +2,10 @@
 -- before asking upstream; an ingest records the highest ticket applied
 -- (ingested, NULL until one is) and is refused when it holds a lower one
 -- (an admin backfill racing the poller), instead of overwriting newer
--- rows. Tickets order fetches across processes without clocks.
+-- rows. Tickets order fetches across processes without clocks. A row with
+-- ingested set also records that the gameweek's live data was read, which
+-- tells a verified blank (finished, nothing played) from one whose
+-- fixtures are not known yet.
 
 -- +goose Up
 CREATE TABLE live_fetched (

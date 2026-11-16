@@ -59,6 +59,9 @@ type Gameweek struct {
 	Finished         bool
 	BonusAdded       bool
 	DataChecked      bool
+	// LiveIngested reports that live data of the gameweek was applied at
+	// least once (Batch.Live). Repos derive it; Apply ignores it.
+	LiveIngested bool
 }
 
 // Fixture statuses (FixtureStatus in the contract).
