@@ -14,6 +14,7 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
@@ -267,7 +268,37 @@ type LiveRows struct {
 	// records it otherwise; an equal ticket is the same fetch retried. 0:
 	// no check (a caller that does not order its fetches, the demo seed).
 	Ticket int64
+	// Base, when set, is what the ingest diffed Rows against. Apply checks
+	// it under the gameweek's lock, with the write, and refuses
+	// (errBaseMoved) when another ingest changed the gameweek since: the
+	// diff, and the rescore it decides, would be against rows already gone.
+	Base *LiveBase
 }
+
+// LiveBase is the stored state a live ingest diffed against: the
+// gameweek's rows and the status of each fixture it updates ("" when not
+// stored).
+type LiveBase struct {
+	Rows   []PlayerFixture
+	Status map[string]string
+}
+
+// moved reports whether rows and fixtures differ from the base.
+func (lb *LiveBase) moved(rows []PlayerFixture, status func(id string) string) bool {
+	if len(changedPlayers(lb.Rows, rows)) > 0 {
+		return true
+	}
+	for id, st := range lb.Status {
+		if status(id) != st {
+			return true
+		}
+	}
+	return false
+}
+
+// errBaseMoved: another ingest changed the gameweek after this one read
+// its base (LiveRows.Base); the ingest diffs again.
+var errBaseMoved = errors.New("stats: gameweek changed since the diff")
 
 // Repo stores tier-1 data.
 type Repo interface {

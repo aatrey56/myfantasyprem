@@ -247,6 +247,17 @@ func (m *Memory) Apply(_ context.Context, b Batch) error {
 		if m.ingested == nil {
 			m.ingested = map[int]int64{}
 		}
+		if lv.Base != nil {
+			var rows []PlayerFixture
+			for _, r := range m.rows {
+				if r.Gameweek == lv.Gameweek {
+					rows = append(rows, r)
+				}
+			}
+			if lv.Base.moved(rows, func(id string) string { return m.fixtures[id].Status }) {
+				return errBaseMoved
+			}
+		}
 		m.ingested[lv.Gameweek] = max(m.ingested[lv.Gameweek], lv.Ticket)
 	}
 	for _, mp := range b.Mappings {

@@ -295,7 +295,7 @@ func (in *Ingester) Live(ctx context.Context, live *provider.EventLive, st *prov
 func (in *Ingester) LiveTicket(ctx context.Context, ticket int64, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
 	for attempt := 1; ; attempt++ {
 		changed, err := in.live(ctx, ticket, live, st)
-		if !errors.Is(err, ErrIDTaken) || attempt == 3 {
+		if !errors.Is(err, ErrIDTaken) && !errors.Is(err, errBaseMoved) || attempt == 3 {
 			return changed, err
 		}
 	}
@@ -407,7 +407,9 @@ func (in *Ingester) live(ctx context.Context, ticket int64, live *provider.Event
 		stored[f.ID] = f.Status
 	}
 	moved := map[string]bool{}
+	baseStatus := map[string]string{}
 	for _, f := range updated {
+		baseStatus[f.ID] = stored[f.ID]
 		if stored[f.ID] != f.Status {
 			moved[f.HomeClubID], moved[f.AwayClubID] = true, true
 		}
@@ -424,7 +426,8 @@ func (in *Ingester) live(ctx context.Context, ticket int64, live *provider.Event
 	batch := Batch{
 		Provider: in.Provider,
 		Fixtures: updated,
-		Live:     &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats, Ticket: ticket},
+		Live: &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats, Ticket: ticket,
+			Base: &LiveBase{Rows: before, Status: baseStatus}},
 		Mappings: fxs.added,
 	}
 	if len(changed) > 0 {

@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -101,7 +103,16 @@ const pfColumns = `player_id, fixture_id, gameweek, minutes, goals, assists, cle
 	pens_saved, pens_missed, yellow, red, saves, cbi, tackles, recoveries, bps, bonus, bonus_provisional, points, breakdown, rev`
 
 func (p *Postgres) PlayerFixtures(ctx context.Context, gw int) ([]PlayerFixture, error) {
-	rows, err := p.pool.Query(ctx,
+	return playerFixtures(ctx, p.pool, gw)
+}
+
+// querier is a pool or a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func playerFixtures(ctx context.Context, q querier, gw int) ([]PlayerFixture, error) {
+	rows, err := q.Query(ctx,
 		`SELECT `+pfColumns+` FROM player_fixture_stats WHERE $1 = 0 OR gameweek = $1
 		 ORDER BY gameweek, player_id, fixture_id`, gw)
 	if err != nil {
@@ -297,6 +308,11 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 		if err := claimTicket(ctx, tx, lv.Gameweek, lv.Ticket); err != nil {
 			return err
 		}
+		if lv.Base != nil {
+			if err := checkBase(ctx, tx, lv.Gameweek, lv.Base); err != nil {
+				return err
+			}
+		}
 	}
 	batch := &pgx.Batch{}
 	for _, c := range b.Clubs {
@@ -436,6 +452,33 @@ func claimTicket(ctx context.Context, tx pgx.Tx, gw int, ticket int64) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrStale
+	}
+	return nil
+}
+
+// checkBase refuses (errBaseMoved) a live write whose diff base is no
+// longer what is stored. It runs under the gameweek's lock (claimTicket),
+// so no other ingest can change the gameweek before this one commits.
+func checkBase(ctx context.Context, tx pgx.Tx, gw int, base *LiveBase) error {
+	rows, err := playerFixtures(ctx, tx, gw)
+	if err != nil {
+		return err
+	}
+	ids := slices.Collect(maps.Keys(base.Status))
+	res, err := tx.Query(ctx, `SELECT id, status FROM fixtures WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return err
+	}
+	status := map[string]string{}
+	var id, st string
+	if _, err := pgx.ForEachRow(res, []any{&id, &st}, func() error {
+		status[id] = st
+		return nil
+	}); err != nil {
+		return err
+	}
+	if base.moved(rows, func(id string) string { return status[id] }) {
+		return errBaseMoved
 	}
 	return nil
 }
