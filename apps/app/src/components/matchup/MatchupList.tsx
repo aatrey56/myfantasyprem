@@ -207,6 +207,7 @@ function Names({
   records: ReadonlyMap<string, TeamRecord>;
   align: 'left' | 'right';
 }) {
+  const { lineHeights } = useTheme();
   return (
     <View
       style={{
@@ -216,10 +217,17 @@ function Names({
         alignItems: align === 'left' ? 'flex-start' : 'flex-end',
       }}
     >
-      <AppText weight="bold" numberOfLines={1} style={{ textAlign: align, maxWidth: '100%' }}>
+      {/* Two lines kept for the name, so both sides' sublines line up and
+          every card in a row is as tall as the next. */}
+      <AppText
+        weight="bold"
+        numberOfLines={2}
+        testID={`matchup-name-${align}`}
+        style={{ textAlign: align, maxWidth: '100%', minHeight: lineHeights.body * 2 }}
+      >
         {sideName(side)}
       </AppText>
-      <Subline side={side} records={records} align={align} />
+      <Subline side={side} records={records} align={align} stacked />
     </View>
   );
 }

@@ -127,7 +127,24 @@ export const scenarios = {
       });
     }),
   ],
+  // Long team names in the league home (the League tab's matchup cards
+  // wrap them to two lines instead of cutting them short).
+  'long-team-names': [
+    http.get<{ leagueId: string }>(LEAGUE_HOME, ({ params }) => {
+      const league = leagues.get(params.leagueId);
+      if (!league) return problem(404, 'Not found', 'League not found.');
+      let body = JSON.stringify(league.home());
+      for (const [from, to] of LONG_NAMES) body = body.replaceAll(`"${from}"`, `"${to}"`);
+      return ok(JSON.parse(body));
+    }),
+  ],
 } as const;
+
+const LONG_NAMES = [
+  ["Gaffer's Army", 'Més Que Un Club'],
+  ['Expected Goals Club', 'Reigning Champions'],
+  ['Park The Bus FC', 'Kings Of The North Stand'],
+] as const;
 
 export type ScenarioName = keyof typeof scenarios;
 

@@ -15,6 +15,7 @@ import {
   type AnySide,
   type TeamRecord,
 } from '@/lib/matchup';
+import { firstNameOf } from '@/lib/owner-label';
 import { showProjections } from '@/lib/projections';
 import { useTheme } from '@/theme';
 
@@ -287,17 +288,21 @@ export function sublineText(
  * The subline on one line: the manager's name (cut short first when space
  * runs out) and the record, whose streak arrow is in the win or loss colour
  * (the letters after it say the same in words: `▼2L`). Mirrored on the right.
+ * `stacked` (the narrow matchup cards): the manager's first name, then the
+ * record on its own line, so neither is cut short.
  */
 export function Subline({
   side,
   records,
   align,
   testID = `subline-${align}`,
+  stacked,
 }: {
   side: AnySide;
   records: ReadonlyMap<string, TeamRecord> | undefined;
   align: 'left' | 'right';
   testID?: string;
+  stacked?: boolean;
 }) {
   const { colors } = useTheme();
   const team = teamOf(side);
@@ -339,10 +344,27 @@ export function Subline({
     </AppText>
   );
   const manager = (
-    <AppText variant="meta" muted numberOfLines={1} style={{ flexShrink: 1 }}>
-      {team.managerName}
+    <AppText
+      variant="meta"
+      muted
+      numberOfLines={1}
+      style={{ flexShrink: 1, ...(stacked ? { maxWidth: '100%', textAlign: align } : null) }}
+      testID={stacked ? `${testID}-manager` : undefined}
+    >
+      {stacked ? (firstNameOf(team.managerName) ?? team.managerName) : team.managerName}
     </AppText>
   );
+  if (stacked) {
+    return (
+      <View
+        testID={testID}
+        style={{ alignItems: align === 'left' ? 'flex-start' : 'flex-end', maxWidth: '100%' }}
+      >
+        {manager}
+        {record}
+      </View>
+    );
+  }
   const dot = (
     <AppText variant="meta" muted style={{ flexShrink: 0 }}>
       {' • '}
