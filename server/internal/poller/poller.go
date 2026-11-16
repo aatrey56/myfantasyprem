@@ -67,7 +67,8 @@ type Config struct {
 	// MaxBackoff caps the wait after failures. Default 10m.
 	MaxBackoff time.Duration
 	// BackfillPerTick bounds the earlier gameweeks fetched per cycle.
-	// Default 4.
+	// Default 1: a cycle with gameweeks left to fetch is followed by
+	// another after LiveInterval.
 	BackfillPerTick int
 	// BackfillPace is the gap before each earlier-gameweek request.
 	// Default 500ms (at most 2 requests per second).
@@ -88,7 +89,7 @@ func (c Config) withDefaults() Config {
 	def(&c.MaxBackoff, 10*time.Minute)
 	def(&c.BackfillPace, 500*time.Millisecond)
 	if c.BackfillPerTick <= 0 {
-		c.BackfillPerTick = 4
+		c.BackfillPerTick = 1
 	}
 	return c
 }
@@ -421,10 +422,12 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 	gw, p.status = st.Current, st
 	// Unchecked mode waits for data_checked, which only bootstrap carries.
 	watching := p.lastMode == stats.ModeUnchecked
+	refreshed := false
 	if p.lastBootstrap.IsZero() || p.Now().Sub(p.lastBootstrap) >= p.Config.BootstrapInterval || gw != p.seasonGW || watching {
 		if err := p.refreshSeason(ctx, st); err != nil {
 			return "", 0, 0, err
 		}
+		refreshed = true
 	} else if err := p.Ingester.Status(ctx, st); err != nil {
 		return "", 0, 0, err
 	}
@@ -480,6 +483,9 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 	}
 	if err := p.plan(ctx, gw); err != nil {
 		return "", 0, 0, err
+	}
+	if refreshed {
+		p.queueMissing(ctx, gw)
 	}
 	interval = capAtDeadline(p.Now(), interval, w, p.Config.LiveInterval)
 	p.lastGW, p.lastMode = gw, mode
@@ -634,6 +640,28 @@ func (p *Poller) plan(ctx context.Context, gw int) error {
 	return nil
 }
 
+// queueMissing queues every earlier gameweek that upstream marks
+// finished but whose stats are missing or incomplete (the server was down
+// for all of it, say). It runs after each bootstrap refresh, which is
+// where the finished flags come from; reconcile then fetches them.
+func (p *Poller) queueMissing(ctx context.Context, current int) {
+	gws, err := p.Stats.Gameweeks(ctx)
+	if err != nil {
+		p.Log.WarnContext(ctx, "poller: find missing gameweeks", "err", err)
+		return
+	}
+	for _, g := range gws {
+		if g.Number < 1 || g.Number >= current || !g.Finished {
+			continue
+		}
+		if _, queued := p.pending[g.Number]; queued || p.loaded(ctx, g.Number) {
+			continue
+		}
+		p.Log.InfoContext(ctx, "poller: finished gameweek has no stats; catching up", "gameweek", g.Number, "current", current)
+		p.pending[g.Number] = false
+	}
+}
+
 // reconcile fetches up to BackfillPerTick queued gameweeks, most recent
 // first, paced politely; gameweeks that failed before go last. Failures
 // are logged and retried; they do not fail the poll (the current
@@ -666,8 +694,10 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 	for i, g := range queue {
 		// A closed gameweek with no stored fixtures is fetched anyway:
 		// upstream's bootstrap lists only upcoming fixtures, so its live
-		// data is where they come from.
-		if g >= current || (!w.Started(g) && len(w.FixturesIn(g)) > 0) {
+		// data is where they come from. So is one upstream marks finished
+		// whose stored fixtures still say scheduled: they were stored
+		// before the server went down, and only its live data updates them.
+		if g >= current || (!w.Started(g) && !w.Gameweeks[g].Finished && len(w.FixturesIn(g)) > 0) {
 			p.drop(g) // nothing played yet: nothing to load
 			continue
 		}
@@ -696,6 +726,7 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		}
 		p.drop(g)
 		p.Metrics.Reconciled.Add(1)
+		p.Log.InfoContext(ctx, "poller: earlier gameweek fetched and rescored", "gameweek", g, "current", current)
 	}
 	return false
 }

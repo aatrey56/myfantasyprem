@@ -205,17 +205,18 @@ func TestRealDraftBackfillsPastGameweekFromLive(t *testing.T) {
 }
 
 // On start with gameweek 6 current, five closed gameweeks are queued but
-// a poll fetches at most BackfillPerTick (4) of them, most recent first.
-// Gameweek 1 came fifth and waited for the next poll, hours away once
+// a poll fetches at most BackfillPerTick (1) of them, most recent first.
+// Gameweek 1 came fifth and waited for later polls, hours away once
 // gameweek 6 is over, and since 2-5 failed every time they took the
-// budget on every poll: gameweek 1 was never fetched.
+// budget on every poll: gameweek 1 was never fetched. Now failures go to
+// the back and the polls come after LiveInterval: 5, 4, 3, 2, then 1.
 func TestRealDraftBackfillReachesGameweek1(t *testing.T) {
 	realStores(t, realClock, func(t *testing.T, f fixture) {
-		for i := 0; i < 2 && f.src.calls["live/1"] == 0; i++ {
+		for i := 0; i < 5 && f.src.calls["live/1"] == 0; i++ {
 			f.advance(f.p.Tick(ctx))
 		}
 		if f.src.calls["live/1"] != 1 {
-			t.Fatalf("gameweek 1 fetched %d times in two polls; live calls %v", f.src.calls["live/1"], f.src.calls)
+			t.Fatalf("gameweek 1 fetched %d times in five polls; live calls %v", f.src.calls["live/1"], f.src.calls)
 		}
 		checkRealGW(t, f, 1, 310)
 		checkRealGW6(t, f)

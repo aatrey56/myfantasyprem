@@ -100,7 +100,8 @@ func realEnvsFS(t *testing.T, fsys fs.FS, test func(t *testing.T, e *env)) {
 		p := poller.New(e.src, stats.NewIngester(e.stats, "fpl", e.now), e.stats, noRescore{}, poller.Config{}, quiet())
 		p.Now = e.now
 		p.Sleep = func(context.Context, time.Duration) error { return nil }
-		for range 3 {
+		// One earlier gameweek per poll (poller.Config.BackfillPerTick).
+		for range realGameweeks + 2 {
 			p.Tick(ctx)
 		}
 		for gw := 1; gw <= realGameweeks; gw++ {

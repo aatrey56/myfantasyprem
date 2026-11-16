@@ -40,7 +40,8 @@ func realStats(t *testing.T, srv *Server, clock *fakeClock) {
 	p := poller.New(src, stats.NewIngester(srv.stats, "fpl", srv.now), srv.stats, noRescore{}, poller.Config{}, testOptions().Logger)
 	p.Now = srv.now
 	p.Sleep = func(context.Context, time.Duration) error { return nil }
-	for range 3 {
+	// One earlier gameweek per poll: gameweek 6, then 5 down to 1.
+	for range 8 {
 		p.Tick(context.Background())
 	}
 }
