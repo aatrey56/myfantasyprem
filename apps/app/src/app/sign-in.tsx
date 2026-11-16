@@ -227,6 +227,14 @@ export default function SignInScreen() {
         </AppText>
       </View>
 
+      {failure && !pendingToken ? (
+        // Above whichever card shows: a spent link clears the token, and the
+        // page may then have no methods to offer.
+        <AppText variant="meta" color={colors.loss} role="alert" testID="sign-in-error">
+          {describeError(failure)}
+        </AppText>
+      ) : null}
+
       {pendingToken ? (
         <Card testID="magic-link-confirm">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -394,11 +402,6 @@ export default function SignInScreen() {
                 testID="sign-in-email-submit"
               />
             </>
-          ) : null}
-          {failure ? (
-            <AppText variant="meta" color={colors.loss} role="alert" testID="sign-in-error">
-              {describeError(failure)}
-            </AppText>
           ) : null}
         </Card>
       )}

@@ -4,6 +4,7 @@
  * see how to get in instead of buttons that fail.
  */
 import { fireEvent, screen } from '@testing-library/react-native';
+import Constants from 'expo-constants';
 import { renderRouter } from 'expo-router/testing-library';
 import { getResponse, HttpResponse } from 'msw';
 
@@ -143,5 +144,17 @@ describe('sign-in methods', () => {
     await renderRouter('./src/app', { initialUrl: '/sign-in' });
     await screen.findByTestId('sign-in-email-submit');
     expect(shown()).toEqual({ apple: true, google: true, email: true });
+  });
+
+  it('with every method off, still says why an expired link failed', async () => {
+    config = methods({});
+    await renderRouter('./src/app', { initialUrl: '/sign-in?token=expired-token-0000' });
+    await fireEvent.press(await screen.findByTestId('magic-link-continue'));
+    expect(await screen.findByTestId('sign-in-error')).toHaveTextContent(
+      /expired or was already used/,
+    );
+    expect(await screen.findByTestId('sign-in-invite-only')).toHaveTextContent(INVITE_ONLY, {
+      exact: false,
+    });
   });
 });
