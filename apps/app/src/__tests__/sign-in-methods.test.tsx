@@ -4,7 +4,6 @@
  * see how to get in instead of buttons that fail.
  */
 import { fireEvent, screen } from '@testing-library/react-native';
-import Constants from 'expo-constants';
 import { renderRouter } from 'expo-router/testing-library';
 import { getResponse, HttpResponse } from 'msw';
 
@@ -13,6 +12,20 @@ import { memorySessionStore, tokens } from '@/auth/session';
 import { handlers, resetMocks } from '@/mocks/handlers';
 
 jest.mock('@/api/config', () => ({ API_BASE_URL: 'http://api.test' }));
+
+// The native build's iOS config (expo-constants); undefined is the usual build.
+let mockIosConfig: { usesAppleSignIn: boolean } | undefined;
+jest.mock('expo-constants', () => {
+  const real = jest.requireActual('expo-constants');
+  const constants = real.default ?? real;
+  return {
+    __esModule: true,
+    default: new Proxy(constants, {
+      get: (target, key) =>
+        key === 'expoConfig' ? { ...target.expoConfig, ios: mockIosConfig } : target[key],
+    }),
+  };
+});
 
 const mockStore = memorySessionStore();
 jest.mock('@/auth/session-store', () => ({
@@ -156,5 +169,17 @@ describe('sign-in methods', () => {
     expect(await screen.findByTestId('sign-in-invite-only')).toHaveTextContent(INVITE_ONLY, {
       exact: false,
     });
+  });
+
+  it('with only Apple on the server and Apple off in this build, says invite-only', async () => {
+    mockIosConfig = { usesAppleSignIn: false };
+    try {
+      config = methods({ apple: true });
+      await renderRouter('./src/app', { initialUrl: '/sign-in' });
+      expect(await screen.findByTestId('sign-in-invite-only')).toBeOnTheScreen();
+      expect(shown()).toEqual({ apple: false, google: false, email: false });
+    } finally {
+      mockIosConfig = undefined;
+    }
   });
 });

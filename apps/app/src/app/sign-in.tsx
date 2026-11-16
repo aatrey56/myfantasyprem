@@ -81,7 +81,8 @@ export type SignInOptions = { apple: boolean; google: boolean; email: boolean };
 /**
  * What the sign-in card shows: the methods the server accepts, a
  * placeholder while its config loads, or the invite-only message when it
- * accepts none of them (or the config could not be read). A server too old
+ * accepts none of them (or the config could not be read); a method this build cannot offer
+ * (Apple, in a build made without it) counts as off. A server too old
  * to say keeps every method.
  */
 export function signInOptions(
@@ -94,11 +95,11 @@ export function signInOptions(
     const signIn = config.data.data.signIn as SignInOptions | undefined;
     const methods = signIn
       ? {
-          apple: signIn.apple === true,
+          apple: signIn.apple === true && !appleSignInOff(),
           google: signIn.google === true,
           email: signIn.email === true,
         }
-      : { apple: true, google: true, email: true };
+      : { apple: !appleSignInOff(), google: true, email: true };
     if (methods.apple || methods.google || methods.email) return { kind: 'methods', methods };
     return { kind: 'invite-only', failed: false };
   }
@@ -332,7 +333,7 @@ export default function SignInScreen() {
         </Card>
       ) : (
         <Card style={{ gap: spacing.md }}>
-          {!offer.methods.apple || appleSignInOff ? null : nativeApple ? (
+          {!offer.methods.apple ? null : nativeApple ? (
             // Apple's own button (HIG): system artwork, white on the dark theme.
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
@@ -364,8 +365,7 @@ export default function SignInScreen() {
               testID="sign-in-google"
             />
           ) : null}
-          {offer.methods.email &&
-          (offer.methods.google || (offer.methods.apple && !appleSignInOff)) ? (
+          {offer.methods.email && (offer.methods.google || offer.methods.apple) ? (
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}
               aria-hidden
@@ -413,7 +413,7 @@ export default function SignInScreen() {
  * A native build made with APPLE_SIGN_IN=false (a free personal team cannot
  * sign the capability) has no Apple button at all.
  */
-const appleSignInOff =
+const appleSignInOff = () =>
   Platform.OS !== 'web' && Constants.expoConfig?.ios?.usesAppleSignIn === false;
 
 /** True on iOS 13+ devices, where Apple's native button must be used (HIG). */
