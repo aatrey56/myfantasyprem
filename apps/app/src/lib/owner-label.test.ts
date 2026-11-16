@@ -5,14 +5,49 @@ const team = (name: string, managerName: string) => ({ name, managerName });
 describe('firstNameOf', () => {
   it('takes the first name of a display name', () => {
     expect(firstNameOf('Sam P.')).toBe('Sam');
-    expect(firstNameOf('  Aatrey Sahay ')).toBe('Aatrey');
+    expect(firstNameOf('  Sam Rivers ')).toBe('Sam');
     expect(firstNameOf('Zoë')).toBe('Zoë');
     expect(firstNameOf('Jean-Luc Picard')).toBe('Jean-Luc');
   });
 
-  it('skips a lone initial for the next word', () => {
-    expect(firstNameOf('A. Smith')).toBe('Smith');
+  it('keeps a leading lone initial with the next word', () => {
+    expect(firstNameOf('J Doe')).toBe('J Doe');
+    expect(firstNameOf('A. Smith')).toBe('A. Smith');
+    expect(firstNameOf('j doe')).toBe('j doe');
+  });
+
+  it('skips leading titles, with or without a dot', () => {
+    expect(firstNameOf('Dr Sam Rivers')).toBe('Sam');
+    expect(firstNameOf('Mrs. J Doe')).toBe('J Doe');
+    for (const t of ['Mr', 'Mr.', 'Ms', 'Miss', 'Sir', 'Prof', 'Prof.', 'dr.']) {
+      expect(firstNameOf(`${t} Sam Rivers`)).toBe('Sam');
+    }
+  });
+
+  it('shows a single word as it is', () => {
+    expect(firstNameOf('Sam')).toBe('Sam');
     expect(firstNameOf('Ö')).toBe('Ö');
+    expect(firstNameOf('Dr')).toBe('Dr');
+  });
+
+  it('is null for initials only, so the chip falls back to the team name', () => {
+    expect(firstNameOf('A B')).toBeNull();
+    expect(firstNameOf('A. B.')).toBeNull();
+    expect(ownerChipLabel(team('Park The Bus FC', 'A B'), false, 'first_name').text).toBe(
+      'Park The Bus FC',
+    );
+  });
+
+  it('skips a leading emoji', () => {
+    expect(firstNameOf('⚽ Sam')).toBe('Sam');
+    expect(firstNameOf('⚽Sam Rivers')).toBe('Sam');
+    expect(firstNameOf('🦁 J Doe')).toBe('J Doe');
+  });
+
+  it('keeps hyphenated and possessive names whole', () => {
+    expect(firstNameOf('Mary-Jane Watson')).toBe('Mary-Jane');
+    expect(firstNameOf("O'Neil Smith")).toBe("O'Neil");
+    expect(firstNameOf('Sam’s Team')).toBe('Sam’s');
   });
 
   it('is null without a person: no letters, blank, an open seat', () => {

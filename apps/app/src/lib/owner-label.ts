@@ -20,20 +20,39 @@ export function parseOwnerLabel(raw: string | null): OwnerLabelMode {
 /** Manager names that stand for no person. */
 const NO_PERSON = /^(open seat|unclaimed|league average)$/i;
 
+/** Titles that come before a name: "Dr Sam Rivers" → "Sam". */
+const TITLE = /^(mr|mrs|ms|miss|dr|sir|prof)\.?$/i;
+
+/** One letter, maybe with a dot: "J", "A.". */
+const INITIAL = /^\p{L}\.?$/u;
+
 /**
- * A person's first name from a display name: "Sam P." → "Sam",
- * "A. Smith" → "Smith" (a lone initial is skipped), "Ö" → "Ö". Null when the
- * name has no letters or stands for no one ("Open seat").
+ * A person's first name from a display name: "Sam P." → "Sam". A leading
+ * lone initial keeps the next word ("J Doe", "A. Smith"); leading titles
+ * and emoji are skipped; hyphenated and possessive names stay whole. A
+ * single word is that word. Null when the name is initials only ("A B"),
+ * has no letters or stands for no one ("Open seat").
  */
 export function firstNameOf(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed || NO_PERSON.test(trimmed)) return null;
   const words = trimmed
     .split(/\s+/)
-    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}'’-]+$/gu, ''))
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}'’.-]+$/gu, ''))
     .filter((w) => /\p{L}/u.test(w));
   if (words.length === 0) return null;
-  return words.find((w) => [...w].length > 1) ?? words[0]!;
+  if (words.length === 1) return stripDot(words[0]!);
+  let i = 0;
+  while (i < words.length - 1 && TITLE.test(words[i]!)) i++;
+  const rest = words.slice(i);
+  if (rest.every((w) => INITIAL.test(w))) return null;
+  if (INITIAL.test(rest[0]!)) return `${rest[0]} ${stripDot(rest[1]!)}`;
+  return stripDot(rest[0]!);
+}
+
+/** A trailing full stop off a word ("P." → "P"); an initial keeps it. */
+function stripDot(word: string): string {
+  return INITIAL.test(word) ? word : word.replace(/\.+$/, '');
 }
 
 /** A team name as shown: the name itself (emoji included), `Team` when blank. */
