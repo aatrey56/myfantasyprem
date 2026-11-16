@@ -11,6 +11,7 @@ import {
   useVerifyEmailCode,
   useVerifyEmailSignIn,
 } from '@/api/account-hooks';
+import { useAppConfig } from '@/api/assets';
 import { shouldRetry } from '@/api/query-client';
 import { useAuth } from '@/auth/AuthProvider';
 import { pendingNext } from '@/auth/pending-next';
@@ -22,6 +23,7 @@ import { Card } from '@/components/Card';
 import { CodeInput } from '@/components/CodeInput';
 import { Mail } from '@/components/icons';
 import { Screen } from '@/components/Screen';
+import { Skeleton } from '@/components/Skeleton';
 import { TextField } from '@/components/TextField';
 import { APP_NAME } from '@/constants/app';
 import { describeError, problemErrors } from '@/lib/errors';
@@ -73,8 +75,42 @@ function TokenHandoff({ token, next }: { token: string; next?: string }) {
   return <Redirect href={{ pathname: '/sign-in', params: next ? { next } : {} }} />;
 }
 
+/** The sign-in methods to offer: what the server's config says it accepts. */
+export type SignInOptions = { apple: boolean; google: boolean; email: boolean };
+
 /**
- * Sign in with Apple, Google or an emailed link and code. Opening the link
+ * What the sign-in card shows: the methods the server accepts, a
+ * placeholder while its config loads, or the invite-only message when it
+ * accepts none of them (or the config could not be read); a method this build cannot offer
+ * (Apple, in a build made without it) counts as off. A server too old
+ * to say keeps every method.
+ */
+export function signInOptions(
+  config: ReturnType<typeof useAppConfig>,
+):
+  | { kind: 'loading' }
+  | { kind: 'invite-only'; failed: boolean }
+  | { kind: 'methods'; methods: SignInOptions } {
+  if (config.data) {
+    const signIn = config.data.data.signIn as SignInOptions | undefined;
+    const methods = signIn
+      ? {
+          apple: signIn.apple === true && !appleSignInOff(),
+          google: signIn.google === true,
+          email: signIn.email === true,
+        }
+      : { apple: !appleSignInOff(), google: true, email: true };
+    if (methods.apple || methods.google || methods.email) return { kind: 'methods', methods };
+    return { kind: 'invite-only', failed: false };
+  }
+  if (config.isError) return { kind: 'invite-only', failed: true };
+  return { kind: 'loading' };
+}
+
+/**
+ * Sign in with Apple, Google or an emailed link and code, whichever the
+ * server accepts (GET /v1/config `signIn`); with none, people get in through
+ * the claim or sign-in link their commissioner sent. Opening the link
  * lands here with `?token=`; the token leaves the URL at once and a tap on
  * "Continue" finishes the sign-in. Or the code from the same email goes
  * into the "Check your inbox" boxes. `next` is where to go afterwards (a
@@ -90,6 +126,8 @@ export default function SignInScreen() {
   const next = requested ?? storedNext ?? '/leagues';
   const { colors, spacing, radii, layout } = useTheme();
   const nativeApple = useNativeAppleButton();
+  const config = useAppConfig(true);
+  const offer = signInOptions(config);
   const apple = useAppleSignIn();
   const google = useGoogleSignIn();
   const startEmail = useStartEmailSignIn();
@@ -190,6 +228,14 @@ export default function SignInScreen() {
         </AppText>
       </View>
 
+      {failure && !pendingToken ? (
+        // Above whichever card shows: a spent link clears the token, and the
+        // page may then have no methods to offer.
+        <AppText variant="meta" color={colors.loss} role="alert" testID="sign-in-error">
+          {describeError(failure)}
+        </AppText>
+      ) : null}
+
       {pendingToken ? (
         <Card testID="magic-link-confirm">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -263,9 +309,31 @@ export default function SignInScreen() {
             />
           </View>
         </Card>
+      ) : offer.kind === 'loading' ? (
+        <Card style={{ gap: spacing.md }} testID="sign-in-loading">
+          <Skeleton height={layout.touch} radius={radii.md} />
+          <Skeleton height={layout.touch} radius={radii.md} />
+        </Card>
+      ) : offer.kind === 'invite-only' ? (
+        <Card testID="sign-in-invite-only">
+          <AppText variant="heading">Invite only</AppText>
+          <AppText muted>
+            This league is invite-only. Open the claim link or sign-in link your commissioner sent
+            you.
+          </AppText>
+          {offer.failed ? (
+            <Button
+              label="Try again"
+              variant="secondary"
+              onPress={() => void config.refetch()}
+              loading={config.isFetching}
+              testID="sign-in-config-retry"
+            />
+          ) : null}
+        </Card>
       ) : (
         <Card style={{ gap: spacing.md }}>
-          {appleSignInOff ? null : nativeApple ? (
+          {!offer.methods.apple ? null : nativeApple ? (
             // Apple's own button (HIG): system artwork, white on the dark theme.
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
@@ -287,47 +355,53 @@ export default function SignInScreen() {
               testID="sign-in-apple"
             />
           )}
-          <Button
-            label="Continue with Google"
-            variant="secondary"
-            onPress={() => google.mutate()}
-            loading={google.isPending}
-            disabled={busy}
-            testID="sign-in-google"
-          />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }} aria-hidden>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <AppText variant="meta" subtle>
-              or
-            </AppText>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-          </View>
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            inputMode="email"
-            onSubmitEditing={sendLink}
-            returnKeyType="send"
-            error={emailError}
-            testID="sign-in-email"
-          />
-          <Button
-            label="Email me a sign-in link"
-            icon={Mail}
-            onPress={sendLink}
-            loading={startEmail.isPending || verify.isPending}
-            disabled={busy}
-            testID="sign-in-email-submit"
-          />
-          {failure ? (
-            <AppText variant="meta" color={colors.loss} role="alert" testID="sign-in-error">
-              {describeError(failure)}
-            </AppText>
+          {offer.methods.google ? (
+            <Button
+              label="Continue with Google"
+              variant="secondary"
+              onPress={() => google.mutate()}
+              loading={google.isPending}
+              disabled={busy}
+              testID="sign-in-google"
+            />
+          ) : null}
+          {offer.methods.email && (offer.methods.google || offer.methods.apple) ? (
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}
+              aria-hidden
+            >
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+              <AppText variant="meta" subtle>
+                or
+              </AppText>
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            </View>
+          ) : null}
+          {offer.methods.email ? (
+            <>
+              <TextField
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                inputMode="email"
+                onSubmitEditing={sendLink}
+                returnKeyType="send"
+                error={emailError}
+                testID="sign-in-email"
+              />
+              <Button
+                label="Email me a sign-in link"
+                icon={Mail}
+                onPress={sendLink}
+                loading={startEmail.isPending || verify.isPending}
+                disabled={busy}
+                testID="sign-in-email-submit"
+              />
+            </>
           ) : null}
         </Card>
       )}
@@ -339,7 +413,7 @@ export default function SignInScreen() {
  * A native build made with APPLE_SIGN_IN=false (a free personal team cannot
  * sign the capability) has no Apple button at all.
  */
-const appleSignInOff =
+const appleSignInOff = () =>
   Platform.OS !== 'web' && Constants.expoConfig?.ios?.usesAppleSignIn === false;
 
 /** True on iOS 13+ devices, where Apple's native button must be used (HIG). */

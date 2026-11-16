@@ -66,6 +66,7 @@ export type Scenario =
   | 'league-network-error'
   | 'league-season-over'
   | 'branded-off'
+  | 'sign-in-invite-only'
   | 'assets-missing'
   | 'lineup-save-refused'
   | 'free-agent-refused'

@@ -1553,6 +1553,11 @@ type AppConfig struct {
 	// them off for itself (EXPO_PUBLIC_BRANDED_ASSETS=false).
 	BrandedAssets bool `json:"brandedAssets"`
 
+	// SignIn Which ways of signing in this server accepts. A client shows only
+	// these; with none of email, Apple or Google on, people get in only
+	// through a claim link or a sign-in link sent to them.
+	SignIn SignInMethods `json:"signIn"`
+
 	// WebPushPublicKey The server's VAPID public key (base64url, uncompressed P-256) for
 	// PushManager.subscribe; null when Web Push is not configured.
 	WebPushPublicKey *string `json:"webPushPublicKey,omitempty"`
@@ -4352,6 +4357,26 @@ type SignInLinkSession struct {
 type SignInLinkSessionResponse struct {
 	Data SignInLinkSession `json:"data"`
 	Meta Meta              `json:"meta"`
+}
+
+// SignInMethods Which ways of signing in this server accepts. A client shows only
+// these; with none of email, Apple or Google on, people get in only
+// through a claim link or a sign-in link sent to them.
+type SignInMethods struct {
+	// Apple Sign in with Apple (APPLE_CLIENT_IDS is set).
+	Apple bool `json:"apple"`
+
+	// ClaimLink A seat's claim link signs a signed-out person in
+	// (CLAIM_LINK_SIGNIN).
+	ClaimLink bool `json:"claimLink"`
+
+	// Email Magic link and code by email (`POST /v1/auth/email`): an email
+	// provider is configured (EMAIL_PROVIDER resend, or log in
+	// development).
+	Email bool `json:"email"`
+
+	// Google Sign in with Google (GOOGLE_CLIENT_IDS is set).
+	Google bool `json:"google"`
 }
 
 // StandingRow One real team. The league-average pseudo-team never has a row.
