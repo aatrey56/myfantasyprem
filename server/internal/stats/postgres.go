@@ -314,6 +314,13 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 			}
 		}
 	}
+	var newer map[int]bool
+	if b.FixturesAsOf != nil && len(b.Fixtures) > 0 {
+		var err error
+		if newer, err = newerLive(ctx, tx, b.Fixtures, b.FixturesAsOf); err != nil {
+			return err
+		}
+	}
 	batch := &pgx.Batch{}
 	for _, c := range b.Clubs {
 		batch.Queue(`INSERT INTO clubs (id, season, code, name) VALUES ($1, $2, $3, $4)
@@ -341,6 +348,15 @@ func apply(ctx context.Context, tx pgx.Tx, b Batch) error {
 		if f.Gameweek != 0 {
 			g := f.Gameweek
 			gw = &g
+		}
+		if newer[f.Gameweek] {
+			// A newer live snapshot set its status and scores: keep them.
+			batch.Queue(`INSERT INTO fixtures (id, season, gameweek, home_club_id, away_club_id, kickoff_at, status, home_score, away_score)
+			             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			             ON CONFLICT (id) DO UPDATE SET gameweek = EXCLUDED.gameweek, home_club_id = EXCLUDED.home_club_id,
+			               away_club_id = EXCLUDED.away_club_id, kickoff_at = EXCLUDED.kickoff_at, updated_at = now()`,
+				f.ID, Season, gw, f.HomeClubID, f.AwayClubID, f.KickoffAt, f.Status, f.HomeScore, f.AwayScore)
+			continue
 		}
 		batch.Queue(`INSERT INTO fixtures (id, season, gameweek, home_club_id, away_club_id, kickoff_at, status, home_score, away_score)
 		             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -481,6 +497,55 @@ func checkBase(ctx context.Context, tx pgx.Tx, gw int, base *LiveBase) error {
 		return errBaseMoved
 	}
 	return nil
+}
+
+// newerLive takes the live lock of each gameweek of fixtures, in
+// ascending order, and returns those a live snapshot with a ticket above
+// asOf's was applied for (Batch.FixturesAsOf). The locks, held to the end
+// of the transaction, keep a live ingest from committing in between.
+func newerLive(ctx context.Context, tx pgx.Tx, fixtures []Fixture, asOf map[int]int64) (map[int]bool, error) {
+	var gws []int
+	for _, f := range fixtures {
+		if f.Gameweek != 0 && !slices.Contains(gws, f.Gameweek) {
+			gws = append(gws, f.Gameweek)
+		}
+	}
+	slices.Sort(gws)
+	for _, gw := range gws {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, liveLock, gw); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := tx.Query(ctx, `SELECT gameweek, COALESCE(ingested, 0) FROM live_fetched WHERE season = $1 AND gameweek = ANY($2)`,
+		Season, gws)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]bool{}
+	var gw int
+	var ingested int64
+	_, err = pgx.ForEachRow(rows, []any{&gw, &ingested}, func() error {
+		if ingested > asOf[gw] {
+			out[gw] = true
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (p *Postgres) LiveIssued(ctx context.Context) (map[int]int64, error) {
+	rows, err := p.pool.Query(ctx, `SELECT gameweek, issued FROM live_fetched WHERE season = $1`, Season)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]int64{}
+	var gw int
+	var issued int64
+	_, err = pgx.ForEachRow(rows, []any{&gw, &issued}, func() error {
+		out[gw] = issued
+		return nil
+	})
+	return out, err
 }
 
 func (p *Postgres) LiveTicket(ctx context.Context, gw int) (int64, error) {

@@ -541,8 +541,14 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 	return mode, interval, gw, nil
 }
 
-// refreshSeason fetches and ingests bootstrap and fixtures.
+// refreshSeason fetches and ingests bootstrap and fixtures. The live
+// tickets issued before the fetch keep its fixtures from reverting what a
+// newer live ingest (another poller's) stored (Ingester.SeasonAsOf).
 func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus) error {
+	asOf, err := p.Stats.LiveIssued(ctx)
+	if err != nil {
+		return err
+	}
 	b, err := p.Source.Bootstrap(ctx)
 	if err != nil {
 		return err
@@ -555,7 +561,7 @@ func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus)
 	if p.News != nil {
 		before = p.players(ctx)
 	}
-	if err := p.Ingester.Season(ctx, b, fixtures, st); err != nil {
+	if err := p.Ingester.SeasonAsOf(ctx, asOf, b, fixtures, st); err != nil {
 		return err
 	}
 	p.lastBootstrap, p.seasonGW = p.Now(), st.Current

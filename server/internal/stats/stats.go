@@ -253,6 +253,12 @@ type Batch struct {
 	// Rescore marks gameweeks whose league scores must be recomputed
 	// (see Repo.RescorePending), atomically with the rest of the batch.
 	Rescore []int
+	// FixturesAsOf, when set, is the live tickets issued (Repo.LiveIssued)
+	// before Fixtures were fetched: a fixture of a gameweek a live
+	// snapshot with a higher ticket was applied for keeps its stored
+	// status and scores, which are newer (its schedule still updates).
+	// Apply checks it under each gameweek's live lock. Nil: no check.
+	FixturesAsOf map[int]int64
 }
 
 // LiveRows are every player-fixture row of one gameweek, and every
@@ -323,6 +329,9 @@ type Repo interface {
 	// fetch, it orders snapshots by when they were asked for, not by
 	// clocks that can step back.
 	LiveTicket(ctx context.Context, gw int) (int64, error)
+	// LiveIssued returns, per gameweek, the highest live fetch ticket
+	// issued so far (none: absent), for Batch.FixturesAsOf.
+	LiveIssued(ctx context.Context) (map[int]int64, error)
 
 	// ExternalIDs maps upstream ids to ours for one provider and entity.
 	ExternalIDs(ctx context.Context, provider, entity string) (map[string]string, error)
