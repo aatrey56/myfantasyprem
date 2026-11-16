@@ -26,6 +26,7 @@ import {
   mineCount,
   minutesText,
   ownerBadges,
+  ownerChips,
   type MatchEvent,
 } from '@/lib/fixture-detail';
 import {
@@ -271,10 +272,9 @@ function FixturePlayerRow({
   const { colors, spacing } = useTheme();
   const { isWide } = useLayout();
   const badges = ownerBadges(p.owners);
-  // Readable chips over all of them: the rest as a count (all read out).
-  const limit = isWide ? 4 : 2;
-  const shown = badges.length > limit ? badges.slice(0, limit - 1) : badges;
-  const more = badges.length - shown.length;
+  // Readable chips over all of them: the rest as a count. The row's label
+  // reads out every owner, so the count is hidden from screen readers.
+  const { shown, more } = ownerChips(badges, isWide ? 4 : 2);
   const mine = badges.some((b) => b.mine);
   const events = matchEvents(p.stats);
   const ownedBy = badges.map((b) => b.a11y).join(', ');
@@ -348,6 +348,8 @@ function FixturePlayerRow({
               weight="bold"
               muted
               testID="owner-badges-more"
+              aria-hidden
+              importantForAccessibility="no-hide-descendants"
               style={{ flexShrink: 0 }}
             >
               {`+${more}`}

@@ -1,6 +1,13 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 
-import { cardLeagueFor, matchEvents, minutesText, mineCount, ownerBadges } from './fixture-detail';
+import {
+  cardLeagueFor,
+  matchEvents,
+  minutesText,
+  mineCount,
+  ownerBadges,
+  ownerChips,
+} from './fixture-detail';
 
 const NONE: Schemas['FixturePlayerStats'] = {
   goalsScored: 0,
@@ -71,6 +78,37 @@ describe('ownerBadges', () => {
 
   it('is empty for an unowned player', () => {
     expect(ownerBadges([])).toEqual([]);
+  });
+});
+
+describe('ownerChips', () => {
+  const others = (n: number) =>
+    ownerBadges(Array.from({ length: n }, (_, i) => owner(`lg_${i}`, `Team ${i}`)));
+
+  it('shows every chip up to the limit, with no count', () => {
+    expect(ownerChips(others(2), 2)).toMatchObject({ more: 0 });
+    expect(ownerChips(others(2), 2).shown).toHaveLength(2);
+  });
+
+  it('shows the limit in chips and counts the rest: 3 owners on a phone are 2 chips and +1', () => {
+    const { shown, more } = ownerChips(others(3), 2);
+    expect(shown.map((b) => b.team.name)).toEqual(['Team 0', 'Team 1']);
+    expect(more).toBe(1);
+    expect(ownerChips(others(7), 4)).toMatchObject({ more: 3 });
+  });
+
+  it('shows one You when the player is mine in several leagues', () => {
+    const badges = ownerBadges([
+      owner('lg_a', 'Mine A', true),
+      owner('lg_b', 'Other B'),
+      owner('lg_c', 'Mine C', true),
+    ]);
+    const { shown, more } = ownerChips(badges, 2);
+    expect(shown.map((b) => b.mine)).toEqual([true, false]);
+    expect(more).toBe(0);
+    expect(shown[0]!.a11y).toBe(
+      'Mine A in League lg_a (your team), Mine C in League lg_c (your team)',
+    );
   });
 });
 

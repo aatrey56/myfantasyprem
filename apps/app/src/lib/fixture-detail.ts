@@ -101,6 +101,24 @@ export function ownerBadges(owners: readonly Owner[]): OwnerBadge[] {
 }
 
 /**
+ * The chips a box-score row shows: one `You` however many of my teams have
+ * the player (its label lists them all), then up to `limit` chips in all;
+ * `more` counts the owners left out.
+ */
+export function ownerChips(
+  badges: readonly OwnerBadge[],
+  limit: number,
+): { shown: OwnerBadge[]; more: number } {
+  const mine = badges.filter((b) => b.mine);
+  const chips = [
+    ...(mine.length > 0 ? [{ ...mine[0]!, a11y: mine.map((b) => b.a11y).join(', ') }] : []),
+    ...badges.filter((b) => !b.mine),
+  ];
+  const shown = chips.slice(0, limit);
+  return { shown, more: chips.length - shown.length };
+}
+
+/**
  * The league whose player card a tap in the box score opens: where the
  * player is mine, else the first league that has him, else `fallback` (the
  * user's first league), or null with no league to open it in.
