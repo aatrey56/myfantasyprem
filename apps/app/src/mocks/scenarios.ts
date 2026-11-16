@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw';
 
-import { isInSeason, leagues } from './data';
-import { ok, problem } from './handlers';
+import { findFixture, isInSeason, leagues } from './data';
+import { fixtureDetail, ok, problem } from './handlers';
 import { mockPhase, type InSeasonLeague } from './league';
 import { leagueStatus } from './status';
 
@@ -129,6 +129,27 @@ export const scenarios = {
   ],
   // Long team names in the league home (the League tab's matchup cards
   // wrap them to two lines instead of cutting them short).
+  // Box scores where each player of mine is also on my team in a second
+  // league and on two other managers' teams, so the owner chips always show
+  // other owners, one deduplicated You and a +N count on phones.
+  'shared-owners': [
+    http.get<{ fixtureId: string }>('*/v1/fixtures/:fixtureId', ({ params }) => {
+      const fixture = findFixture(params.fixtureId);
+      if (!fixture) return problem(404, 'Not found', 'Fixture not found.');
+      const detail = fixtureDetail(fixture);
+      for (const side of [detail.home, detail.away]) {
+        for (const p of side.players) {
+          const mine = p.owners.find((o) => o.mine);
+          if (!mine) continue;
+          p.owners = [
+            mine,
+            ...SHARED_OWNERS.map((o, i) => ({ ...o, team: { ...o.team, id: `${o.team.id}${i}` } })),
+          ];
+        }
+      }
+      return ok(detail);
+    }),
+  ],
   'long-team-names': [
     http.get<{ leagueId: string }>(LEAGUE_HOME, ({ params }) => {
       const league = leagues.get(params.leagueId);
@@ -139,6 +160,32 @@ export const scenarios = {
     }),
   ],
 } as const;
+
+/** Made-up owners in made-up leagues for 'shared-owners'. */
+const SHARED_OWNERS = [
+  {
+    leagueId: 'lg_01hzz0000000000000000000a1',
+    leagueName: 'Office League',
+    team: { id: 'tm_01hzz00000000000000000m', name: 'Second Squad', managerName: 'Me' },
+    mine: true,
+  },
+  {
+    leagueId: 'lg_01hzz0000000000000000000a1',
+    leagueName: 'Office League',
+    team: {
+      id: 'tm_01hzz00000000000000000r',
+      name: 'Riverside Rovers',
+      managerName: 'Sam Rivers',
+    },
+    mine: false,
+  },
+  {
+    leagueId: 'lg_01hzz0000000000000000000b2',
+    leagueName: 'Pub League',
+    team: { id: 'tm_01hzz00000000000000000c', name: 'Cole Miners FC', managerName: 'Dana Cole' },
+    mine: false,
+  },
+];
 
 const LONG_NAMES = [
   ["Gaffer's Army", 'Més Que Un Club'],

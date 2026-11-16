@@ -1,10 +1,12 @@
-import { expect, test, type Page } from './fixtures';
+import { expect, test, type Locator, type Page } from './fixtures';
 
 import { LEAGUE, signIn, startWithScenario } from './helpers';
 
 // Owner chips (FixtureScreen, InjuriesCard) name the manager, "You" on my
 // own team; Account → "Show owners as" switches them to team names. The
 // League tab's matchup cards wrap long team names to two lines.
+// 'shared-owners': each player of mine is also on a second team of mine and
+// on Sam Rivers' and Dana Cole's teams, so other owners are always there.
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -24,6 +26,13 @@ async function openFixtureWithMine(page: Page) {
   }
   throw new Error('no fixture has a player of mine');
 }
+
+/** The first box-score row with a player of mine. */
+const mineRow = (detail: Locator) =>
+  detail
+    .locator('[data-testid^="fx-player-plr_"]')
+    .filter({ has: detail.page().getByTestId('owner-badge-mine') })
+    .first();
 
 /** Every owned row: its chips on one line, clear of the points. */
 async function expectChipsClearOfPoints(page: Page) {
@@ -47,15 +56,34 @@ for (const vp of [
   test.describe(`owner chips (${vp.name})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test('first names by default, You on mine, clear of the points', async ({ page }) => {
+    test('first names by default, one You, clear of the points', async ({ page }) => {
+      await startWithScenario(page, 'shared-owners');
       const detail = await openFixtureWithMine(page);
-      await expect(detail.getByTestId('owner-badge-mine').first()).toHaveText('You');
-      const other = detail.getByTestId('owner-badge');
-      if ((await other.count()) > 0) await expect(other.first()).toHaveText(/^\p{Lu}\p{Ll}+$/u);
+      const row = mineRow(detail);
+      // Mine in two leagues: one You.
+      await expect(row.getByTestId('owner-badge-mine')).toHaveCount(1);
+      await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
+      const other = row.getByTestId('owner-badge');
+      await expect(other.first()).toHaveText('Sam');
+      if (vp.width < 768) {
+        // Two chips, then the third owner as +1, hidden from screen readers.
+        await expect(other).toHaveCount(1);
+        await expect(row.getByTestId('owner-badges-more')).toHaveText('+1');
+        await expect(row.getByTestId('owner-badges-more')).toHaveAttribute('aria-hidden', 'true');
+      } else {
+        await expect(other).toHaveText(['Sam', 'Dana']);
+        await expect(row.getByTestId('owner-badges-more')).toHaveCount(0);
+      }
+      // The row's label names every owner.
+      const label = (await row.getAttribute('aria-label'))!;
+      for (const team of ['Second Squad', 'Riverside Rovers', 'Cole Miners FC']) {
+        expect(label).toContain(team);
+      }
       await expectChipsClearOfPoints(page);
     });
 
     test('Show owners as: Team name, kept after a reload', async ({ page }) => {
+      await startWithScenario(page, 'shared-owners');
       await page.goto('/account');
       const setting = visible(page, 'owner-label-setting');
       await expect(setting).toContainText('Show owners as');
@@ -65,13 +93,14 @@ for (const vp of [
       await expect(visible(page, 'owner-label-setting')).toBeVisible();
 
       const detail = await openFixtureWithMine(page);
-      await expect(detail.getByTestId('owner-badge-mine').first()).toHaveText('You');
-      const other = detail.getByTestId('owner-badge');
-      if ((await other.count()) > 0) {
-        // A team name (every mock team name has a space), the full one read out.
-        await expect(other.first()).toHaveText(/\S\s+\S/);
-        await expect(other.first()).toHaveAttribute('aria-label', / in /);
-      }
+      const row = mineRow(detail);
+      await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
+      const other = row.getByTestId('owner-badge');
+      await expect(other.first()).toHaveText('Riverside Rovers');
+      await expect(other.first()).toHaveAttribute(
+        'aria-label',
+        'Riverside Rovers in Office League',
+      );
       await expectChipsClearOfPoints(page);
     });
   });
