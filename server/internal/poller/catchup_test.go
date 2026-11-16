@@ -24,8 +24,15 @@ import (
 type outage struct {
 	provider.StatsSource
 	current int
-	mu      sync.Mutex
-	live    map[int]int
+	// partial makes the current gameweek's live data show its second
+	// half of fixtures still in play (the server went down mid-gameweek).
+	partial bool
+	// moved lists an extra gameweek 6 fixture while current < 6, which
+	// upstream then moves out of the gameweek: no later fixture list or
+	// live payload has it.
+	moved bool
+	mu    sync.Mutex
+	live  map[int]int
 }
 
 func (o *outage) GameweekStatus(ctx context.Context) (*provider.GameweekStatus, error) {
@@ -68,14 +75,41 @@ func (o *outage) Fixtures(ctx context.Context) ([]provider.Fixture, error) {
 		}
 		out = append(out, f)
 	}
+	if o.moved && o.current < 6 {
+		for _, f := range out {
+			if f.Gameweek == 6 {
+				kick := f.KickoffAt.Add(48 * time.Hour)
+				out = append(out, provider.Fixture{ExternalID: movedFixture, Gameweek: 6, KickoffAt: &kick,
+					HomeClubExternalID: f.AwayClubExternalID, AwayClubExternalID: f.HomeClubExternalID,
+					Status: provider.FixtureScheduled})
+				break
+			}
+		}
+	}
 	return out, nil
 }
+
+// movedFixture is the external id of outage.moved's fixture.
+const movedFixture = "moved-1"
+
 
 func (o *outage) EventLive(ctx context.Context, gw int) (*provider.EventLive, error) {
 	o.mu.Lock()
 	o.live[gw]++
 	o.mu.Unlock()
-	return o.StatsSource.EventLive(ctx, gw)
+	l, err := o.StatsSource.EventLive(ctx, gw)
+	if err != nil || !o.partial || gw != o.current {
+		return l, err
+	}
+	cp := *l
+	cp.Fixtures = nil
+	for i, f := range l.Fixtures {
+		if o.partial && gw == o.current && i >= len(l.Fixtures)/2 {
+			f.Status = provider.FixtureLive
+		}
+		cp.Fixtures = append(cp.Fixtures, f)
+	}
+	return &cp, nil
 }
 
 // The production outage, on the demo season: the server polled up to

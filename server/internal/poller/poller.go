@@ -54,6 +54,7 @@ import (
 
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider"
+	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 )
 
@@ -641,20 +642,21 @@ func (p *Poller) plan(ctx context.Context, gw int) error {
 }
 
 // queueMissing queues every earlier gameweek that upstream marks
-// finished but whose stats are missing or incomplete (the server was down
-// for all of it, say). It runs after each bootstrap refresh, which is
-// where the finished flags come from; reconcile then fetches them.
+// finished but whose stats are missing, incomplete or not settled (the
+// server was down for all of it, or went down mid-gameweek). It runs after
+// each bootstrap refresh, which is where the finished flags come from;
+// reconcile then fetches them.
 func (p *Poller) queueMissing(ctx context.Context, current int) {
-	gws, err := p.Stats.Gameweeks(ctx)
+	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
 	if err != nil {
 		p.Log.WarnContext(ctx, "poller: find missing gameweeks", "err", err)
 		return
 	}
-	for _, g := range gws {
+	for _, g := range w.Gameweeks {
 		if g.Number < 1 || g.Number >= current || !g.Finished {
 			continue
 		}
-		if _, queued := p.pending[g.Number]; queued || p.loaded(ctx, g.Number) {
+		if _, queued := p.pending[g.Number]; queued || p.loaded(ctx, w, g.Number) {
 			continue
 		}
 		p.Log.InfoContext(ctx, "poller: finished gameweek has no stats; catching up", "gameweek", g.Number, "current", current)
@@ -701,7 +703,7 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 			p.drop(g) // nothing played yet: nothing to load
 			continue
 		}
-		if !p.pending[g] && p.loaded(ctx, g) {
+		if !p.pending[g] && p.loaded(ctx, w, g) {
 			p.drop(g)
 			continue
 		}
@@ -738,14 +740,26 @@ func (p *Poller) drop(g int) {
 }
 
 // loaded reports whether a gameweek has stored rows and complete
-// gameweek lines.
-func (p *Poller) loaded(ctx context.Context, g int) bool {
+// gameweek lines and, once upstream marks it finished, is settled: every
+// stored fixture over and no bonus provisional. A gameweek ingested while
+// it was under way (the server went down mid-gameweek) is not, so it is
+// fetched again rather than left live, out of the table, for good.
+func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
 	rows, err := p.Stats.PlayerFixtures(ctx, g)
 	if err != nil || len(rows) == 0 {
 		return false
 	}
 	lines, err := p.Stats.PlayerGameweeks(ctx, g)
-	return err == nil && p.linesComplete(g, lines)
+	if err != nil || !p.linesComplete(g, lines) {
+		return false
+	}
+	if !w.Gameweeks[g].Finished {
+		return true
+	}
+	if s := w.State(g); s == scoring.StateUpcoming || s == scoring.StateLive {
+		return false
+	}
+	return !slices.ContainsFunc(rows, func(r stats.PlayerFixture) bool { return r.BonusProvisional })
 }
 
 // linesComplete reports whether a gameweek's lines are there and, once
