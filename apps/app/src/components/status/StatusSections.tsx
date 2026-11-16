@@ -879,6 +879,9 @@ export function FixturesCard({
 
 // ---------------------------------------------------------------- injuries
 
+/** The injuries card's owner column: room for `You` or a short first name. */
+const INJURY_OWNER_WIDTH = 56;
+
 export function InjuriesCard({
   players,
   onOpen,
@@ -890,6 +893,9 @@ export function InjuriesCard({
   myTeamId?: string;
 }) {
   const { colors, spacing, radii } = useTheme();
+  // The smallest phones drop the club column (the player card has it), so
+  // the name keeps room beside the status, position and owner.
+  const narrow = useLayout().width < 360;
   return (
     <Card testID="status-injuries" style={{ gap: spacing.sm }}>
       <Heading>Injuries and Suspensions</Heading>
@@ -956,34 +962,51 @@ export function InjuriesCard({
                     ...pressFeedback(colors, state, { hoverFill: false }),
                   ]}
                 >
-                  <AppText weight="semibold" numberOfLines={1}>
+                  <AppText
+                    weight="semibold"
+                    numberOfLines={1}
+                    testID={`injury-name-${f.player.id}`}
+                  >
                     {f.player.displayName}
                   </AppText>
                 </Pressable>
                 <AppText variant="meta" weight="semibold" muted style={{ width: 36 }}>
                   {positionLabel(f.player.position)}
                 </AppText>
-                <AppText variant="meta" muted style={{ width: 40 }}>
-                  {f.player.club.code}
-                </AppText>
-                {f.owner ? (
-                  <OwnerChip
-                    team={f.owner}
-                    mine={f.owner.id === myTeamId}
-                    a11y={`Owned by ${f.owner.name}`}
-                    testID={`injury-owner-${f.player.id}`}
-                  />
-                ) : (
-                  <AppText
-                    variant="meta"
-                    weight="semibold"
-                    muted
-                    accessibilityLabel="Not owned"
-                    style={{ width: 32, textAlign: 'right' }}
-                  >
-                    –
+                {narrow ? null : (
+                  <AppText variant="meta" muted style={{ width: 40 }}>
+                    {f.player.club.code}
                   </AppText>
                 )}
+                {/* A fixed column: the chip shrinks to an ellipsis inside it,
+                    so the player's name keeps its room and the rows line up. */}
+                <View
+                  testID={`injury-owner-slot-${f.player.id}`}
+                  style={{
+                    width: INJURY_OWNER_WIDTH,
+                    flexDirection: 'row',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  {f.owner ? (
+                    <OwnerChip
+                      team={f.owner}
+                      mine={f.owner.id === myTeamId}
+                      a11y={`Owned by ${f.owner.name}`}
+                      testID={`injury-owner-${f.player.id}`}
+                    />
+                  ) : (
+                    <AppText
+                      variant="meta"
+                      weight="semibold"
+                      muted
+                      accessibilityLabel="Not owned"
+                      style={{ textAlign: 'right' }}
+                    >
+                      –
+                    </AppText>
+                  )}
+                </View>
               </View>
             );
           })}

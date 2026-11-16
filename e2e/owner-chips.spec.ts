@@ -106,6 +106,38 @@ for (const vp of [
   });
 }
 
+for (const width of [320, 375]) {
+  test.describe(`injuries card (phone ${width})`, () => {
+    test.use({ viewport: { width, height: 812 } });
+
+    test("the owner column keeps the player's name readable and the rows aligned", async ({
+      page,
+    }) => {
+      await page.goto(LEAGUE);
+      const card = visible(page, 'status-injuries');
+      await expect(card).toBeVisible();
+      const rows = card.locator('[data-testid^="injury-plr_"]');
+      expect(await rows.count()).toBeGreaterThan(1);
+      await expect(card.getByTestId(/^injury-owner-plr_/).first()).toBeVisible();
+      const slots: { left: number; right: number }[] = [];
+      for (const row of await rows.all()) {
+        const name = (await row.getByTestId(/^injury-name-/).boundingBox())!;
+        expect(name.width).toBeGreaterThan(60);
+        const slot = (await row.getByTestId(/^injury-owner-slot-/).boundingBox())!;
+        slots.push({ left: Math.round(slot.x), right: Math.round(slot.x + slot.width) });
+        const chip = row.getByTestId(/^injury-owner-plr_/);
+        if ((await chip.count()) > 0) {
+          const c = (await chip.boundingBox())!;
+          expect(c.x).toBeGreaterThanOrEqual(slot.x - 0.5);
+          expect(c.x + c.width).toBeLessThanOrEqual(slot.x + slot.width + 0.5);
+        }
+      }
+      // Every row's owner column (chip or –) in the same place.
+      expect(new Set(slots.map((s) => `${s.left}-${s.right}`)).size).toBe(1);
+    });
+  });
+}
+
 test.describe('matchup cards (phone 375)', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
