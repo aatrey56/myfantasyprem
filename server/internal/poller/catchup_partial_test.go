@@ -1,0 +1,219 @@
+package poller_test
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/aatrey56/myfantasyprem/server/internal/auth"
+	"github.com/aatrey56/myfantasyprem/server/internal/demo"
+	"github.com/aatrey56/myfantasyprem/server/internal/league"
+	"github.com/aatrey56/myfantasyprem/server/internal/poller"
+	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
+	"github.com/aatrey56/myfantasyprem/server/internal/stats"
+	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
+)
+
+// outageCase polls src at its current gameweek, seeds the demo league over
+// gameweeks 1 to seed, then restarts with gameweek 7 current and polls six
+// times, each with a season refresh; src.live counts the restart's calls.
+type outageCase struct {
+	repo    stats.Repo
+	leagues *league.Service
+	users   auth.Service
+	src     *outage
+	seed    int
+	// notified, if set, hears the scorer's changes after the restart.
+	notified *notes
+	// quietFails makes the restarted poller's first quiet rescore fail.
+	quietFails bool
+	// waits, if set, gets the wait each restarted poll returned.
+	waits *[]time.Duration
+	// polls is the number of polls after the restart (default 6).
+	polls int
+}
+
+// failOnce fails its first Recompute, then delegates.
+type failOnce struct {
+	poller.Recomputer
+	failed bool
+}
+
+func (f *failOnce) Recompute(ctx context.Context, gw int, changed []string, all bool) (league.RecomputeResult, error) {
+	if !f.failed {
+		f.failed = true
+		return league.RecomputeResult{}, errors.New("rescore failed")
+	}
+	return f.Recomputer.Recompute(ctx, gw, changed, all)
+}
+
+// notes is a league.Notifier that records changes.
+type notes struct{ changes []league.Change }
+
+func (n *notes) Notify(_ context.Context, changes ...league.Change) {
+	n.changes = append(n.changes, changes...)
+}
+
+func eachStore(t *testing.T, run func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service)) {
+	t.Run("memory", func(t *testing.T) {
+		run(t, stats.NewMemory(), league.NewService(league.NewMemory(), time.Now), auth.NewMemory(time.Now))
+	})
+	t.Run("postgres", func(t *testing.T) {
+		pool := storetest.New(t)
+		run(t, stats.NewPostgres(pool), league.NewService(league.NewPostgres(pool), time.Now), auth.NewPostgres(pool, time.Now))
+	})
+}
+
+func (c outageCase) run(t *testing.T) (leagueID, userID string) {
+	t.Helper()
+	ctx := context.Background()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	clock := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	now := func() time.Time { return clock }
+	sc := &league.Scorer{Leagues: c.leagues.Repo(), Stats: c.repo, Rules: scoring.StandardLineup(), Log: quiet}
+	newPoller := func() *poller.Poller {
+		p := poller.New(c.src, stats.NewIngester(c.repo, demo.ProviderName, now), c.repo, sc, poller.Config{}, quiet)
+		p.Now = now
+		p.Sleep = func(context.Context, time.Duration) error { return nil }
+		return p
+	}
+	before := newPoller()
+	for range 6 {
+		before.Tick(ctx)
+	}
+	res, err := demo.SeedLeague(ctx, demo.Deps{Auth: c.users, Leagues: c.leagues, Stats: c.repo, Log: quiet, Now: now}, c.seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.src.current = 7
+	clear(c.src.live)
+	if c.notified != nil {
+		sc.Notify = c.notified
+	}
+	p := newPoller()
+	if c.quietFails {
+		q := *sc
+		q.Notify = nil
+		p.Quiet = &failOnce{Recomputer: &q}
+	}
+	for range cmp.Or(c.polls, 6) {
+		clock = clock.Add(7 * time.Hour) // past BootstrapInterval: every poll refreshes the season
+		wait := p.Tick(ctx)
+		if c.waits != nil {
+			*c.waits = append(*c.waits, wait)
+		}
+	}
+	return res.LeagueID, res.UserIDs[0]
+}
+
+// checkCounted fails unless every matchup of gameweeks 1-6 is final and
+// the table counts all six for every team.
+func checkCounted(t *testing.T, c outageCase, leagueID, userID string) {
+	t.Helper()
+	ctx := context.Background()
+	g, err := c.leagues.Repo().Game(ctx, leagueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for gw := 1; gw <= 6; gw++ {
+		for _, m := range g.MatchupsIn(gw) {
+			if m.State != scoring.StateFinal {
+				t.Errorf("gameweek %d matchup %s: state %s, want final", gw, m.ID, m.State)
+			}
+		}
+	}
+	l, err := c.leagues.Get(ctx, userID, leagueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := league.LoadWorld(ctx, c.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range league.Standings(l, g, w) {
+		if r.Played != 6 {
+			t.Errorf("team %s: played %d, want 6 (gameweeks 1-6 finished upstream)", r.TeamID, r.Played)
+		}
+	}
+}
+
+// The server polled gameweek 5 while its second half of fixtures was
+// still in play and went down; FPL then finished 5 and 6. Gameweek 5 has
+// rows and lines, but its stored fixtures say live, so it must be fetched
+// again: otherwise its matchups stay live and the table drops it.
+func TestRestartRefetchesPartlyIngestedFinishedGameweek(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 5,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 5, partial: true, live: map[int]int{}}}
+		leagueID, userID := c.run(t)
+		if c.src.live[5] != 1 || c.src.live[6] != 1 {
+			t.Errorf("after the restart: live calls %v, want gameweeks 5 (partly ingested) and 6 (missing) once each", c.src.live)
+		}
+		checkCounted(t, c, leagueID, userID)
+	})
+}
+
+// The catch-up rescores gameweeks before the current one without telling
+// anyone: their scores move from 0 (never scored) or from a partial
+// ingest, which is not news and not a correction.
+func TestCatchUpOfOldGameweeksIsQuiet(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 5, notified: &notes{},
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 5, partial: true, live: map[int]int{}}}
+		c.run(t)
+		if c.src.live[5] != 1 {
+			t.Fatalf("setup: gameweek 5 fetched %d times", c.src.live[5])
+		}
+		for _, ch := range c.notified.changes {
+			if ch.Gameweek < 7 {
+				t.Errorf("catch-up notified %s for gameweek %d", ch.Kind, ch.Gameweek)
+			}
+		}
+	})
+}
+
+// Backfill refuses a gameweek upstream has not finished (it would store
+// partial data as if final) unless forced.
+func TestBackfillRefusesUnfinishedGameweekUnlessForced(t *testing.T) {
+	ctx := context.Background()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := stats.NewMemory()
+	src := &outage{StatsSource: demo.Source(quiet), current: 5, partial: true, live: map[int]int{}}
+	sc := &league.Scorer{Leagues: league.NewMemory(), Stats: repo, Rules: scoring.StandardLineup(), Log: quiet}
+	p := poller.New(src, stats.NewIngester(repo, demo.ProviderName, time.Now), repo, sc, poller.Config{}, quiet)
+	if _, _, err := p.Backfill(ctx, 5, false); !errors.Is(err, poller.ErrNotFinished) {
+		t.Fatalf("backfill of unfinished gameweek 5: err %v, want ErrNotFinished", err)
+	}
+	if src.live[5] != 0 {
+		t.Fatalf("refused backfill fetched gameweek 5 %d times", src.live[5])
+	}
+	if _, _, err := p.Backfill(ctx, 5, true); err != nil {
+		t.Fatalf("forced backfill: %v", err)
+	}
+	if rows, _ := repo.PlayerFixtures(ctx, 5); src.live[5] != 1 || len(rows) == 0 {
+		t.Fatalf("forced backfill: %d fetches, %d rows", src.live[5], len(rows))
+	}
+	if _, _, err := p.Backfill(ctx, 4, false); err != nil {
+		t.Fatalf("backfill of finished gameweek 4: %v", err)
+	}
+}
+
+// A quiet catch-up rescore that fails is repeated on the next poll, still
+// quietly: the retry does not notify either.
+func TestFailedQuietRescoreIsRetriedQuietly(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 5, notified: &notes{}, quietFails: true,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 5, partial: true, live: map[int]int{}}}
+		leagueID, userID := c.run(t)
+		for _, ch := range c.notified.changes {
+			if ch.Gameweek < 7 {
+				t.Errorf("catch-up retry notified %s for gameweek %d", ch.Kind, ch.Gameweek)
+			}
+		}
+		checkCounted(t, c, leagueID, userID)
+	})
+}

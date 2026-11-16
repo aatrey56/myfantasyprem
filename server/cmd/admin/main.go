@@ -2,6 +2,7 @@
 // (docs/RUNBOOK.md):
 //
 //	go run ./cmd/admin rescore -gw 7 [-league lg_...]   rescore a gameweek from the stored stats
+//	go run ./cmd/admin backfill -gw 9                   fetch a gameweek's live stats again, ingest and rescore it
 //	go run ./cmd/admin prune-snapshots [-keep 50]       drop old raw stat snapshots (final ones stay)
 //	go run ./cmd/admin tick                             do every due job once (draft clocks, waivers, trades)
 //	go run ./cmd/admin run-waivers -league lg_... -gw 9 process a gameweek's waiver claims now
@@ -25,6 +26,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +39,8 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/mirror"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/notifications/webpush"
+	"github.com/aatrey56/myfantasyprem/server/internal/poller"
+	"github.com/aatrey56/myfantasyprem/server/internal/pollerwire"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/realtime"
 	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
@@ -55,6 +59,9 @@ func main() {
 
 const usage = `usage: admin <command> [flags]
   rescore -gw N [-league ID]   rescore gameweek N (all in-season leagues, or one)
+  backfill -gw N [-league ID] [-force]
+                               fetch finished gameweek N's live stats (POLLER_SOURCE: fpl or demo), ingest
+                               and rescore it; -force: one FPL has not finished
   prune-snapshots [-keep N]    keep the newest N raw snapshots per kind and gameweek (default 50)
   tick                         do every due job once
   run-waivers -league ID -gw N process gameweek N's waiver claims now
@@ -89,6 +96,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 	name := fs.String("name", "", "display name for a new account (session)")
 	existing := fs.Bool("existing", false, "refuse to create an account for an unknown email (session)")
 	all := fs.Bool("all", false, "refetch every player (fetch-history)")
+	force := fs.Bool("force", false, "backfill a gameweek FPL has not finished, as it stands (backfill)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -130,6 +138,46 @@ func run(ctx context.Context, args []string, getenv func(string) string, out, er
 			*gw, res.Leagues, len(res.ChangedTeams), len(res.Corrections))
 		for _, c := range res.Corrections {
 			fmt.Fprintf(out, "  %s %s: %d -> %d\n", c.LeagueID, c.TeamID, c.Previous, c.Points)
+		}
+	case "backfill":
+		// The poller's own catch-up path, once, for a gameweek it missed
+		// (the server was down for all of it): POLLER_SOURCE=demo reads
+		// the embedded demo world, otherwise FPL at the client's pace.
+		if *gw < 1 || *gw > 38 {
+			return errors.New("backfill needs -gw between 1 and 38")
+		}
+		// Built as cmd/api builds its poller: a backfill of the current
+		// gameweek sends the goal, assist and clean-sheet notifications a
+		// poll would (a later poll finds nothing changed); an earlier one
+		// is rescored quietly.
+		p := backfillPoller(getenv, leagues, st, api.Notifier, notifications.NewNotifier(notifications.NewPostgres(pool, time.Now)), log)
+		changed, res, err := p.Backfill(ctx, *gw, *force)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Backfilled gameweek %d: %d players' stats changed; rescored.\n", *gw, changed)
+		if *leagueID != "" {
+			// The backfill rescored every league; report this one's share
+			// of that rescore (a second one would find nothing to change).
+			ls, err := leagues.State(ctx, *leagueID)
+			if err != nil {
+				return err
+			}
+			if ls == nil {
+				return fmt.Errorf("no league %s", *leagueID)
+			}
+			teams, fixes := 0, 0
+			for _, t := range ls.League.Teams {
+				if slices.Contains(res.ChangedTeams, t.ID) {
+					teams++
+				}
+			}
+			for _, c := range res.Corrections {
+				if c.LeagueID == *leagueID {
+					fixes++
+				}
+			}
+			fmt.Fprintf(out, "Rescored gameweek %d of %s: %d team scores changed, %d corrections.\n", *gw, *leagueID, teams, fixes)
 		}
 	case "prune-snapshots":
 		n, err := st.PruneSnapshots(ctx, *keep)
@@ -260,4 +308,12 @@ func historyLine(res history.Result) string {
 	}
 	return fmt.Sprintf("History: %d players fetched, %d already current, %d with none upstream, %d failed.\n",
 		res.Fetched, res.Skipped, res.Missing, res.Failed)
+}
+
+// backfillPoller is the poller the backfill command runs: POLLER_SOURCE=demo
+// reads the embedded demo world, otherwise FPL at the client's pace.
+func backfillPoller(getenv func(string) string, leagues league.Repo, st stats.Repo, notify league.Notifier,
+	n *notifications.Notifier, log *slog.Logger) *poller.Poller {
+	return pollerwire.New(pollerwire.Options{Source: getenv("POLLER_SOURCE"), FPLBaseURL: getenv("FPL_BASE_URL"),
+		FPLUserAgent: getenv("FPL_USER_AGENT"), Leagues: leagues, Stats: st, Notify: notify, Notifier: n, Log: log})
 }

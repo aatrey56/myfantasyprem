@@ -400,7 +400,9 @@ Taken from `bootstrap.settings` and the official help pages.
   only replace goalkeepers, and the formation must stay legal.
 - **Double and blank gameweeks:** in a double gameweek a player scores in both
   fixtures. A player with no fixture scores 0 and can be auto-subbed. A
-  postponed match counts in the gameweek it's replayed.
+  postponed match counts in the gameweek it's replayed. FPL has never had a
+  round with no fixture at all; we leave such a gameweek out of the standings
+  rather than guess how Draft would score it.
 - **H2H:** win 3, draw 1, loss 0. Ties are broken on points for. With an odd
   number of teams, an "average" opponent is added.
 

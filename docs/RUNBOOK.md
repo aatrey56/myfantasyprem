@@ -249,6 +249,67 @@ leagues`, and `poll failed; keeping the last good snapshot` (err,
   the gameweek's data was checked); by hand: `npm run admin --
 prune-snapshots -keep 50`.
 
+## Server was offline for a gameweek
+
+Symptom: a whole past gameweek shows 0 points, its matchups are still
+upcoming at 0-0, and `SELECT gameweek, count(*) FROM player_gameweek_stats
+GROUP BY 1` has no row for it.
+
+- The poller catches up by itself: on start and after every bootstrap
+  refresh (6-hourly, or when the current gameweek changes) it queues each
+  earlier gameweek FPL marks finished that has no (or incomplete) stats,
+  fetches one per poll (the next poll follows after 30 s while any are
+  left), ingests it as final and rescores it in full. Look for
+  `poller: finished gameweek has no stats; catching up` and `poller:
+earlier gameweek fetched and rescored` in the logs.
+  A gameweek FPL finished whose stored fixtures still say live or
+  scheduled, or whose bonus is provisional (the server went down
+  mid-gameweek), is fetched again the same way. Only FPL's fixture list
+  postpones or moves a fixture (`event: null`, or another gameweek); one
+  merely missing from the live data keeps the gameweek unsettled, and it
+  is fetched again with backoff (`poller: finished gameweek still
+unsettled after a fetch; retrying with backoff`). A payload where nobody
+  played a minute although fixtures are finished is refused
+  (`stats: incomplete live snapshot`, logged at error) and retried the
+  same way. A finished gameweek with no fixture left in it at all (a full
+  blank; FPL has never had one) never settles: it stays upcoming, out of
+  the table, and is retried with backoff (at most every 10 minutes).
+  Caught-up gameweeks before the current one are rescored quietly: no
+  `matchups.updated`, `score.corrected` or push notifications.
+- To do it now, from a machine with `DATABASE_URL` (and FPL reachable):
+  `npm run admin -- backfill -gw 9`. It refreshes bootstrap, fetches the
+  gameweek's live stats (`POLLER_SOURCE=demo` reads the demo world
+  instead), ingests them and rescores every in-season league. It is
+  idempotent. It prints exactly one line:
+
+  ```
+  Backfilled gameweek 9: 12 players' stats changed; rescored.
+  ```
+
+  With `-league lg_...` a second line gives that league's share of the
+  same rescore (no second rescore runs):
+
+  ```
+  Rescored gameweek 9 of lg_...: 3 team scores changed, 3 corrections.
+  ```
+
+  A gameweek before the current one is backfilled quietly (no
+  notifications, as above); the current gameweek notifies as a poll
+  would (the backfill builds the API's poller, Live and News hooks
+  included). Running it while the server polls is safe: an ingest of a
+  live snapshot fetched before the one already stored is refused
+  (`stats: live snapshot older than the stored one`); run it again. A gameweek FPL has not finished is refused, so partial data is
+  not stored as final by mistake (on stderr, exit status 1):
+
+  ```
+  admin: poller: gameweek not finished upstream: gameweek 12 (current 12); -force backfills its data as it stands
+  ```
+
+  Add `-force` only when you mean to ingest it as it stands.
+
+- Check: the gameweek's matchups are `final` with non-zero scores and the
+  standings show no phantom draws (an unscored matchup never counts).
+
 ## How to tell data is stale
 
 - API: every stats-derived response has `meta.stale`, `meta.dataAsOf` and

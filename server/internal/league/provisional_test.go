@@ -181,3 +181,42 @@ func TestProvisionalBonusCorrectionFlipsStandings(t *testing.T) {
 		}
 	})
 }
+
+// Production, 2026-11: the server was down for all of gameweek 9, so its
+// matchups were never scored and stayed upcoming at 0-0 while FPL marked
+// the event finished. A matchup that was never scored is not a result:
+//
+//	gw  A v B   matchup state   counts
+//	8   60 v 50 final           yes
+//	9    0 v 0  upcoming        no (FPL: finished; we have no stats)
+//	10  40 v 70 live            no (not over)
+//
+//	A: 1W 0D 0L, PF 60, PA 50; B: 0W 0D 1L, PF 50, PA 60. Nobody has a draw.
+func TestStandingsSkipUnscoredMatchupOfFinishedGameweek(t *testing.T) {
+	l := &League{Teams: []Team{{ID: "A"}, {ID: "B"}}}
+	g := &Game{Matchups: []Matchup{
+		{Gameweek: 8, HomeTeamID: "A", AwayTeamID: "B", HomePoints: 60, AwayPoints: 50, State: scoring.StateFinal},
+		{Gameweek: 9, HomeTeamID: "A", AwayTeamID: "B", State: scoring.StateUpcoming},
+		{Gameweek: 10, HomeTeamID: "A", AwayTeamID: "B", HomePoints: 40, AwayPoints: 70, State: scoring.StateLive},
+	}}
+	w := &World{Gameweeks: map[int]stats.Gameweek{
+		8:  {Number: 8, Finished: true, BonusAdded: true, DataChecked: true},
+		9:  {Number: 9, Finished: true, BonusAdded: true, DataChecked: true},
+		10: {Number: 10, Finished: true, BonusAdded: true, DataChecked: true},
+	}}
+	w.IndexFixtures()
+	rows := Standings(l, g, w)
+	type row struct {
+		id           string
+		w, d, l, pld int
+		pf, pa       int
+		form         int
+	}
+	want := []row{{"A", 1, 0, 0, 1, 60, 50, 1}, {"B", 0, 0, 1, 1, 50, 60, 1}}
+	for i, wr := range want {
+		r := rows[i]
+		if got := (row{r.TeamID, r.Wins, r.Draws, r.Losses, r.Played, r.PointsFor, r.PointsAgainst, len(r.Form)}); got != wr {
+			t.Errorf("row %d = %+v, want %+v", i, got, wr)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/history"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/mirror"
+	"github.com/aatrey56/myfantasyprem/server/internal/notifications"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
@@ -58,6 +60,52 @@ func TestAdminCommands(t *testing.T) {
 	if out := admin("rescore", "-gw", "3", "-league", seeded.LeagueID); !strings.Contains(out, "0 team scores changed") {
 		t.Fatalf("rescore one league = %q", out)
 	}
+	// backfill reads the demo source (never FPL): gameweek 6's stats are
+	// stored and unchanged, but every team's stored score is one point
+	// off, so the backfill's rescore puts back all n team scores, each a
+	// correction of a final score, and -league reports them.
+	plainEnv := env
+	env = func(k string) string {
+		if k == "POLLER_SOURCE" {
+			return "demo"
+		}
+		return plainEnv(k)
+	}
+	tag, err := pool.Exec(ctx, `UPDATE team_gw_scores SET points = points + 1
+		WHERE gameweek = 6 AND team_id IN (SELECT id FROM teams WHERE league_id = $1)`, seeded.LeagueID)
+	if err != nil || tag.RowsAffected() == 0 {
+		t.Fatalf("setup: bump gameweek 6 scores: %v (%d rows)", err, tag.RowsAffected())
+	}
+	n := tag.RowsAffected()
+	// Gameweek 6 is before the current one (7): its backfill is quiet, no
+	// matchups.updated or score.corrected event, notification or push.
+	sent := func() (n int) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM realtime_events) + (SELECT count(*) FROM notifications)
+			+ (SELECT count(*) FROM push_outbox)`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	sentBefore := sent()
+	if out := admin("backfill", "-gw", "6", "-league", seeded.LeagueID); !strings.Contains(out, "Backfilled gameweek 6: 0 players' stats changed") ||
+		!strings.Contains(out, fmt.Sprintf("Rescored gameweek 6 of %s: %d team scores changed, %d corrections.", seeded.LeagueID, n, n)) {
+		t.Fatalf("backfill = %q", out)
+	}
+	if after := sent(); after != sentBefore {
+		t.Errorf("backfill of old gameweek 6 sent %d events or notifications, want none", after-sentBefore)
+	}
+	if g, err := league.NewPostgres(pool).Game(ctx, seeded.LeagueID); err != nil || g.MatchupsIn(6)[0].State != "final" {
+		t.Fatalf("gameweek 6 after backfill: %v", err)
+	}
+	// Gameweek 8 is not finished in the demo season (7 is current): it is
+	// refused without -force, and nothing is fetched or stored.
+	var refused bytes.Buffer
+	if err := run(ctx, []string{"backfill", "-gw", "8"}, env, &refused, io.Discard); err == nil ||
+		!strings.Contains(err.Error(), "gameweek not finished upstream: gameweek 8") || refused.Len() != 0 {
+		t.Fatalf("backfill of unfinished gameweek 8: err %v, out %q", err, refused.String())
+	}
+	env = plainEnv
 	if out := admin("prune-snapshots", "-keep", "1"); !strings.Contains(out, "Deleted") {
 		t.Fatalf("prune = %q", out)
 	}
@@ -166,5 +214,29 @@ func TestHistoryLine(t *testing.T) {
 	done := history.Result{Fetched: 2, Skipped: 3, Missing: 1}
 	if got := historyLine(done); got != "History: 2 players fetched, 3 already current, 1 with none upstream, 0 failed.\n" {
 		t.Errorf("done = %q", got)
+	}
+}
+
+// The backfill's poller carries the API poller's Live and News hooks
+// (pollerwire builds both): a backfill of the current gameweek stores its
+// goals and assists, so a later poll finds nothing changed and would never
+// send those notifications if the backfill did not.
+func TestBackfillPollerNotifiesLikeTheAPIPoller(t *testing.T) {
+	n := notifications.NewNotifier(notifications.NewMemory(time.Now))
+	p := backfillPoller(func(k string) string {
+		if k == "POLLER_SOURCE" {
+			return "demo"
+		}
+		return ""
+	}, league.NewMemory(), stats.NewMemory(), nil, n, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sc, ok := p.Scorer.(*league.Scorer)
+	if !ok {
+		t.Fatalf("scorer %T, want *league.Scorer", p.Scorer)
+	}
+	if _, ok := sc.Live.(*notifications.Live); !ok {
+		t.Errorf("backfill scorer Live hook %T, want *notifications.Live", sc.Live)
+	}
+	if _, ok := p.News.(*notifications.News); !ok {
+		t.Errorf("backfill News hook %T, want *notifications.News", p.News)
 	}
 }

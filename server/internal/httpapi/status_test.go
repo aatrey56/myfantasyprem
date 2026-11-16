@@ -198,50 +198,7 @@ func TestLeagueStatusRankChange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ranks := func(last int) map[string]int {
-			type row struct {
-				id     string
-				lp, pf int
-			}
-			rows := map[string]*row{}
-			for _, m := range g.Matchups {
-				if m.Gameweek > last {
-					continue
-				}
-				for _, side := range []struct {
-					id      string
-					for_, v int
-				}{{m.HomeTeamID, m.HomePoints, m.AwayPoints}, {m.AwayTeamID, m.AwayPoints, m.HomePoints}} {
-					if side.id == "" {
-						continue
-					}
-					r := rows[side.id]
-					if r == nil {
-						r = &row{id: side.id}
-						rows[side.id] = r
-					}
-					r.pf += side.for_
-					switch scoring.H2H(side.for_, side.v) {
-					case scoring.Win:
-						r.lp += 3
-					case scoring.Draw:
-						r.lp++
-					}
-				}
-			}
-			var list []*row
-			for _, r := range rows {
-				list = append(list, r)
-			}
-			slices.SortFunc(list, func(a, b *row) int {
-				return cmp.Or(cmp.Compare(b.lp, a.lp), cmp.Compare(b.pf, a.pf), cmp.Compare(a.id, b.id))
-			})
-			out := map[string]int{}
-			for i, r := range list {
-				out[r.id] = i + 1
-			}
-			return out
-		}
+		ranks := func(last int) map[string]int { return handRanks(g, last) }
 		before, after := ranks(5), ranks(6)
 		l, err := f.srv.leagues.Get(context.Background(), f.users[0], f.league)
 		if err != nil {
@@ -659,4 +616,112 @@ func valueOf[T any](p *T) any {
 		return nil
 	}
 	return *p
+}
+
+// handRanks is the table after gameweek last, worked out from the counted
+// matchups (win 3, draw 1, then points for).
+func handRanks(g *league.Game, last int) map[string]int {
+	type row struct {
+		id     string
+		lp, pf int
+	}
+	rows := map[string]*row{}
+	for _, m := range g.Matchups {
+		if m.Gameweek > last || m.State == scoring.StateUpcoming || m.State == scoring.StateLive {
+			continue
+		}
+		for _, side := range []struct {
+			id      string
+			for_, v int
+		}{{m.HomeTeamID, m.HomePoints, m.AwayPoints}, {m.AwayTeamID, m.AwayPoints, m.HomePoints}} {
+			if side.id == "" {
+				continue
+			}
+			r := rows[side.id]
+			if r == nil {
+				r = &row{id: side.id}
+				rows[side.id] = r
+			}
+			r.pf += side.for_
+			switch scoring.H2H(side.for_, side.v) {
+			case scoring.Win:
+				r.lp += 3
+			case scoring.Draw:
+				r.lp++
+			}
+		}
+	}
+	var list []*row
+	for _, r := range rows {
+		list = append(list, r)
+	}
+	slices.SortFunc(list, func(a, b *row) int {
+		return cmp.Or(cmp.Compare(b.lp, a.lp), cmp.Compare(b.pf, a.pf), cmp.Compare(a.id, b.id))
+	})
+	out := map[string]int{}
+	for i, r := range list {
+		out[r.id] = i + 1
+	}
+	return out
+}
+
+// A gameweek FPL finished whose matchups were never scored (still live)
+// is not in the table, so it is neither in a team's results nor the
+// gameweek the rank change is measured over: here gameweek 6 is left
+// live, so the results are 1-5 and the rank change is the move with 5.
+func TestUnscoredGameweekLeavesTeamResultsAndRankChange(t *testing.T) {
+	eachDemo(t, func(t *testing.T, f demoFixture) {
+		ctx := context.Background()
+		repo := f.srv.leagues.Repo()
+		g, err := repo.Game(ctx, f.league)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var scores []league.TeamScore
+		var ms []league.Matchup
+		for _, s := range g.Scores {
+			if s.Gameweek == 6 {
+				s.State = scoring.StateLive
+				scores = append(scores, s)
+			}
+		}
+		for _, m := range g.MatchupsIn(6) {
+			m.State = scoring.StateLive
+			ms = append(ms, m)
+		}
+		if _, err := repo.SaveScores(ctx, f.league, 6, scores, ms); err != nil {
+			t.Fatal(err)
+		}
+		if g, err = repo.Game(ctx, f.league); err != nil {
+			t.Fatal(err)
+		}
+		before, after := handRanks(g, 4), handRanks(g, 5)
+		l, err := f.srv.leagues.Get(ctx, f.users[0], f.league)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, uid := range f.users {
+			team, _ := l.TeamOf(uid)
+			var res LeagueStatusPageResponse
+			if rec := f.get(t, f.tokenOf(t, uid), "/v1/leagues/"+f.league+"/status", &res); rec.Code != 200 {
+				t.Fatalf("status = %d %s", rec.Code, rec.Body)
+			}
+			if want := before[team.ID] - after[team.ID]; res.Data.RankChange != want {
+				t.Errorf("%s: rank change %d, want %d (the move with gameweek 5)", team.Name, res.Data.RankChange, want)
+			}
+			var detail TeamDetailResponse
+			if rec := f.get(t, f.tokenOf(t, uid), "/v1/leagues/"+f.league+"/teams/"+team.ID, &detail); rec.Code != 200 {
+				t.Fatalf("team = %d %s", rec.Code, rec.Body)
+			}
+			if len(detail.Data.Results) != 5 || detail.Data.Record.Played != 5 {
+				t.Errorf("%s: %d results, played %d; want 5 and 5 (gameweek 6 unscored)",
+					team.Name, len(detail.Data.Results), detail.Data.Record.Played)
+			}
+			for _, r := range detail.Data.Results {
+				if r.Gameweek == 6 {
+					t.Errorf("%s: unscored gameweek 6 in the results", team.Name)
+				}
+			}
+		}
+	})
 }

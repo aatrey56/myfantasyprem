@@ -753,6 +753,9 @@ func (s *Server) GetTeam(ctx context.Context, req GetTeamRequestObject) (GetTeam
 			continue
 		}
 		for _, m := range v.g.MatchupsIn(gw) {
+			if !v.w.Counts(m) {
+				continue // unscored: not in the table either
+			}
 			mine, theirs, opp := m.HomePoints, m.AwayPoints, m.AwayTeamID
 			switch team.ID {
 			case m.HomeTeamID:

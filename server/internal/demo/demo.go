@@ -107,13 +107,25 @@ func Seed(ctx context.Context, d Deps) (Result, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	var res Result
 	gw, err := LoadStats(ctx, d.Stats, d.Log, d.Now)
 	if err != nil {
-		return res, err
+		return Result{}, err
 	}
-	res.Gameweek = gw
+	return SeedLeague(ctx, d, gw)
+}
 
+// SeedLeague creates (or reuses) the demo league over the stats already
+// in d.Stats and scores gameweeks 1 to gw. Seed calls it after loading the
+// whole demo season; tests call it over a partial season.
+func SeedLeague(ctx context.Context, d Deps, gw int) (Result, error) {
+	if d.Log == nil {
+		d.Log = slog.Default()
+	}
+	if d.Now == nil {
+		d.Now = time.Now
+	}
+	res := Result{Gameweek: gw}
+	var err error
 	for _, m := range Managers {
 		u, err := d.Auth.CreateUser(ctx, m.Name, m.Email)
 		if err != nil {

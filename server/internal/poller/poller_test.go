@@ -644,6 +644,9 @@ func TestRestartBackfillsMissingGameweekLines(t *testing.T) {
 		}
 		n1 := f.src.calls["live/1"]
 		p := f.newPoller(Config{})
+		// One earlier gameweek per poll: gameweek 2 (the previous one,
+		// always re-read on start), then gameweek 1.
+		f.advance(p.Tick(ctx))
 		p.Tick(ctx)
 		if f.src.calls["live/1"] != n1+1 {
 			t.Fatalf("gameweek 1 fetched %d times after the restart, want once", f.src.calls["live/1"]-n1)
@@ -694,6 +697,9 @@ func TestRestartBackfillsMissingStarts(t *testing.T) {
 		}
 		n1 := f.src.calls["live/1"]
 		p := f.newPoller(Config{})
+		// One earlier gameweek per poll: gameweek 2 (the previous one,
+		// always re-read on start), then gameweek 1.
+		f.advance(p.Tick(ctx))
 		p.Tick(ctx)
 		if f.src.calls["live/1"] != n1+1 {
 			t.Fatalf("gameweek 1 fetched %d times after the restart, want once", f.src.calls["live/1"]-n1)

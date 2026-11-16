@@ -25,6 +25,11 @@ var ErrUnmapped = errors.New("stats: live data references an unknown player or f
 // of the batch was applied: resolve the ids again and rebuild it.
 var ErrIDTaken = errors.New("stats: an upstream id was mapped by another ingest")
 
+// ErrStale means a live snapshot was fetched before the one already
+// stored for its gameweek (a lower fetch ticket, Repo.LiveTicket) (an admin backfill racing the poller, say).
+// Nothing of the batch was applied: the stored rows are newer.
+var ErrStale = errors.New("stats: live snapshot older than the stored one")
+
 // ErrIncomplete means a live snapshot is missing data the stored one has:
 // no players although the gameweek has kicked off, or far fewer rows than
 // are stored. It is rejected so bad data never zeroes a score (ADR 0005);
@@ -278,16 +283,25 @@ func (in *Ingester) fixture(f provider.Fixture, clubs, fxs *idMap) (Fixture, err
 // only from its live data. A fixture seen first here gets its id minted;
 // when another ingest maps it first (ErrIDTaken) Live starts over with
 // that ingest's ids.
+//
+// Live does not order snapshots; LiveTicket does.
 func (in *Ingester) Live(ctx context.Context, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
+	return in.LiveTicket(ctx, 0, live, st)
+}
+
+// LiveTicket is Live for a snapshot fetched after taking ticket
+// (Repo.LiveTicket): it is refused (ErrStale) when a snapshot with a higher
+// ticket was already applied for the gameweek.
+func (in *Ingester) LiveTicket(ctx context.Context, ticket int64, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
 	for attempt := 1; ; attempt++ {
-		changed, err := in.live(ctx, live, st)
-		if !errors.Is(err, ErrIDTaken) || attempt == 3 {
+		changed, err := in.live(ctx, ticket, live, st)
+		if !errors.Is(err, ErrIDTaken) && !errors.Is(err, errBaseMoved) || attempt == 3 {
 			return changed, err
 		}
 	}
 }
 
-func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
+func (in *Ingester) live(ctx context.Context, ticket int64, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
 	clubs, err := in.idMap(ctx, "club", "clb")
 	if err != nil {
 		return nil, err
@@ -393,7 +407,9 @@ func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *prov
 		stored[f.ID] = f.Status
 	}
 	moved := map[string]bool{}
+	baseStatus := map[string]string{}
 	for _, f := range updated {
+		baseStatus[f.ID] = stored[f.ID]
 		if stored[f.ID] != f.Status {
 			moved[f.HomeClubID], moved[f.AwayClubID] = true, true
 		}
@@ -410,7 +426,8 @@ func (in *Ingester) live(ctx context.Context, live *provider.EventLive, st *prov
 	batch := Batch{
 		Provider: in.Provider,
 		Fixtures: updated,
-		Live:     &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats},
+		Live: &LiveRows{Gameweek: live.Gameweek, Rows: rows, Players: gameweekStats, Ticket: ticket,
+			Base: &LiveBase{Rows: before, Status: baseStatus}},
 		Mappings: fxs.added,
 	}
 	if len(changed) > 0 {
@@ -444,17 +461,24 @@ func playerGameweek(playerID string, gw int, pl provider.PlayerLive) PlayerGamew
 }
 
 // complete rejects a snapshot that would wipe out stored data: no players
-// once any fixture of the gameweek has started, or fewer than half the
-// stored rows (upstream lists every player once a gameweek is under way,
-// and rows only disappear one at a time, through corrections).
+// once any fixture of the gameweek has started, nobody with a minute once
+// one is over (a played match is not voided by the stats saying so), or
+// fewer than half the stored rows (upstream lists every player once a
+// gameweek is under way, and rows only disappear one at a time, through
+// corrections).
 func complete(live *provider.EventLive, fixtures map[string]Fixture, before, rows []PlayerFixture) error {
-	started := false
+	started, over := false, false
 	for _, f := range fixtures {
-		started = started || f.Started()
+		if f.Status != FixturePostponed {
+			started, over = started || f.Started(), over || f.Over()
+		}
 	}
 	switch {
 	case started && len(live.Players) == 0:
 		return fmt.Errorf("%w: %w: gameweek %d has started but lists no players",
+			ErrIncomplete, provider.ErrInvalid, live.Gameweek)
+	case over && !slices.ContainsFunc(live.Players, func(pl provider.PlayerLive) bool { return pl.Minutes > 0 }):
+		return fmt.Errorf("%w: %w: gameweek %d has finished fixtures but nobody played a minute",
 			ErrIncomplete, provider.ErrInvalid, live.Gameweek)
 	case len(before) >= minRowsForDropCheck && 2*len(rows) < len(before):
 		return fmt.Errorf("%w: %w: gameweek %d has %d rows, %d stored",

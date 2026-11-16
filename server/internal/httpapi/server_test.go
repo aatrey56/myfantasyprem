@@ -15,6 +15,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/ids"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/poller"
+	"github.com/aatrey56/myfantasyprem/server/internal/poller/pollertest"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider/fpl"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
@@ -40,9 +41,7 @@ func realStats(t *testing.T, srv *Server, clock *fakeClock) {
 	p := poller.New(src, stats.NewIngester(srv.stats, "fpl", srv.now), srv.stats, noRescore{}, poller.Config{}, testOptions().Logger)
 	p.Now = srv.now
 	p.Sleep = func(context.Context, time.Duration) error { return nil }
-	for range 3 {
-		p.Tick(context.Background())
-	}
+	pollertest.TickUntilIdle(t, context.Background(), p)
 }
 
 type noRescore struct{}

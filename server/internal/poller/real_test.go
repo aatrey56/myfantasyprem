@@ -2,6 +2,7 @@ package poller
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -205,17 +206,18 @@ func TestRealDraftBackfillsPastGameweekFromLive(t *testing.T) {
 }
 
 // On start with gameweek 6 current, five closed gameweeks are queued but
-// a poll fetches at most BackfillPerTick (4) of them, most recent first.
-// Gameweek 1 came fifth and waited for the next poll, hours away once
+// a poll fetches at most BackfillPerTick (1) of them, most recent first.
+// Gameweek 1 came fifth and waited for later polls, hours away once
 // gameweek 6 is over, and since 2-5 failed every time they took the
-// budget on every poll: gameweek 1 was never fetched.
+// budget on every poll: gameweek 1 was never fetched. Now failures go to
+// the back and the polls come after LiveInterval: 5, 4, 3, 2, then 1.
 func TestRealDraftBackfillReachesGameweek1(t *testing.T) {
 	realStores(t, realClock, func(t *testing.T, f fixture) {
-		for i := 0; i < 2 && f.src.calls["live/1"] == 0; i++ {
+		for i := 0; i < 5 && f.src.calls["live/1"] == 0; i++ {
 			f.advance(f.p.Tick(ctx))
 		}
 		if f.src.calls["live/1"] != 1 {
-			t.Fatalf("gameweek 1 fetched %d times in two polls; live calls %v", f.src.calls["live/1"], f.src.calls)
+			t.Fatalf("gameweek 1 fetched %d times in five polls; live calls %v", f.src.calls["live/1"], f.src.calls)
 		}
 		checkRealGW(t, f, 1, 310)
 		checkRealGW6(t, f)
@@ -307,4 +309,35 @@ func TestRealDraftFinishedGameweekIsFinal(t *testing.T) {
 			t.Errorf("poll state = %+v", ps)
 		}
 	})
+}
+
+// A catch-up fetch that hits an upstream error is retried with the
+// poller's backoff (LiveInterval 30 s, doubling per failing poll, capped
+// at MaxBackoff 10 min), not after the idle wait of hours; once it
+// succeeds the wait is the mode's again.
+func TestCatchUpRetriesAfterUpstreamErrorWithBackoff(t *testing.T) {
+	f := newFixtureAt(t, stats.NewMemory(), realDir, realClock)
+	for g := 1; g <= 5; g++ {
+		f.src.liveErr[g] = fmt.Errorf("fpl: GET /event/%d/live: %w: status 503", g, provider.ErrUpstream)
+	}
+	// Queued 5..1, one fetch per poll, each fails: 30 s, 1 min, 2 min,
+	// 4 min, 8 min, then capped at 10 min.
+	want := []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 10 * time.Minute}
+	for i, w := range want {
+		got := f.p.Tick(ctx)
+		if got != w {
+			t.Fatalf("poll %d: wait %v, want %v", i+1, got, w)
+		}
+		f.advance(got)
+	}
+	clear(f.src.liveErr)
+	var last time.Duration
+	for range 5 {
+		last = f.p.Tick(ctx)
+		f.advance(last)
+	}
+	if f.src.calls["live/1"] == 0 || last <= 10*time.Minute {
+		t.Errorf("after recovery: gameweek 1 fetched %d times, wait %v (want the idle wait, over 10 min)",
+			f.src.calls["live/1"], last)
+	}
 }

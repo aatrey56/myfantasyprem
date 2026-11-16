@@ -30,7 +30,7 @@
 // gameweek's final live payload is fetched again (late corrections), and
 // gameweeks with no stored rows, or lines without starts, are backfilled, BackfillPerTick per cycle
 // and at most two requests per second. Gameweeks that failed go to the
-// back of the queue, and while gameweeks never tried remain the next
+// back of the queue, least recently tried first, and while gameweeks never tried remain the next
 // cycle comes after LiveInterval, not the mode's wait of hours. Upstream's bootstrap lists only
 // upcoming fixtures, so a past gameweek's fixtures (teams, kickoff, status
 // and score) come from its live payload.
@@ -46,6 +46,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -54,6 +55,7 @@ import (
 
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/provider"
+	"github.com/aatrey56/myfantasyprem/server/internal/scoring"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
 )
 
@@ -67,7 +69,8 @@ type Config struct {
 	// MaxBackoff caps the wait after failures. Default 10m.
 	MaxBackoff time.Duration
 	// BackfillPerTick bounds the earlier gameweeks fetched per cycle.
-	// Default 4.
+	// Default 1: a cycle with gameweeks left to fetch is followed by
+	// another after LiveInterval.
 	BackfillPerTick int
 	// BackfillPace is the gap before each earlier-gameweek request.
 	// Default 500ms (at most 2 requests per second).
@@ -88,10 +91,14 @@ func (c Config) withDefaults() Config {
 	def(&c.MaxBackoff, 10*time.Minute)
 	def(&c.BackfillPace, 500*time.Millisecond)
 	if c.BackfillPerTick <= 0 {
-		c.BackfillPerTick = 4
+		c.BackfillPerTick = 1
 	}
 	return c
 }
+
+// ErrNotFinished: Backfill was asked for a gameweek upstream has not
+// finished.
+var ErrNotFinished = errors.New("poller: gameweek not finished upstream")
 
 // Recomputer rescores leagues; *league.Scorer implements it.
 type Recomputer interface {
@@ -147,10 +154,15 @@ type Poller struct {
 	Ingester *stats.Ingester
 	Stats    stats.Repo
 	Scorer   Recomputer
-	Config   Config
-	Log      *slog.Logger
-	Metrics  *Metrics
-	Now      func() time.Time
+	// Quiet rescores gameweeks before the current one that the poller
+	// catches up or Backfill fetches: no notifications, since their scores
+	// moving is not news. Nil: Scorer without its Notify and Live hooks
+	// when it is a *league.Scorer, otherwise Scorer.
+	Quiet   Recomputer
+	Config  Config
+	Log     *slog.Logger
+	Metrics *Metrics
+	Now     func() time.Time
 	// Sleep paces earlier-gameweek requests; it returns ctx's error.
 	Sleep func(context.Context, time.Duration) error
 	// Wait is one bounded timer wait between polls (at most WaitChunk);
@@ -179,9 +191,16 @@ type Poller struct {
 	// false: only while no rows are stored).
 	planned bool
 	pending map[int]bool
-	// failed holds queued gameweeks whose last fetch failed; they go to
-	// the back of the queue so they cannot starve the others.
-	failed map[int]bool
+	// tried holds, for queued gameweeks whose fetch failed, the attempt
+	// number (attempts at the time) of their last fetch. Gameweeks not
+	// yet tried go first, then failed ones least recently tried first, so
+	// one that keeps failing cannot starve the others.
+	tried    map[int]int
+	attempts int
+	// catchupFails counts consecutive polls whose catch-up fetch failed;
+	// while gameweeks are queued the next poll follows after the backoff
+	// for that many failures instead of the mode's wait.
+	catchupFails int
 	// startsChecked holds the gameweeks re-read without getting starts
 	// (stats.Repo.StartsChecked).
 	startsChecked map[int]bool
@@ -191,6 +210,19 @@ type Poller struct {
 // season's current gameweek.
 type NewsHook interface {
 	PlayerNews(ctx context.Context, before, after map[string]stats.Player, gw int)
+}
+
+// quiet is the scorer for gameweeks before the current one.
+func (p *Poller) quiet() Recomputer {
+	if p.Quiet != nil {
+		return p.Quiet
+	}
+	if s, ok := p.Scorer.(*league.Scorer); ok {
+		q := *s
+		q.Notify, q.Live = nil, nil
+		return &q
+	}
+	return p.Scorer
 }
 
 // players returns the stored players, or nil before the first ingest.
@@ -421,10 +453,12 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 	gw, p.status = st.Current, st
 	// Unchecked mode waits for data_checked, which only bootstrap carries.
 	watching := p.lastMode == stats.ModeUnchecked
+	refreshed := false
 	if p.lastBootstrap.IsZero() || p.Now().Sub(p.lastBootstrap) >= p.Config.BootstrapInterval || gw != p.seasonGW || watching {
 		if err := p.refreshSeason(ctx, st); err != nil {
 			return "", 0, 0, err
 		}
+		refreshed = true
 	} else if err := p.Ingester.Status(ctx, st); err != nil {
 		return "", 0, 0, err
 	}
@@ -441,6 +475,10 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 
 	newGW := gw != p.lastGW
 	if mode != stats.ModeIdle || newGW || w.Started(gw) || p.rescore[gw] {
+		ticket, err := p.Stats.LiveTicket(ctx, gw)
+		if err != nil {
+			return "", 0, 0, err
+		}
 		live, err := p.Source.EventLive(ctx, gw)
 		switch {
 		case errors.Is(err, provider.ErrNotFound) && !kickedOff(w, gw, now):
@@ -454,7 +492,7 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		case err != nil:
 			return "", 0, 0, err
 		default:
-			changed, err := p.ingestLive(ctx, live, st)
+			changed, err := p.ingestLive(ctx, ticket, live, st)
 			if err != nil {
 				return "", 0, 0, err
 			}
@@ -469,17 +507,25 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		}
 	}
 	// Earlier gameweeks still marked (their rescore failed, perhaps before
-	// a restart): their rows are stored, so rescore them in full.
+	// a restart): their rows are stored, so rescore them in full, quietly
+	// like the catch-up whose rescore it repeats.
 	for _, g := range slices.Sorted(maps.Keys(p.rescore)) {
 		if g == gw {
 			continue
 		}
-		if err := p.rescoreGW(ctx, g, nil, true); err != nil {
+		sc := p.Scorer
+		if g < gw {
+			sc = p.quiet()
+		}
+		if _, err := p.rescoreWith(ctx, sc, g, nil, true); err != nil {
 			return "", 0, 0, err
 		}
 	}
 	if err := p.plan(ctx, gw); err != nil {
 		return "", 0, 0, err
+	}
+	if refreshed {
+		p.queueMissing(ctx, gw)
 	}
 	interval = capAtDeadline(p.Now(), interval, w, p.Config.LiveInterval)
 	p.lastGW, p.lastMode = gw, mode
@@ -487,6 +533,10 @@ func (p *Poller) poll(ctx context.Context) (mode string, interval time.Duration,
 		// The backfill budget ran out with gameweeks never tried: carry
 		// on soon rather than after an idle or unchecked wait of hours.
 		interval = min(interval, p.Config.LiveInterval)
+	}
+	if p.catchupFails > 0 && len(p.pending) > 0 {
+		// A catch-up fetch failed: retry after minutes, not hours.
+		interval = min(interval, p.backoff(p.Config.LiveInterval, p.catchupFails))
 	}
 	return mode, interval, gw, nil
 }
@@ -518,8 +568,10 @@ func (p *Poller) refreshSeason(ctx context.Context, st *provider.GameweekStatus)
 // ingestLive ingests one gameweek's live data. If it names a player added
 // upstream since the last bootstrap ingest, bootstrap is refreshed at once
 // and the ingest retried. (Fixtures come with the live data itself.)
-func (p *Poller) ingestLive(ctx context.Context, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
-	changed, err := p.Ingester.Live(ctx, live, st)
+// ticket is the fetch ticket taken before live was fetched; the retry
+// keeps it, being the same snapshot.
+func (p *Poller) ingestLive(ctx context.Context, ticket int64, live *provider.EventLive, st *provider.GameweekStatus) ([]string, error) {
+	changed, err := p.Ingester.LiveTicket(ctx, ticket, live, st)
 	if !errors.Is(err, stats.ErrUnmapped) {
 		return changed, err
 	}
@@ -529,12 +581,18 @@ func (p *Poller) ingestLive(ctx context.Context, live *provider.EventLive, st *p
 	if err := p.refreshSeason(ctx, p.status); err != nil {
 		return nil, err
 	}
-	return p.Ingester.Live(ctx, live, st)
+	return p.Ingester.LiveTicket(ctx, ticket, live, st)
 }
 
 // rescoreGW rescores a gameweek. A failure marks it for a full rescore on
 // the next cycle, because the ingest that found the changes has committed.
 func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bool) error {
+	_, err := p.rescoreWith(ctx, p.Scorer, gw, changed, all)
+	return err
+}
+
+// rescoreWith is rescoreGW with the given scorer, returning its result.
+func (p *Poller) rescoreWith(ctx context.Context, sc Recomputer, gw int, changed []string, all bool) (league.RecomputeResult, error) {
 	if p.rescore == nil {
 		p.rescore = map[int]bool{}
 	}
@@ -545,18 +603,18 @@ func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bo
 	// the ClearRescore below, so that change is rescored too.
 	marks, err := p.Stats.RescorePending(ctx)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
-	res, err := p.Scorer.Recompute(ctx, gw, changed, all)
+	res, err := sc.Recompute(ctx, gw, changed, all)
 	if err != nil {
-		return err
+		return res, err
 	}
 	// The ingest that found changes marked the gameweek durably; clear the
 	// mark only now that its scores are correct.
 	if i := slices.IndexFunc(marks, func(m stats.RescoreMark) bool { return m.Gameweek == gw }); i >= 0 &&
 		(p.durable[gw] || len(changed) > 0) {
 		if err := p.Stats.ClearRescore(ctx, marks[i]); err != nil {
-			return err
+			return res, err
 		}
 		delete(p.durable, gw)
 	}
@@ -567,7 +625,7 @@ func (p *Poller) rescoreGW(ctx context.Context, gw int, changed []string, all bo
 		p.Log.InfoContext(ctx, "rescored leagues", "gameweek", gw, "leagues", res.Leagues,
 			"skipped", res.Skipped, "teams_changed", len(res.ChangedTeams), "players_changed", len(changed))
 	}
-	return nil
+	return res, nil
 }
 
 // loadRescore merges the store's pending rescores into p.rescore.
@@ -634,31 +692,61 @@ func (p *Poller) plan(ctx context.Context, gw int) error {
 	return nil
 }
 
+// queueMissing queues every earlier gameweek that upstream marks
+// finished but whose stats are missing, incomplete or not settled (the
+// server was down for all of it, or went down mid-gameweek). It runs after
+// each bootstrap refresh, which is where the finished flags come from;
+// reconcile then fetches them.
+func (p *Poller) queueMissing(ctx context.Context, current int) {
+	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
+	if err != nil {
+		p.Log.WarnContext(ctx, "poller: find missing gameweeks", "err", err)
+		return
+	}
+	for _, g := range w.Gameweeks {
+		if g.Number < 1 || g.Number >= current || !g.Finished {
+			continue
+		}
+		if _, queued := p.pending[g.Number]; queued || p.loaded(ctx, w, g.Number) {
+			continue
+		}
+		p.Log.InfoContext(ctx, "poller: finished gameweek has no stats; catching up", "gameweek", g.Number, "current", current)
+		p.pending[g.Number] = false
+	}
+}
+
 // reconcile fetches up to BackfillPerTick queued gameweeks, most recent
-// first, paced politely; gameweeks that failed before go last. Failures
+// first, paced politely; gameweeks that failed before go last, least
+// recently tried first. Failures
 // are logged and retried; they do not fail the poll (the current
 // gameweek's data is good) and never replace stored rows (the ingest
 // rejects incomplete snapshots). It reports whether the budget ran out
 // while a gameweek not yet tried was still queued.
 func (p *Poller) reconcile(ctx context.Context, current int) bool {
 	if len(p.pending) == 0 {
+		p.catchupFails = 0
 		return false
 	}
+	failed := false
+	defer func() {
+		if failed {
+			p.catchupFails++
+		} else {
+			p.catchupFails = 0
+		}
+	}()
 	w, err := league.LoadWorld(ctx, p.Stats, -1) // fixtures and flags; no rows needed
 	if err != nil {
 		p.Log.WarnContext(ctx, "poller: reconcile: load", "err", err)
 		return false
 	}
-	if p.failed == nil {
-		p.failed = map[int]bool{}
+	if p.tried == nil {
+		p.tried = map[int]int{}
 	}
 	queue := slices.Collect(maps.Keys(p.pending))
 	slices.SortFunc(queue, func(a, b int) int {
-		if p.failed[a] != p.failed[b] {
-			if p.failed[a] {
-				return 1
-			}
-			return -1
+		if p.tried[a] != p.tried[b] {
+			return p.tried[a] - p.tried[b]
 		}
 		return b - a
 	})
@@ -666,26 +754,35 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 	for i, g := range queue {
 		// A closed gameweek with no stored fixtures is fetched anyway:
 		// upstream's bootstrap lists only upcoming fixtures, so its live
-		// data is where they come from.
-		if g >= current || (!w.Started(g) && len(w.FixturesIn(g)) > 0) {
+		// data is where they come from. So is one upstream marks finished
+		// whose stored fixtures still say scheduled: they were stored
+		// before the server went down, and only its live data updates them.
+		if g >= current || (!w.Started(g) && !w.Gameweeks[g].Finished && len(w.FixturesIn(g)) > 0) {
 			p.drop(g) // nothing played yet: nothing to load
 			continue
 		}
-		if !p.pending[g] && p.loaded(ctx, g) {
+		if !p.pending[g] && p.loaded(ctx, w, g) {
 			p.drop(g)
 			continue
 		}
 		if done >= p.Config.BackfillPerTick {
-			return slices.ContainsFunc(queue[i:], func(g int) bool { return !p.failed[g] })
+			return slices.ContainsFunc(queue[i:], func(g int) bool { return p.tried[g] == 0 })
 		}
 		done++
+		p.attempts++
 		if err := p.Sleep(ctx, p.Config.BackfillPace); err != nil {
 			return false
 		}
-		if err := p.settle(ctx, g, w.Gameweeks[g]); err != nil {
-			p.failed[g] = true
+		// Quiet: every queued gameweek is before the current one.
+		if _, err := p.settle(ctx, g, w.Gameweeks[g], p.quiet()); err != nil {
+			failed = true
+			p.tried[g] = p.attempts
 			p.Metrics.ReconcileFails.Add(1)
-			p.Log.WarnContext(ctx, "poller: reconcile failed; retrying next cycle", "gameweek", g, "err", err)
+			lvl := slog.LevelWarn
+			if errors.Is(err, stats.ErrIncomplete) {
+				lvl = slog.LevelError // upstream sent data we refuse to settle on
+			}
+			p.Log.Log(ctx, lvl, "poller: reconcile failed; retrying with backoff", "gameweek", g, "err", err)
 			if errors.Is(err, provider.ErrUpstream) {
 				return false // upstream is struggling: stop for this cycle
 			}
@@ -694,27 +791,65 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		if err := p.markStartsChecked(ctx, g); err != nil {
 			p.Log.WarnContext(ctx, "poller: reconcile: mark starts checked", "gameweek", g, "err", err)
 		}
+		// Upstream finished it, but what it sent does not settle it (a
+		// fixture still scheduled that nothing says was moved, say): keep
+		// it queued and fetch it again after the backoff, rather than
+		// guess.
+		if after, err := league.LoadWorld(ctx, p.Stats, -1); err != nil || !p.loaded(ctx, after, g) {
+			failed = true
+			p.tried[g] = p.attempts
+			p.Metrics.ReconcileFails.Add(1)
+			p.Log.WarnContext(ctx, "poller: finished gameweek still unsettled after a fetch; retrying with backoff",
+				"gameweek", g, "current", current, "err", err)
+			continue
+		}
 		p.drop(g)
 		p.Metrics.Reconciled.Add(1)
+		p.Log.InfoContext(ctx, "poller: earlier gameweek fetched and rescored", "gameweek", g, "current", current)
 	}
 	return false
 }
 
+// Pending is the number of earlier gameweeks queued to fetch (the
+// catch-up after a start, a rollover or an outage), failing ones included.
+func (p *Poller) Pending() int { return len(p.pending) }
+
 // drop removes a gameweek from the backfill queue.
 func (p *Poller) drop(g int) {
 	delete(p.pending, g)
-	delete(p.failed, g)
+	delete(p.tried, g)
 }
 
-// loaded reports whether a gameweek has stored rows and complete
-// gameweek lines.
-func (p *Poller) loaded(ctx context.Context, g int) bool {
+// loaded reports whether a gameweek has complete gameweek lines, stored
+// rows, and, once upstream marks it finished, is settled: every stored
+// fixture over and no bonus provisional. A gameweek ingested while it was
+// under way (the server went down mid-gameweek) is not, so it is fetched
+// again rather than left live, out of the table, for good.
+//
+// Rows are not optional: a gameweek whose fixtures were played has players
+// with minutes, and the ingest rejects a payload that says nobody played.
+// A finished gameweek with no fixture in it at all (a full blank, which
+// FPL has never had) is never loaded: it stays upcoming, out of the
+// standings, and the catch-up retries it with backoff.
+func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
+	lines, err := p.Stats.PlayerGameweeks(ctx, g)
+	if err != nil {
+		return false
+	}
+	if !p.linesComplete(g, lines) {
+		return false
+	}
 	rows, err := p.Stats.PlayerFixtures(ctx, g)
 	if err != nil || len(rows) == 0 {
 		return false
 	}
-	lines, err := p.Stats.PlayerGameweeks(ctx, g)
-	return err == nil && p.linesComplete(g, lines)
+	if !w.Gameweeks[g].Finished {
+		return true
+	}
+	if s := w.State(g); s == scoring.StateUpcoming || s == scoring.StateLive {
+		return false
+	}
+	return !slices.ContainsFunc(rows, func(r stats.PlayerFixture) bool { return r.BonusProvisional })
 }
 
 // linesComplete reports whether a gameweek's lines are there and, once
@@ -752,20 +887,65 @@ func (p *Poller) markStartsChecked(ctx context.Context, g int) error {
 	return nil
 }
 
+// Backfill fetches gameweek g's live data now, after a bootstrap refresh
+// (for its finished and checked flags), ingests it as a poll would and
+// rescores it in full: the admin backfill command, for a gameweek the
+// poller missed. It returns the players whose stats changed and the
+// rescore's result (every league). A gameweek before the current one is
+// rescored quietly. It refuses (ErrNotFinished) a gameweek upstream has
+// not finished, whose data would be stored and scored as it stands,
+// unless force is set.
+func (p *Poller) Backfill(ctx context.Context, g int, force bool) (changed int, res league.RecomputeResult, err error) {
+	st, err := p.Source.GameweekStatus(ctx)
+	if err != nil {
+		return 0, res, err
+	}
+	p.status = st
+	if err := p.refreshSeason(ctx, st); err != nil {
+		return 0, res, err
+	}
+	w, err := league.LoadWorld(ctx, p.Stats, -1)
+	if err != nil {
+		return 0, res, err
+	}
+	info := w.Gameweeks[g]
+	if !info.Finished && !force {
+		return 0, res, fmt.Errorf("%w: gameweek %d (current %d); -force backfills its data as it stands",
+			ErrNotFinished, g, st.Current)
+	}
+	if g == st.Current {
+		info.BonusAdded, info.DataChecked = info.BonusAdded || st.BonusAdded, info.DataChecked || st.DataChecked
+	}
+	before := p.Metrics.RowsChanged.Value()
+	sc := p.Scorer
+	if g < st.Current {
+		sc = p.quiet()
+	}
+	if res, err = p.settle(ctx, g, info, sc); err != nil {
+		return 0, res, err
+	}
+	p.Log.InfoContext(ctx, "poller: gameweek backfilled", "gameweek", g, "current", st.Current)
+	return int(p.Metrics.RowsChanged.Value() - before), res, nil
+}
+
 // settle fetches a closed gameweek's live data, ingests it and rescores
-// every league for it.
-func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek) error {
+// every league for it with sc.
+func (p *Poller) settle(ctx context.Context, g int, info stats.Gameweek, sc Recomputer) (league.RecomputeResult, error) {
+	ticket, err := p.Stats.LiveTicket(ctx, g)
+	if err != nil {
+		return league.RecomputeResult{}, err
+	}
 	live, err := p.Source.EventLive(ctx, g)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
 	st := &provider.GameweekStatus{Current: g, BonusAdded: info.BonusAdded, DataChecked: info.DataChecked}
-	changed, err := p.ingestLive(ctx, live, st)
+	changed, err := p.ingestLive(ctx, ticket, live, st)
 	if err != nil {
-		return err
+		return league.RecomputeResult{}, err
 	}
 	p.Metrics.RowsChanged.Add(int64(len(changed)))
-	return p.rescoreGW(ctx, g, changed, true)
+	return p.rescoreWith(ctx, sc, g, changed, true)
 }
 
 // kickedOff reports whether any fixture of the gameweek has started or is

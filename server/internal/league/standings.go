@@ -32,6 +32,19 @@ func (w *World) Completed(gw int) bool {
 	return false
 }
 
+// unscored reports whether a matchup has no result yet although its
+// gameweek counts: upstream marked the gameweek finished but the poller
+// never scored it (the server was down for all of it), so it is still
+// upcoming at 0-0, or its stats are behind. It must not count as a draw.
+func unscored(s scoring.ScoreState) bool {
+	return s == scoring.StateUpcoming || s == scoring.StateLive
+}
+
+// Counts reports whether matchup m counts in the standings: its gameweek
+// is completed and it has a result. The table, a team's results and the
+// rank change all use it, so they agree.
+func (w *World) Counts(m Matchup) bool { return w.Completed(m.Gameweek) && !unscored(m.State) }
+
 // Standings derives the table from the materialised matchups of completed
 // gameweeks: win 3, draw 1, then points for (ADR 0009: derived, not
 // stored). Every real team has a row, played or not.
@@ -68,7 +81,7 @@ func StandingsThrough(l *League, g *Game, w *World, last int) []StandingRow {
 		r.Form = append(r.Form, res)
 	}
 	for _, m := range ms {
-		if m.Gameweek > last || !w.Completed(m.Gameweek) {
+		if m.Gameweek > last || !w.Counts(m) {
 			continue
 		}
 		if m.HomeTeamID != "" {
