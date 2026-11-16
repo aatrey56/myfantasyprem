@@ -264,8 +264,15 @@ GROUP BY 1` has no row for it.
 earlier gameweek fetched and rescored` in the logs.
   A gameweek FPL finished whose stored fixtures still say live or
   scheduled, or whose bonus is provisional (the server went down
-  mid-gameweek), is fetched again the same way; a stored fixture missing
-  from a finished gameweek's live data is stored as `postponed`.
+  mid-gameweek), is fetched again the same way. Only FPL's fixture list
+  postpones or moves a fixture (`event: null`, or another gameweek); one
+  merely missing from the live data keeps the gameweek unsettled, and it
+  is fetched again with backoff (`poller: finished gameweek still
+unsettled after a fetch; retrying with backoff`). A payload where nobody
+  played a minute although fixtures are finished is refused
+  (`stats: incomplete live snapshot`, logged at error) and retried the
+  same way. A finished gameweek with no fixture left in it (a blank) is
+  settled after one fetch.
   Caught-up gameweeks before the current one are rescored quietly: no
   `matchups.updated`, `score.corrected` or push notifications.
 - To do it now, from a machine with `DATABASE_URL` (and FPL reachable):
@@ -287,7 +294,10 @@ earlier gameweek fetched and rescored` in the logs.
 
   A gameweek before the current one is backfilled quietly (no
   notifications, as above); the current gameweek notifies as a poll
-  would. A gameweek FPL has not finished is refused, so partial data is
+  would (the backfill builds the API's poller, Live and News hooks
+  included). Running it while the server polls is safe: an ingest of a
+  live snapshot fetched before the one already stored is refused
+  (`stats: live snapshot older than the stored one`); run it again. A gameweek FPL has not finished is refused, so partial data is
   not stored as final by mistake (on stderr, exit status 1):
 
   ```
