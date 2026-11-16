@@ -198,6 +198,9 @@ type Poller struct {
 	// while gameweeks are queued the next poll follows after the backoff
 	// for that many failures instead of the mode's wait.
 	catchupFails int
+	// read holds the earlier gameweeks whose live data the catch-up has
+	// ingested since the start (a blank can leave nothing else to show it).
+	read map[int]bool
 	// startsChecked holds the gameweeks re-read without getting starts
 	// (stats.Repo.StartsChecked).
 	startsChecked map[int]bool
@@ -787,6 +790,10 @@ func (p *Poller) reconcile(ctx context.Context, current int) bool {
 		// fixture still scheduled that nothing says was moved, say): keep
 		// it queued and fetch it again after the backoff, rather than
 		// guess.
+		if p.read == nil {
+			p.read = map[int]bool{}
+		}
+		p.read[g] = true
 		if after, err := league.LoadWorld(ctx, p.Stats, -1); err != nil || !p.loaded(ctx, after, g) {
 			failed = true
 			p.failed[g] = true
@@ -818,13 +825,19 @@ func (p *Poller) drop(g int) {
 // under way (the server went down mid-gameweek) is not, so it is fetched
 // again rather than left live, out of the table, for good.
 //
-// Rows are not optional: a gameweek whose fixtures were played has
-// players with minutes, and the ingest rejects a payload that says nobody
-// played.
+// A gameweek upstream finished with no fixture left in it (a blank, or one
+// whose matches were all moved out: event null or another gameweek) is
+// settled once its live data was read: it has nothing to load, so it is not
+// fetched and rescored again on every refresh. Rows are not optional
+// otherwise: a gameweek whose fixtures were played has players with
+// minutes, and the ingest rejects a payload that says nobody played.
 func (p *Poller) loaded(ctx context.Context, w *league.World, g int) bool {
 	lines, err := p.Stats.PlayerGameweeks(ctx, g)
 	if err != nil {
 		return false
+	}
+	if w.Gameweeks[g].Finished && len(w.FixturesIn(g)) == 0 && (len(lines) > 0 || p.read[g]) {
+		return true
 	}
 	if !p.linesComplete(g, lines) {
 		return false

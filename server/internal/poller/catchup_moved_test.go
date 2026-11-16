@@ -100,3 +100,22 @@ func TestAllZeroStatsForPlayedFixturesAreRejected(t *testing.T) {
 		}
 	})
 }
+
+// Gameweek 6 is a blank: FPL finished it and its fixture list moves
+// every one of its fixtures out (event null), so nothing was played and
+// every player is at 0 minutes. It is settled after one fetch, not
+// requeued on every refresh (World.State calls a gameweek with no
+// fixtures upcoming).
+func TestBlankFinishedGameweekIsFetchedOnce(t *testing.T) {
+	eachStore(t, func(t *testing.T, repo stats.Repo, leagues *league.Service, users auth.Service) {
+		c := outageCase{repo: repo, leagues: leagues, users: users, seed: 4,
+			src: &outage{StatsSource: demo.Source(slog.New(slog.NewTextHandler(io.Discard, nil))), current: 4, blank: true, live: map[int]int{}}}
+		c.run(t)
+		if rows, _ := repo.PlayerFixtures(context.Background(), 6); len(rows) != 0 {
+			t.Fatalf("setup: blank gameweek 6 has %d rows", len(rows))
+		}
+		if c.src.live[6] != 1 || c.src.live[5] != 1 {
+			t.Errorf("over six season refreshes: live calls %v, want gameweeks 5 and 6 once each", c.src.live)
+		}
+	})
+}
