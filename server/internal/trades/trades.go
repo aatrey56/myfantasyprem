@@ -167,9 +167,18 @@ func VotesNeeded(l *league.League, t league.Trade) int {
 	return max(1, int(math.Ceil(math.Round(threshold*float64(eligible)*1e6)/1e6)))
 }
 
-// Tally counts the votes.
-func Tally(t league.Trade) (veto, allow int) {
-	for _, v := range t.Votes {
+// Tally counts the votes of the seats that have a manager, as VotesNeeded
+// counts the managers. A manager's ballots are deleted when they leave
+// (league.releaseTeam), so a ballot is always its seat's manager's own.
+func Tally(l *league.League, t league.Trade) (veto, allow int) {
+	owned := map[string]bool{}
+	for _, tm := range l.Teams {
+		owned[tm.ID] = tm.OwnerID != ""
+	}
+	for team, v := range t.Votes {
+		if !owned[team] {
+			continue
+		}
 		if v == VoteVeto {
 			veto++
 		} else if v == VoteAllow {
@@ -659,7 +668,7 @@ func (s *Service) Vote(ctx context.Context, actor, leagueID, tradeID, vote strin
 			t.Votes[me.ID] = vote
 		}
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeTrade, TradeID: t.ID})
-		if veto, _ := Tally(*t); veto >= VotesNeeded(st.League, *t) {
+		if veto, _ := Tally(st.League, *t); veto >= VotesNeeded(st.League, *t) {
 			s.veto(st, w, t, now, ch)
 		}
 		return t.ID, nil
@@ -754,7 +763,7 @@ func (s *Service) CloseDue(ctx context.Context, leagueID string) (int, error) {
 				*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeTrade, TradeID: t.ID})
 				n++
 			case reviewOver(t, now):
-				if veto, _ := Tally(*t); t.ReviewMode == league.ReviewLeagueVote && veto >= VotesNeeded(st.League, *t) {
+				if veto, _ := Tally(st.League, *t); t.ReviewMode == league.ReviewLeagueVote && veto >= VotesNeeded(st.League, *t) {
 					s.veto(st, w, t, now, ch)
 				} else {
 					s.execute(st, w, t, now, ch)

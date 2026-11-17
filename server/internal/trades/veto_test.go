@@ -108,7 +108,7 @@ func TestVetoVoting(t *testing.T) {
 		for range 2 {
 			if got, err := vote(2, VoteVeto); err != nil {
 				t.Fatal(err)
-			} else if veto, _ := Tally(got); veto != 1 {
+			} else if veto, _ := Tally(f.l, got); veto != 1 {
 				t.Fatalf("after a repeated veto: %d vetoes", veto)
 			}
 		}
@@ -119,7 +119,7 @@ func TestVetoVoting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if veto, allow := Tally(got); veto != 0 || allow != 0 || len(got.Votes) != 0 {
+			if veto, allow := Tally(f.l, got); veto != 0 || allow != 0 || len(got.Votes) != 0 {
 				t.Fatalf("after withdrawing: %+v", got.Votes)
 			}
 		}
@@ -582,4 +582,66 @@ func TestConcurrentVetoesNeverExecute(t *testing.T) {
 			t.Fatalf("feed entries for the trade = %v, want one vetoed", entries)
 		}
 	})
+}
+
+// A manager who leaves takes their ballots with them: an open vote no
+// longer counts their veto, and whoever takes the seat next inherits no
+// ballot (they may vote themselves).
+func TestDepartedManagersBallotsDoNotCount(t *testing.T) {
+	leaguetest.Each(t, func(t *testing.T, e *leaguetest.Env) {
+		f := voteFixture(t, e)
+		ctx, s := e.Ctx, f.s
+		tr := f.accepted(t, scoring.MID)
+		for _, i := range []int{2, 3, 4} {
+			if _, _, err := s.Vote(ctx, f.users[i], f.l.ID, tr.ID, VoteVeto); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := e.Leagues.Leave(ctx, f.users[4], f.l.ID); err != nil {
+			t.Fatal(err)
+		}
+		// 9 managers outside the trade now: 3 vetoes would block it, and
+		// the 2 left do not.
+		got := f.trade(t, tr.ID)
+		l, err := e.Repo.Get(ctx, f.l.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if veto, _ := Tally(l, got); veto != 2 || got.Status != league.TradeInReview || VotesNeeded(l, got) != 3 {
+			t.Fatalf("after the leave: %d vetoes (%v), %s, %d needed", veto, got.Votes, got.Status, VotesNeeded(l, got))
+		}
+
+		// A newcomer takes the seat: still 2 vetoes, and their own veto
+		// is the third.
+		inv, err := e.Leagues.CreateInvite(ctx, f.users[0], f.l.ID, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newcomer := e.User(t)
+		if _, tm, err := e.Leagues.AcceptInvite(ctx, newcomer, inv.Code, "New"); err != nil || tm.ID != f.teams[4] {
+			t.Fatalf("join: %+v %v", tm, err)
+		}
+		got = f.trade(t, tr.ID)
+		if l, err = e.Repo.Get(ctx, f.l.ID); err != nil {
+			t.Fatal(err)
+		}
+		if veto, _ := Tally(l, got); veto != 2 || VotesNeeded(l, got) != 4 {
+			t.Fatalf("after the newcomer: %d vetoes (%v), %d needed", veto, got.Votes, VotesNeeded(l, got))
+		}
+		if _, got, err = s.Vote(ctx, newcomer, f.l.ID, tr.ID, VoteVeto); err != nil {
+			t.Fatal(err)
+		}
+		if veto, _ := Tally(l, got); veto != 3 || got.Status != league.TradeInReview {
+			t.Fatalf("after the newcomer's veto: %d vetoes, %s", veto, got.Status)
+		}
+	})
+}
+
+// Tally counts only the ballots of seats that have a manager.
+func TestTallySkipsEmptySeats(t *testing.T) {
+	l := &league.League{Teams: []league.Team{{ID: "a", OwnerID: "ua"}, {ID: "b", OwnerID: "ub"}, {ID: "c", OwnerID: "uc"}, {ID: "d"}}}
+	tr := league.Trade{OfferingTeamID: "a", ReceivingTeamID: "b", Votes: map[string]string{"c": VoteVeto, "d": VoteVeto}}
+	if veto, _ := Tally(l, tr); veto != 1 {
+		t.Fatalf("vetoes = %d, want 1 (the empty seat's ballot does not count)", veto)
+	}
 }

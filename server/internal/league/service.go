@@ -713,7 +713,9 @@ func (m *Service) leave(ctx context.Context, leagueID, userID, removedBy string,
 // releaseTeam withdraws the pending moves of userID's team in an
 // in-season league (docs/account-deletion.md): pending waiver claims are
 // cancelled, offers it made withdrawn and offers it received declined.
-// Accepted trades run their course: they involve another manager too.
+// Accepted trades run their course: they involve another manager too. The
+// manager's ballots on trades still in a vote go with them, so whoever
+// takes the seat next inherits no veto (ADR 0017).
 func releaseTeam(st *State, userID string, now time.Time) []Change {
 	team, ok := st.League.TeamOf(userID)
 	if !ok || st.League.Status != StatusInSeason {
@@ -727,6 +729,11 @@ func releaseTeam(st *State, userID string, now time.Time) []Change {
 	var changes []Change
 	for i := range st.Trades {
 		t := &st.Trades[i]
+		if _, voted := t.Votes[team.ID]; voted && t.Status == TradeInReview {
+			delete(t.Votes, team.ID)
+			changes = append(changes, Change{LeagueID: st.League.ID, Kind: ChangeTrade, TradeID: t.ID})
+			continue
+		}
 		if t.Status != TradeOffered {
 			continue
 		}
