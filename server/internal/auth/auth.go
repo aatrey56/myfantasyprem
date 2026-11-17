@@ -141,6 +141,9 @@ type Service interface {
 	// RevokeSignInLinks deletes the unused sign-in links issued in
 	// leagueID: all of them, or only userID's when it is set.
 	RevokeSignInLinks(ctx context.Context, leagueID, userID string) error
+	// RevokeSignInLink deletes one unused sign-in link by its code; an
+	// unknown or used code is no error.
+	RevokeSignInLink(ctx context.Context, code string) error
 	// CreateUser finds or creates the user with this email and sets the
 	// display name (tests and seeding).
 	CreateUser(ctx context.Context, displayName, email string) (*User, error)

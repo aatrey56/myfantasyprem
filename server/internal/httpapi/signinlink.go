@@ -77,8 +77,10 @@ func (s *Server) CreateSeatSignInLink(ctx context.Context, req CreateSeatSignInL
 	}
 	// The link lives in the auth store, so it cannot share the entry's
 	// transaction: it is issued first, and its code is shown only once the
-	// entry has committed. A link whose entry failed is revoked, and its
-	// code was never shown, so nobody can use it.
+	// entry has committed. A link whose entry failed is revoked (that link
+	// only: one issued meanwhile by another request stays), and its code
+	// was never shown, so nobody can use it. The transaction checks the
+	// caller is still the commissioner.
 	link, err := s.auth.IssueSignInLink(ctx, owner.ID, l.ID, uid)
 	if err != nil {
 		return nil, err
@@ -91,11 +93,14 @@ func (s *Server) CreateSeatSignInLink(ctx context.Context, req CreateSeatSignInL
 		if cur == nil {
 			return league.ErrLeagueNotFound
 		}
+		if err := league.Commissioner(cur, uid); err != nil {
+			return err
+		}
 		return league.Record(ctx, tx, cur, uid, s.now(), league.AuditSignInLinkIssued,
 			"Issued a sign-in link for the manager of "+league.TeamLabel(cur, t.ID)+".", []string{t.ID}, nil, nil)
 	})
 	if err != nil {
-		if rerr := s.auth.RevokeSignInLinks(ctx, l.ID, owner.ID); rerr != nil {
+		if rerr := s.auth.RevokeSignInLink(ctx, link.Code); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
 		return failLeague[resp](ctx, err)

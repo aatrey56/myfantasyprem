@@ -92,6 +92,14 @@ func (s *Memory) RevokeSignInLinks(_ context.Context, leagueID, userID string) e
 	return nil
 }
 
+// RevokeSignInLink deletes one unused sign-in link by its code.
+func (s *Memory) RevokeSignInLink(_ context.Context, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.signInLinks, hash(code))
+	return nil
+}
+
 // SignInLinkCount counts userID's unused sign-in links (tests).
 func (s *Memory) SignInLinkCount(userID string) int {
 	s.mu.Lock()
@@ -172,5 +180,10 @@ func (p *Postgres) UseSignInLink(ctx context.Context, code string, check func(co
 func (p *Postgres) RevokeSignInLinks(ctx context.Context, leagueID, userID string) error {
 	_, err := p.pool.Exec(ctx,
 		`DELETE FROM signin_links WHERE league_id = $1 AND ($2 = '' OR user_id = $2)`, leagueID, userID)
+	return err
+}
+
+func (p *Postgres) RevokeSignInLink(ctx context.Context, code string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM signin_links WHERE code_sha256 = $1`, hash(code))
 	return err
 }

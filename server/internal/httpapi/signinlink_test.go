@@ -364,3 +364,57 @@ func countSignInLinks(t *testing.T, srv *Server, pool *pgxpool.Pool, userID stri
 	}
 	return n
 }
+
+// issueThen is an auth store that runs then after each sign-in link it
+// issues: what another request did meanwhile.
+type issueThen struct {
+	auth.Service
+	then func()
+}
+
+func (s issueThen) IssueSignInLink(ctx context.Context, userID, leagueID, issuerID string) (auth.SignInLink, error) {
+	link, err := s.Service.IssueSignInLink(ctx, userID, leagueID, issuerID)
+	if err == nil {
+		s.then()
+	}
+	return link, err
+}
+
+// The commissioner is checked again in the transaction that records the
+// move: one who handed the role over while the link was being issued gets
+// 403 and leaves no entry, and only their own link is revoked, not the one
+// the new commissioner issued meanwhile.
+func TestSeatSignInLinkRechecksTheCommissioner(t *testing.T) {
+	for _, store := range []string{"memory", "postgres"} {
+		t.Run(store, func(t *testing.T) {
+			var pool *pgxpool.Pool
+			if store == "postgres" {
+				pool = storetest.New(t)
+			}
+			srv, _ := newTestServerOn(pool)
+			h := newHandler(testOptions(), newRoutes(testOptions(), srv))
+			l, seat, jordanTok := claimedSeat(t, srv, h)
+			ctx, commish, priya, jordan := context.Background(), l.CommissionerID, l.Teams[1].OwnerID, userOf(t, srv, jordanTok)
+			real := srv.auth
+			var theirs auth.SignInLink
+			srv.auth = issueThen{real, func() {
+				if _, err := srv.leagues.TransferCommissioner(ctx, commish, l.ID, priya); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				if theirs, err = real.IssueSignInLink(ctx, jordan, l.ID, priya); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			path := "/v1/leagues/" + l.ID + "/seats/" + seat.ID + "/signin-link"
+			decodeProblem(t, do(h, http.MethodPost, path, ""), http.StatusForbidden)
+			srv.auth = real
+			if es, err := srv.leagues.Repo().Audit(ctx, l.ID, 0, 5); err != nil || len(es) != 1 || es[0].Action != league.AuditCommissionerMoved {
+				t.Errorf("log = %+v %v", es, err)
+			}
+			if _, _, _, err := real.UseSignInLink(ctx, theirs.Code, func(context.Context, auth.SignInLinkGrant) error { return nil }); err != nil {
+				t.Errorf("the new commissioner's link was revoked: %v", err)
+			}
+		})
+	}
+}
