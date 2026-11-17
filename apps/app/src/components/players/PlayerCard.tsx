@@ -1057,13 +1057,14 @@ export function GameweekStrip({
             <Pressable
               key={r.gameweek}
               testID={`gw-card-${r.gameweek}`}
-              accessibilityRole="button"
+              accessibilityRole={onOpenGameweek ? 'button' : undefined}
+              disabled={!onOpenGameweek}
               accessibilityLabel={`Gameweek ${r.gameweek}: ${
                 fixtures.length ? fixtures.map((f) => f.label).join(', ') : 'no fixture'
               }${r.kind === 'played' ? `, ${points} points` : ''}${
                 kickoff === null ? '' : `, ${formatWeekday(kickoff)} ${formatShortDate(kickoff)}`
               }`}
-              accessibilityHint="Opens this gameweek in the game log"
+              accessibilityHint={onOpenGameweek ? 'Opens this gameweek in the game log' : undefined}
               onPress={() => onOpenGameweek?.(r.gameweek)}
               style={(s: PressState) => [
                 {

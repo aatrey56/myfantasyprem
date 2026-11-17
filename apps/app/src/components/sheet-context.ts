@@ -10,7 +10,7 @@ export function useSheetClose(fallback?: () => void): () => void {
   return close ?? fallback ?? (() => undefined);
 }
 
-/** Scrolls the sheet's own scroll view so `node` sits mid-view (a row to point at). */
+/** Scrolls the sheet's own scroll view so `node` sits near its top (a row to point at). */
 export type ScrollIntoView = (node: View | null) => void;
 
 export const SheetScrollContext = createContext<ScrollIntoView | null>(null);
