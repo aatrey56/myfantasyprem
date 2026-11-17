@@ -1,5 +1,12 @@
 import { AVATAR_PALETTE, contrastRatio, userColor } from './identity';
-import { firstNameOf, ownerChipColors, ownerChipLabel, parseOwnerLabel } from './owner-label';
+import {
+  DEFAULT_OWNER_LABEL,
+  firstNameOf,
+  managerNameOf,
+  ownerChipColors,
+  ownerChipLabel,
+  parseOwnerLabel,
+} from './owner-label';
 import { darkColors } from '@/theme';
 
 const team = (name: string, managerName: string) => ({ name, managerName });
@@ -67,6 +74,49 @@ describe('firstNameOf', () => {
   });
 });
 
+describe('parseOwnerLabel', () => {
+  it('reads each stored mode', () => {
+    expect(parseOwnerLabel('"team_name"')).toBe('team_name');
+    expect(parseOwnerLabel('"manager_name"')).toBe('manager_name');
+    expect(parseOwnerLabel('"first_name"')).toBe('first_name');
+  });
+
+  it('defaults to team names for a device that never chose', () => {
+    expect(DEFAULT_OWNER_LABEL).toBe('team_name');
+    expect(parseOwnerLabel(null)).toBe('team_name');
+  });
+
+  it('falls back to the default on an unknown, malformed or wrong-typed value', () => {
+    for (const raw of [
+      '"initials"',
+      '"TEAM_NAME"',
+      'first_name',
+      '{',
+      '',
+      '42',
+      'null',
+      '{}',
+      '[]',
+    ]) {
+      expect(parseOwnerLabel(raw)).toBe('team_name');
+    }
+  });
+});
+
+describe('managerNameOf', () => {
+  it('is the display name as set, trimmed', () => {
+    expect(managerNameOf('Sam P.')).toBe('Sam P.');
+    expect(managerNameOf('  Sam Rivers ')).toBe('Sam Rivers');
+    expect(managerNameOf('⚽ Sam')).toBe('⚽ Sam');
+  });
+
+  it('is null when it names no one', () => {
+    for (const name of ['', '   ', 'Open seat', 'Former manager', 'unclaimed', '🦁🔥']) {
+      expect(managerNameOf(name)).toBeNull();
+    }
+  });
+});
+
 describe('ownerChipLabel', () => {
   it("shows the manager's first name, tinted with the team's avatar colour", () => {
     const label = ownerChipLabel(team('Sunday League Heroes', 'Sam P.'), false, 'first_name');
@@ -87,9 +137,32 @@ describe('ownerChipLabel', () => {
     );
   });
 
-  it('says You on my own team in either mode', () => {
-    expect(ownerChipLabel(team('Mine', 'Sam P.'), true, 'first_name').text).toBe('You');
-    expect(ownerChipLabel(team('Mine', 'Sam P.'), true, 'team_name').text).toBe('You');
+  it('says You on my own team in every mode', () => {
+    for (const mode of ['team_name', 'manager_name', 'first_name'] as const) {
+      expect(ownerChipLabel(team('Mine', 'Sam P.'), true, mode).text).toBe('You');
+    }
+  });
+
+  it("shows the manager's display name in manager-name mode, whole", () => {
+    expect(ownerChipLabel(team('Sunday League Heroes', 'Sam P.'), false, 'manager_name').text).toBe(
+      'Sam P.',
+    );
+    expect(
+      ownerChipLabel(team('Sunday League Heroes', ' Dr Sam Rivers '), false, 'manager_name').text,
+    ).toBe('Dr Sam Rivers');
+  });
+
+  it('falls back to the team name in manager-name mode when no person is named', () => {
+    for (const manager of ['', '  ', 'Open seat', 'Former manager', '🦁']) {
+      expect(ownerChipLabel(team('Park The Bus FC', manager), false, 'manager_name').text).toBe(
+        'Park The Bus FC',
+      );
+    }
+  });
+
+  it('falls back to Team when the team has no name either', () => {
+    expect(ownerChipLabel(team('  ', ''), false, 'manager_name').text).toBe('Team');
+    expect(ownerChipLabel(team('', 'Sam'), false, 'team_name').text).toBe('Team');
   });
 
   it('shows an emoji team name as the emoji, never ?', () => {
@@ -128,15 +201,5 @@ describe('owner chip colour', () => {
   it('keeps You readable on the accent', () => {
     const { background, text } = ownerChipColors('#EAB308', true, darkColors);
     expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5);
-  });
-});
-
-describe('parseOwnerLabel', () => {
-  it('reads a stored choice, else the default', () => {
-    expect(parseOwnerLabel('"team_name"')).toBe('team_name');
-    expect(parseOwnerLabel('"first_name"')).toBe('first_name');
-    expect(parseOwnerLabel(null)).toBe('first_name');
-    expect(parseOwnerLabel('"initials"')).toBe('first_name');
-    expect(parseOwnerLabel('{not json')).toBe('first_name');
   });
 });
