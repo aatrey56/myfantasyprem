@@ -485,8 +485,9 @@ export interface paths {
          *     schedule, waivers and the current gameweek (which it reads from
          *     their own endpoints): what needs the caller's attention, the change
          *     in their league position, the best available players by form with
-         *     their next fixtures, and every flagged (injured, suspended or
-         *     doubtful) player in the game with their owner in this league.
+         *     their next fixtures, and the latest injuries and suspensions: the
+         *     flagged players in the game whose news is newer than the end of
+         *     the last finished gameweek, with their owner in this league.
          */
         get: operations["getLeagueStatus"];
         put?: never;
@@ -4294,8 +4295,15 @@ export interface components {
              */
             topAvailable: components["schemas"]["StatusAvailablePlayer"][];
             /**
-             * @description Every flagged player in the game (availability other than
-             *     `available`), out before doubtful, then by name.
+             * @description The latest injuries and suspensions: players in the game whose
+             *     availability is not `available` and whose news (`player.newsAt`)
+             *     was added after the last finished gameweek ended (its last
+             *     kickoff plus two hours, or its deadline when no fixture of it
+             *     has a kickoff time; every player with a news time before a
+             *     gameweek has finished). Older news, or none, is left out.
+             *     Players owned in this league come first, then the others; each
+             *     group by season minutes, most first, then out before doubtful,
+             *     then by name.
              */
             injuries: components["schemas"]["StatusFlaggedPlayer"][];
         };

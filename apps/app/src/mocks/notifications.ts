@@ -82,7 +82,11 @@ const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOSt
 function inbox(): Schemas['Notification'][] {
   const lg = data.LEAGUE_ID;
   // An injured player's news, linked the way older server rows were (`/league/...`).
-  const hurt = data.PLAYERS.find((p) => p.availability === 'injured')!;
+  // The generator's first injured player: world.ts also flags a few free
+  // agents after the loop, and those come earlier in the list.
+  const hurt = data.PLAYERS.find(
+    (p) => p.availability === 'injured' && p.news === 'Hamstring injury, out for several weeks',
+  )!;
   const items: Omit<Schemas['Notification'], 'readAt'>[] = [
     {
       id: 'ntf_01k7m2xq8z0000000000000006',

@@ -1,7 +1,7 @@
 // Package statuspage computes the league Status page (GET
 // /v1/leagues/{leagueId}/status): what needs the caller's attention, the
 // change in their league position, the best available players by form,
-// and every flagged player. It mirrors the MSW mock
+// and the latest injuries and suspensions. It mirrors the MSW mock
 // (apps/app/src/mocks/status.ts) and is pure: no I/O, no clocks. httpapi
 // gathers the inputs and maps the results to the contract.
 package statuspage
@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // UpcomingWeeks is how many gameweeks of fixtures a top available player
@@ -209,13 +210,59 @@ type Flagged struct {
 	ID           string
 	Name         string
 	Availability string
+	// NewsAt is when his injury or availability news was added; nil when
+	// unknown (treated as old).
+	NewsAt *time.Time
+	// Owned: a team in the league owns him.
+	Owned bool
+	// Minutes played this season.
+	Minutes int
 }
 
-// SortInjuries orders flagged players out (injured, suspended,
-// unavailable) before doubtful, then by name (case-insensitive), then id.
-func SortInjuries(players []Flagged) {
-	slices.SortStableFunc(players, func(a, b Flagged) int {
+// MatchLength is how long after kickoff a match counts as over when a
+// gameweek's end is derived from its last kickoff.
+const MatchLength = 2 * time.Hour
+
+// GameweekEnd is when a gameweek ended: MatchLength after its latest
+// kickoff. ok is false without any kickoff.
+func GameweekEnd(kickoffs []time.Time) (end time.Time, ok bool) {
+	for _, k := range kickoffs {
+		if !ok || k.After(end) {
+			end, ok = k, true
+		}
+	}
+	if ok {
+		end = end.Add(MatchLength)
+	}
+	return end, ok
+}
+
+// LatestInjuries is the Status page's injury list, as FPL Draft's "Latest
+// Injuries & Suspensions": the flagged players whose news was added after
+// since (the end of the last finished gameweek; the zero time before any
+// has finished, which keeps every player with a news time). Players with
+// older news, or none, are left out. Players owned in the league come
+// first, then the rest; each group by season minutes, most first, then
+// out before doubtful, then name (case-insensitive), then id. The input
+// is not modified.
+func LatestInjuries(players []Flagged, since time.Time) []Flagged {
+	var out []Flagged
+	for _, p := range players {
+		if p.NewsAt != nil && p.NewsAt.After(since) {
+			out = append(out, p)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b Flagged) int {
+		if a.Owned != b.Owned {
+			if a.Owned {
+				return -1
+			}
+			return 1
+		}
 		da, db := a.Availability == AvailabilityDoubtful, b.Availability == AvailabilityDoubtful
+		if c := cmp.Compare(b.Minutes, a.Minutes); c != 0 {
+			return c
+		}
 		if da != db {
 			if da {
 				return 1
@@ -225,6 +272,7 @@ func SortInjuries(players []Flagged) {
 		return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
 			cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
 	})
+	return out
 }
 
 var percent = regexp.MustCompile(`(\d{1,3})%`)

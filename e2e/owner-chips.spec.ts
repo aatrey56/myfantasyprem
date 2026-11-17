@@ -160,36 +160,62 @@ for (const vp of [
   });
 }
 
-for (const width of [320, 375]) {
-  test.describe(`injuries card (phone ${width})`, () => {
-    test.use({ viewport: { width, height: 812 } });
+// The injuries card stacks its rows when it is narrow (a phone, or the side
+// column of a desktop): the name has a line to itself, the owner chip sits
+// under it at the right. Long team names are cut to the chip's maximum.
+for (const width of [320, 375, 390, 1280]) {
+  for (const label of ['first_name', 'team_name'] as const) {
+    test.describe(`injuries card (${width}, owners as ${label})`, () => {
+      test.use({ viewport: { width, height: 900 } });
 
-    test("the owner column keeps the player's name readable and the rows aligned", async ({
-      page,
-    }) => {
-      await page.goto(LEAGUE);
-      const card = visible(page, 'status-injuries');
-      await expect(card).toBeVisible();
-      const rows = card.locator('[data-testid^="injury-plr_"]');
-      expect(await rows.count()).toBeGreaterThan(1);
-      await expect(card.getByTestId(/^injury-owner-plr_/).first()).toBeVisible();
-      const slots: { left: number; right: number }[] = [];
-      for (const row of await rows.all()) {
-        const name = (await row.getByTestId(/^injury-name-/).boundingBox())!;
-        expect(name.width).toBeGreaterThan(60);
-        const slot = (await row.getByTestId(/^injury-owner-slot-/).boundingBox())!;
-        slots.push({ left: Math.round(slot.x), right: Math.round(slot.x + slot.width) });
-        const chip = row.getByTestId(/^injury-owner-plr_/);
-        if ((await chip.count()) > 0) {
-          const c = (await chip.boundingBox())!;
-          expect(c.x).toBeGreaterThanOrEqual(slot.x - 0.5);
-          expect(c.x + c.width).toBeLessThanOrEqual(slot.x + slot.width + 0.5);
+      test("the owner column keeps the player's name readable and the rows aligned", async ({
+        page,
+      }) => {
+        await startWithScenario(page, 'long-owner-names');
+        await page.addInitScript(
+          (m) => localStorage.setItem('mfp.ownerLabel', JSON.stringify(m)),
+          label,
+        );
+        await page.goto(LEAGUE);
+        const card = visible(page, 'status-injuries');
+        await expect(card).toBeVisible();
+        const rows = card.locator('[data-testid^="injury-plr_"]');
+        expect(await rows.count()).toBeGreaterThan(1);
+        await expect(card.getByTestId(/^injury-owner-plr_/).first()).toBeVisible();
+        if (label === 'team_name') {
+          await expect(card.getByTestId(/^injury-owner-plr_/).first()).toHaveText(
+            /^Riverside Rovers$/,
+          );
         }
-      }
-      // Every row's owner column (chip or –) in the same place.
-      expect(new Set(slots.map((s) => `${s.left}-${s.right}`)).size).toBe(1);
+        const slots: { left: number; right: number }[] = [];
+        let chips = 0;
+        for (const row of await rows.all()) {
+          const name = row.getByTestId(/^injury-name-/);
+          // The whole name, not cut to an ellipsis: it has the line to itself.
+          expect((await name.boundingBox())!.width).toBeGreaterThan(100);
+          expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+          const detail = row.getByTestId(/^injury-detail-/);
+          expect(await detail.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+          const slot = (await row.getByTestId(/^injury-owner-slot-/).boundingBox())!;
+          slots.push({ left: Math.round(slot.x), right: Math.round(slot.x + slot.width) });
+          const chip = row.getByTestId(/^injury-owner-plr_/);
+          if ((await chip.count()) > 0) {
+            chips++;
+            const c = (await chip.boundingBox())!;
+            expect(c.x).toBeGreaterThanOrEqual(slot.x - 0.5);
+            expect(c.x + c.width).toBeLessThanOrEqual(slot.x + slot.width + 0.5);
+            // A team name gets the chip's full width, not a stub.
+            if (label === 'team_name' && !(await chip.getByText('You').count())) {
+              expect(c.width).toBeGreaterThan(80);
+            }
+          }
+        }
+        expect(chips).toBeGreaterThan(1);
+        // Every row's owner column (chip or Free agent) in the same place.
+        expect(new Set(slots.map((s) => `${s.left}-${s.right}`)).size).toBe(1);
+      });
     });
-  });
+  }
 }
 
 test.describe('matchup cards (phone 375)', () => {

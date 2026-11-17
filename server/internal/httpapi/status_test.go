@@ -60,8 +60,13 @@ func TestLeagueStatusOnTheDemoWorld(t *testing.T) {
 			t.Errorf("%d starters in blank clubs, the strip says 4", blank)
 		}
 
-		// Injuries: every flagged player in the game, out before doubtful,
-		// then by name, with the chance from FPL's news and the owner here.
+		// Injuries: flagged players whose news is newer than the end of the
+		// last finished gameweek (6: its last match, 28 September 20:00,
+		// plus two hours; all five demo notes are), those owned here first,
+		// each group by season minutes, with the chance from FPL's news.
+		if end := lastGameweekEnd(f.srv.mustWorld(t)); !end.Equal(time.Date(2026, 9, 28, 22, 0, 0, 0, time.UTC)) {
+			t.Errorf("last gameweek ended %v", end)
+		}
 		type inj struct {
 			Name, Availability string
 			Chance             any
@@ -79,11 +84,11 @@ func TestLeagueStatusOnTheDemoWorld(t *testing.T) {
 			injuries = append(injuries, in)
 		}
 		wantInj := []inj{
-			{"B. Fairbairn", "injured", 0, ""},
-			{"C. Osei", "suspended", 0, "Sunday League Heroes"},
-			{"E. Thorne", "unavailable", 0, ""},
-			{"A. Tanaka", "doubtful", 75, "Park the Bus"},
-			{"D. Castellan", "doubtful", 50, ""},
+			{"A. Tanaka", "doubtful", 75, "Park the Bus"},       // owned, 601 minutes
+			{"C. Osei", "suspended", 0, "Sunday League Heroes"}, // owned, none
+			{"D. Castellan", "doubtful", 50, ""},                // free, 610
+			{"B. Fairbairn", "injured", 0, ""},                  // free, none: out first,
+			{"E. Thorne", "unavailable", 0, ""},                 // then by name
 		}
 		if fmt.Sprint(injuries) != fmt.Sprint(wantInj) {
 			t.Errorf("injuries = %v\nwant       %v", injuries, wantInj)

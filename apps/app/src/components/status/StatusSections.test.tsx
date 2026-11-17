@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
-import { PlayersOfTheWeek, TeamOfTheWeek } from './StatusSections';
-import { gameweekAwards, playersOfTheWeek } from '@/mocks/status';
+import { positionLabel } from '../Badges';
+import { InjuriesCard, PlayersOfTheWeek, TeamOfTheWeek } from './StatusSections';
+import { LEAGUE_ID, leagues } from '@/mocks/data';
+import type { InSeasonLeague } from '@/mocks/league';
+import { gameweekAwards, leagueStatus, playersOfTheWeek } from '@/mocks/status';
 
 const awards = gameweekAwards(6)!;
 
@@ -107,5 +110,64 @@ describe('PlayersOfTheWeek (native)', () => {
     ).toBe('flex-end');
     expect(disabled('potw-prev')).toBe(true);
     expect(disabled('potw-next')).toBe(true);
+  });
+});
+
+describe('InjuriesCard', () => {
+  const { injuries } = leagueStatus(leagues.get(LEAGUE_ID) as InSeasonLeague);
+
+  const slotHas = (id: string) =>
+    within(screen.getByTestId(`injury-owner-slot-${id}`)).queryByTestId(`injury-owner-${id}`) !==
+    null;
+
+  it('lists the players as given, an owner chip only for owned ones', async () => {
+    await render(<InjuriesCard players={injuries} onOpen={jest.fn()} />);
+    expect(screen.getByRole('header', { name: 'Latest Injuries and Suspensions' })).toBeTruthy();
+    const rows = screen.getAllByTestId(/^injury-plr_/);
+    expect(rows.map((r) => r.props.testID)).toEqual(injuries.map((i) => `injury-${i.player.id}`));
+    for (const i of injuries) expect(slotHas(i.player.id)).toBe(i.owner !== null);
+  });
+
+  it('stacks a narrow card: position and club under the name, "Free agent" for no owner', async () => {
+    await render(<InjuriesCard players={injuries} onOpen={jest.fn()} />);
+    await fireEvent(screen.getByTestId('status-injuries'), 'layout', {
+      nativeEvent: { layout: { width: 360, height: 400 } },
+    });
+    expect(screen.queryByTestId('injuries-header', { includeHiddenElements: true })).toBeNull();
+    const first = injuries[0]!.player;
+    expect(screen.getByTestId(`injury-detail-${first.id}`)).toHaveTextContent(
+      `${positionLabel(first.position)} · ${first.club.code}`,
+    );
+    const free = injuries.filter((i) => i.owner === null);
+    expect(free.length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Free agent')).toHaveLength(free.length);
+  });
+
+  it('puts a wide card in columns under a header, a dash for no owner', async () => {
+    await render(<InjuriesCard players={injuries} onOpen={jest.fn()} />);
+    await fireEvent(screen.getByTestId('status-injuries'), 'layout', {
+      nativeEvent: { layout: { width: 700, height: 400 } },
+    });
+    const header = screen.getByTestId('injuries-header', { includeHiddenElements: true });
+    for (const label of ['Player', 'Pos', 'Club', 'Mgr']) {
+      expect(within(header).getByText(label, { includeHiddenElements: true })).toBeTruthy();
+    }
+    expect(screen.queryByTestId(/^injury-detail-/)).toBeNull();
+    expect(screen.queryByText('Free agent')).toBeNull();
+    expect(screen.getAllByText('–')).toHaveLength(injuries.filter((i) => i.owner === null).length);
+  });
+
+  it('opens the player card from the badge', async () => {
+    const onOpen = jest.fn();
+    await render(<InjuriesCard players={injuries} onOpen={onOpen} />);
+    await fireEvent.press(screen.getByTestId(`injury-badge-${injuries[0]!.player.id}`));
+    expect(onOpen).toHaveBeenCalledWith(injuries[0]!.player.id);
+  });
+
+  it('says so, briefly, when nothing qualifies', async () => {
+    await render(<InjuriesCard players={[]} onOpen={jest.fn()} />);
+    expect(screen.getByText('Nothing new')).toBeTruthy();
+    expect(screen.getByText('No injuries or suspensions since the last gameweek.')).toBeTruthy();
+    expect(screen.queryByTestId('injuries-header', { includeHiddenElements: true })).toBeNull();
   });
 });
