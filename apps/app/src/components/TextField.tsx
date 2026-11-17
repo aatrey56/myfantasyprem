@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Pressable, View, type TextInputProps } from 'react-native';
+import { Platform, Pressable, View, type TextInputProps } from 'react-native';
 
 import { AppText, INPUT_MAX_FONT_SCALE } from './AppText';
 import { Minus, Plus } from './icons';
@@ -43,7 +43,9 @@ export function TextField({ label, error, hint, testID, onFocus, onBlur, ...rest
       </AppText>
       {renderInput({
         maxFontSizeMultiplier: INPUT_MAX_FONT_SCALE,
-        ...(rest.multiline ? { numberOfLines: 1 } : null),
+        // Web only: one starting row for the textarea. On iOS and Android
+        // numberOfLines caps the height, so the field would stop growing.
+        ...(rest.multiline && Platform.OS === 'web' ? { numberOfLines: 1 } : null),
         ...rest,
         testID: testID,
         accessibilityLabel: label,
