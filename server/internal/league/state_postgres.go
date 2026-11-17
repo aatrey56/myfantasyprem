@@ -713,6 +713,15 @@ func (t pgTx) saveTrades(ctx context.Context, leagueID string, before, after []T
 				}
 			}
 		}
+		for team := range old.Votes {
+			if _, still := tr.Votes[team]; still {
+				continue
+			}
+			// A withdrawn ballot.
+			if _, err := t.tx.Exec(ctx, `DELETE FROM trade_votes WHERE trade_id = $1 AND team_id = $2`, tr.ID, team); err != nil {
+				return err
+			}
+		}
 		for team, vote := range tr.Votes {
 			if old.Votes[team] == vote {
 				continue

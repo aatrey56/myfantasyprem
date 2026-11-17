@@ -138,6 +138,22 @@ func (s *Service) request(ctx context.Context, actor, leagueID, kind string, job
 	if !ok {
 		return nil, errSyncPending
 	}
+	if kind == PendingResync {
+		// A re-sync resets the league to FPL's state, so it is a commissioner
+		// move. The request lives in the mirror's store, so this entry is
+		// written just after it rather than in the same transaction.
+		err := s.Leagues.Tx(ctx, func(tx league.Tx) error {
+			l, err := tx.Load(ctx, leagueID)
+			if err != nil || l == nil {
+				return err
+			}
+			return league.Record(ctx, tx, l, actor, now, league.AuditLeagueResynced,
+				"Re-synced the league from FPL Draft.", nil, nil, nil)
+		})
+		if err != nil {
+			return nil, errors.Join(err, s.finish(ctx, leagueID, err))
+		}
+	}
 	s.log().InfoContext(ctx, "fpl "+kind+" requested", "league", leagueID, "by", actor)
 	if s.Sched != nil {
 		if err := s.Sched.ScheduleTx(ctx, nil, job(now), now); err != nil {

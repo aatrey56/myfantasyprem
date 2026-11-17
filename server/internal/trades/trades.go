@@ -3,6 +3,7 @@ package trades
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -28,6 +29,8 @@ const (
 const (
 	VoteVeto  = "veto"
 	VoteAllow = "allow"
+	// VoteWithdraw takes the manager's ballot back; it is never stored.
+	VoteWithdraw = "withdraw"
 
 	DecisionApprove = "approve"
 	DecisionVeto    = "veto"
@@ -145,7 +148,9 @@ func Actions(t league.Trade, l *league.League, userID, teamID string) []string {
 }
 
 // VotesNeeded is the number of veto votes that block a trade in a league
-// vote: ceil(threshold × managers not in the trade), at least one.
+// vote: ceil(threshold × managers not in the trade), at least one. The
+// product is rounded to 6 places first, so a threshold of a third that went
+// through a float32 (the contract's number) does not tip 3.0000001 up to 4.
 func VotesNeeded(l *league.League, t league.Trade) int {
 	eligible := 0
 	for _, tm := range l.Teams {
@@ -153,7 +158,7 @@ func VotesNeeded(l *league.League, t league.Trade) int {
 			eligible++
 		}
 	}
-	return max(1, int(math.Ceil(l.Settings.VetoThreshold*float64(eligible)-1e-9)))
+	return max(1, int(math.Ceil(math.Round(l.Settings.VetoThreshold*float64(eligible)*1e6)/1e6)))
 }
 
 // Tally counts the votes.
@@ -603,15 +608,16 @@ func (s *Service) respond(ctx context.Context, actor, leagueID, tradeID string, 
 	})
 }
 
-// Vote records a manager's league-vote ballot; enough vetoes veto the trade.
+// Vote records a manager's league-vote ballot (or withdraws it); enough
+// vetoes veto the trade.
 func (s *Service) Vote(ctx context.Context, actor, leagueID, tradeID, vote string) (*View, league.Trade, error) {
 	return s.change(ctx, actor, leagueID, func(_ league.Tx, st *league.State, w *league.World, now time.Time, ch *[]league.Change, known []league.Trade) (string, error) {
 		me, err := inSeason(st, actor)
 		if err != nil {
 			return "", err
 		}
-		if vote != VoteVeto && vote != VoteAllow {
-			return "", league.Errorf(league.KindInvalid, "invalid-request", "Invalid request", "vote must be veto or allow.")
+		if vote != VoteVeto && vote != VoteAllow && vote != VoteWithdraw {
+			return "", league.Errorf(league.KindInvalid, "invalid-request", "Invalid request", "vote must be veto, allow or withdraw.")
 		}
 		t, err := find(st, known, tradeID, me.ID)
 		if errorsIsNotOpen(err) {
@@ -635,7 +641,11 @@ func (s *Service) Vote(ctx context.Context, actor, leagueID, tradeID, vote strin
 		if t.Votes == nil {
 			t.Votes = map[string]string{}
 		}
-		t.Votes[me.ID] = vote
+		if vote == VoteWithdraw {
+			delete(t.Votes, me.ID)
+		} else {
+			t.Votes[me.ID] = vote
+		}
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeTrade, TradeID: t.ID})
 		if veto, _ := Tally(*t); veto >= VotesNeeded(st.League, *t) {
 			s.veto(st, w, t, now, ch)
@@ -648,7 +658,7 @@ func errorsIsNotOpen(err error) bool { return err == errNotOpen }
 
 // Review is the commissioner's approve or veto while a trade is in review.
 func (s *Service) Review(ctx context.Context, actor, leagueID, tradeID, decision, reason string) (*View, league.Trade, error) {
-	return s.change(ctx, actor, leagueID, func(_ league.Tx, st *league.State, w *league.World, now time.Time, ch *[]league.Change, known []league.Trade) (string, error) {
+	return s.change(ctx, actor, leagueID, func(tx league.Tx, st *league.State, w *league.World, now time.Time, ch *[]league.Change, known []league.Trade) (string, error) {
 		if err := league.Commissioner(st.League, actor); err != nil {
 			return "", err
 		}
@@ -683,12 +693,22 @@ func (s *Service) Review(ctx context.Context, actor, leagueID, tradeID, decision
 			return "", errReviewOver
 		}
 		t.DecidedBy, t.DecisionReason = actor, reason
+		action, verb := league.AuditTradeApproved, "Approved"
 		if decision == DecisionVeto {
 			s.veto(st, w, t, now, ch)
+			action, verb = league.AuditTradeVetoed, "Vetoed"
 		} else {
 			s.execute(st, w, t, now, ch)
 		}
-		return t.ID, nil
+		// An approval that finds the trade invalid fails it: say so.
+		after := map[string]any{"status": t.Status}
+		if t.FailureReason != "" {
+			after["failureReason"] = t.FailureReason
+		}
+		return t.ID, league.Record(ctx, tx, st.League, actor, now, action,
+			fmt.Sprintf("%s the trade between %s and %s.", verb, league.TeamLabel(st.League, t.OfferingTeamID),
+				league.TeamLabel(st.League, t.ReceivingTeamID)),
+			[]string{t.OfferingTeamID, t.ReceivingTeamID}, map[string]any{"status": league.TradeInReview}, after)
 	})
 }
 

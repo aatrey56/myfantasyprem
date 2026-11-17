@@ -799,3 +799,73 @@ func TestMissedClockIsAnnounced(t *testing.T) {
 		}
 	})
 }
+
+// Every use of the commissioner's draft powers is logged, and a pick on
+// their own team's clock is not.
+func TestCommissionerDraftMovesAreLogged(t *testing.T) {
+	leaguetest.Each(t, func(t *testing.T, e *leaguetest.Env) {
+		s := New(e.Repo, e.Stats, e.Clock.Now, &leaguetest.Notes{})
+		l, users := e.League(t, 4, league.SettingsInput{})
+		ctx := e.Ctx
+		log := func() []string {
+			all, err := e.Repo.Audit(ctx, l.ID, 0, 50)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for i := len(all) - 1; i >= 0; i-- { // oldest first
+				if all[i].Action != league.AuditInviteCreated { // filling the league
+					out = append(out, all[i].Action)
+				}
+			}
+			return out
+		}
+		order := []string{l.Teams[1].ID, l.Teams[0].ID, l.Teams[2].ID, l.Teams[3].ID}
+		timer := 45
+		if _, err := s.UpdateDraft(ctx, users[1], l.ID, Update{Randomize: true}); slug(err) != "not-commissioner" {
+			t.Fatalf("member update: %v", err)
+		}
+		// Nothing changed: nothing logged.
+		if _, err := s.UpdateDraft(ctx, users[0], l.ID, Update{}); err != nil {
+			t.Fatal(err)
+		}
+		if len(log()) != 0 {
+			t.Fatalf("refused or empty updates logged %v", log())
+		}
+		v, err := s.UpdateDraft(ctx, users[0], l.ID, Update{Order: order, PickTimer: &timer})
+		if err != nil {
+			t.Fatal(err)
+		}
+		es, _ := e.Repo.Audit(ctx, l.ID, 0, 1)
+		if es[0].Action != league.AuditDraftUpdated || es[0].Summary != "Changed the pick timer to 45 seconds and the draft order." ||
+			es[0].After["pickTimerSeconds"] != float64(45) && es[0].After["pickTimerSeconds"] != 45 {
+			t.Fatalf("update entry = %+v", es[0])
+		}
+		if v, err = s.Start(ctx, users[0], l.ID); err != nil {
+			t.Fatal(err)
+		}
+		// Team 2 (users[1]) is first on the clock: the commissioner picks for them.
+		gk := bestAt(t, v, scoring.GKP)
+		if _, pk, err := s.Pick(ctx, users[0], l.ID, gk); err != nil || pk.Method != league.PickCommissioner {
+			t.Fatalf("commissioner pick = %+v %v", pk, err)
+		}
+		// Then their own team (users[0]) is on the clock: a plain pick.
+		if _, pk, err := s.Pick(ctx, users[0], l.ID, bestAt(t, v, scoring.GKP, gk)); err != nil || pk.Method != league.PickManual {
+			t.Fatalf("own pick = %+v %v", pk, err)
+		}
+		if _, err := s.Pause(ctx, users[0], l.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Resume(ctx, users[0], l.ID); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{league.AuditDraftUpdated, league.AuditDraftStarted, league.AuditDraftPick, league.AuditDraftPaused, league.AuditDraftResumed}
+		if got := log(); !slices.Equal(got, want) {
+			t.Fatalf("log = %v, want %v", got, want)
+		}
+		es, _ = e.Repo.Audit(ctx, l.ID, 2, 1)
+		if len(es[0].TeamIDs) != 1 || es[0].TeamIDs[0] != order[0] {
+			t.Fatalf("pick entry teams = %v, want the team picked for", es[0].TeamIDs)
+		}
+	})
+}

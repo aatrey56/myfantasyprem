@@ -32,6 +32,9 @@ const (
 	TradeDeclined  Type = "trade_declined"
 	TradeReviewed  Type = "trade_reviewed"
 	TradeProcessed Type = "trade_processed"
+	// TradeFailed: an accepted trade could not execute (a player had moved
+	// or a squad would break).
+	TradeFailed Type = "trade_failed"
 
 	WaiversDue        Type = "waivers_due"
 	FreeAgencyClosing Type = "free_agency_closing"
@@ -46,13 +49,17 @@ const (
 	PlayerNews       Type = "player_news"
 
 	LeagueTradeProcessed Type = "league_trade_processed"
-	OpponentGoal         Type = "opponent_goal"
-	OpponentAssist       Type = "opponent_assist"
-	OpponentOwnGoal      Type = "opponent_own_goal"
-	OpponentRedCard      Type = "opponent_red_card"
-	OpponentDC           Type = "opponent_defensive_contribution"
-	OpponentCleanSheet   Type = "opponent_clean_sheet"
-	OpponentNews         Type = "opponent_news"
+	// LeagueTradeInReview: a trade between two other teams is open to a
+	// veto vote. LeagueTradeVetoed: one was vetoed.
+	LeagueTradeInReview Type = "league_trade_in_review"
+	LeagueTradeVetoed   Type = "league_trade_vetoed"
+	OpponentGoal        Type = "opponent_goal"
+	OpponentAssist      Type = "opponent_assist"
+	OpponentOwnGoal     Type = "opponent_own_goal"
+	OpponentRedCard     Type = "opponent_red_card"
+	OpponentDC          Type = "opponent_defensive_contribution"
+	OpponentCleanSheet  Type = "opponent_clean_sheet"
+	OpponentNews        Type = "opponent_news"
 
 	// Extras beyond the owner's list.
 	LineupInvalid Type = "lineup_invalid"
@@ -79,6 +86,7 @@ var Catalog = []Info{
 	{TradeDeclined, Personal, "My trade declined"},
 	{TradeReviewed, Personal, "My trade approved or vetoed"},
 	{TradeProcessed, Personal, "My trade processed"},
+	{TradeFailed, Personal, "My trade could not go through"},
 	{WaiversDue, Personal, "Waivers due in 1 hour"},
 	{FreeAgencyClosing, Personal, "Free agency closes in 1 hour"},
 	{WaiverResult, Personal, "My waiver results"},
@@ -92,6 +100,8 @@ var Catalog = []Info{
 	{PlayerDC, Personal, "My players: defensive contribution points"},
 	{PlayerCleanSheet, Personal, "My players: clean sheet"},
 	{PlayerNews, Personal, "My players: injury and status news"},
+	{LeagueTradeInReview, League, "A trade in my league is open to a veto vote"},
+	{LeagueTradeVetoed, League, "A trade in my league was vetoed"},
 	{LeagueTradeProcessed, League, "Any trade processed in my league"},
 	{OpponentGoal, League, "Opponent's players: goal"},
 	{OpponentAssist, League, "Opponent's players: assist"},

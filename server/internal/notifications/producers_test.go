@@ -38,7 +38,7 @@ func TestTradeEventsPerStatus(t *testing.T) {
 		{league.TradeAccepted, "", []string{"uA:trade_accepted"}},
 		{league.TradeInReview, "commissioner", []string{"uA:trade_accepted"}},
 		{league.TradeDeclined, "", []string{"uA:trade_declined"}},
-		{league.TradeVetoed, "league_vote", []string{"uA:trade_accepted", "uA:trade_reviewed", "uB:trade_reviewed"}},
+		{league.TradeVetoed, "league_vote", []string{"uA:trade_accepted", "uA:trade_reviewed", "uB:trade_reviewed", "uC:league_trade_vetoed"}},
 		{league.TradeWithdrawn, "", nil},
 		// Processed: both sides, plus everyone else in the league (D is an open seat).
 		{league.TradeProcessed, "", []string{"uA:trade_accepted", "uA:trade_processed", "uB:trade_processed", "uC:league_trade_processed"}},
@@ -55,6 +55,50 @@ func TestTradeEventsPerStatus(t *testing.T) {
 	tr.Status = league.TradeOffered
 	if b := TradeEvents(l, tr, name)[0].Body; b != "A FC offers P1 for P2." {
 		t.Errorf("body %q", b)
+	}
+}
+
+// votedTrade is an accepted trade under a league vote, a day from its end.
+func votedTrade(status string) league.Trade {
+	at := time.Date(2026, 10, 17, 15, 0, 0, 0, time.UTC)
+	ends := at.Add(24 * time.Hour)
+	return league.Trade{ID: "trd_1", OfferingTeamID: "tmA", ReceivingTeamID: "tmB", Offered: []string{"1"}, Requested: []string{"2"},
+		Status: status, ReviewMode: league.ReviewLeagueVote, RespondedAt: &at, ReviewEndsAt: &ends,
+		FailureReason: league.TradeFailRosterInvalid}
+}
+
+// A trade entering a league vote tells every other manager how long they
+// have and how many vetoes block it; a veto and a failed execution are
+// reported too.
+func TestTradeReviewNotifications(t *testing.T) {
+	l := fourTeams()
+	l.Settings.VetoThreshold = 1.0 / 3
+	got := TradeEvents(l, votedTrade(league.TradeInReview), name)
+	if g := who(got); !slices.Equal(g, []string{"uA:trade_accepted", "uC:league_trade_in_review"}) {
+		t.Fatalf("in review: %v", g)
+	}
+	// Only C is a manager outside the trade (D is an open seat): a third of one, rounded up, is one.
+	if b := got[1].Body; b != "A FC and B FC agreed P1 for P2. You have 24 hours to veto it; 1 veto vote blocks it." {
+		t.Errorf("body %q", b)
+	}
+	// A commissioner veto is named as such.
+	tr := votedTrade(league.TradeVetoed)
+	tr.DecidedBy = "uA"
+	if b := TradeEvents(l, tr, name)[3].Body; b != "The commissioner vetoed the trade between A FC and B FC: P1 for P2." {
+		t.Errorf("veto body %q", b)
+	}
+	got = TradeEvents(l, votedTrade(league.TradeFailed), name)
+	if g := who(got); !slices.Equal(g, []string{"uA:trade_failed", "uB:trade_failed"}) {
+		t.Fatalf("failed: %v", g)
+	}
+	if b := got[0].Body; b != "Your trade (P1 for P2) did not happen: a squad would no longer have the right positions." {
+		t.Errorf("failed body %q", b)
+	}
+	// An offer that fell through before anyone accepted it says nothing.
+	tr = votedTrade(league.TradeFailed)
+	tr.RespondedAt = nil
+	if g := TradeEvents(l, tr, name); len(g) != 0 {
+		t.Errorf("failed offer: %v", who(g))
 	}
 }
 

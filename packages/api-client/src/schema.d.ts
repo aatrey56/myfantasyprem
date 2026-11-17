@@ -1192,6 +1192,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leagues/{leagueId}/commissioner-moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The commissioner's moves
+         * @description Newest first (docs/adr/0017). An entry is written, in the transaction
+         *     of the action, whenever the commissioner uses a power a manager does
+         *     not have: trade overrides, drafting for a team, draft and league
+         *     settings changes, removing a manager, handing over the role, invite
+         *     and sign-in links, re-syncing an imported league. Moves on the
+         *     commissioner's own team as a manager are not logged. Any member of
+         *     the league may read it. `unseen` is per caller, from their
+         *     seen-up-to marker (`markCommissionerMovesSeen`).
+         */
+        get: operations["listCommissionerMoves"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leagues/{leagueId}/commissioner-moves/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Commissioner moves the caller has not seen
+         * @description How many moves the caller has not seen, and the newest of them: what
+         *     the Status banner shows. The caller's own moves never count.
+         */
+        get: operations["getCommissionerMovesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leagues/{leagueId}/commissioner-moves/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark commissioner moves as seen
+         * @description Moves the caller's seen-up-to marker, stored per member and league so
+         *     it follows them across devices, to `throughId` (the league's newest
+         *     move when omitted). It never moves backwards, so repeating it, or a
+         *     stale device sending an older id, changes nothing. 404 `not-found`
+         *     when `throughId` is not a move of this league.
+         */
+        post: operations["markCommissionerMovesSeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leagues/{leagueId}/leave": {
         parameters: {
             query?: never;
@@ -2072,10 +2144,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Vote to veto or allow (league vote)
-         * @description Leagues with `trades.review: league_vote`. Managers not in the trade
-         *     vote while it is `in_review`; a vote can be changed until the window
-         *     closes. The trade is vetoed when veto votes reach
+         * Vote to veto, or withdraw the veto (league vote)
+         * @description Leagues with `trades.review: league_vote` (the default, ADR 0017).
+         *     Managers not in the trade vote while it is `in_review`; a vote can be
+         *     changed or withdrawn (`withdraw`) until the window closes. The trade is vetoed when veto votes reach
          *     `review.votesNeeded`, otherwise it processes at `review.endsAt`.
          *     409 `trade-not-in-review`, `trade-review-closed` (at or after
          *     `review.endsAt`); 403 for the two teams in the trade.
@@ -2359,6 +2431,11 @@ export interface components {
          * @example trd_01k7m2xq800000000000000301
          */
         TradeId: string;
+        /**
+         * @description Opaque commissioner move id. `cmv_` and a lowercase ULID.
+         * @example cmv_01k7m2xq800000000000000401
+         */
+        CommissionerMoveId: string;
         /**
          * @description Opaque invite id. `inv_` and a lowercase ULID.
          * @example inv_01k7m2xq800000000000000401
@@ -2806,7 +2883,9 @@ export interface components {
          *     `commissioner`: the commissioner approves or vetoes during the
          *     review window (approved automatically when it closes).
          *     `league_vote`: the other managers can vote to veto during the
-         *     window; it processes when the window closes unless vetoed.
+         *     window; it processes when the window closes unless vetoed. The
+         *     default for a new league (24 hours, a third of the managers not in
+         *     the trade, rounded up; docs/adr/0017).
          * @enum {string}
          */
         TradeReview: "none" | "commissioner" | "league_vote";
@@ -2852,7 +2931,8 @@ export interface components {
             reviewHours: number;
             /**
              * @description `league_vote` only: the share of managers not in the trade whose
-             *     veto votes block it (0.5 = half, rounded up).
+             *     veto votes block it (0.5 = half, rounded up; the default is a
+             *     third, so 4 of 10).
              */
             vetoThreshold: number;
             /** @description No trades after this gameweek's deadline. Null for none. */
@@ -3385,13 +3465,14 @@ export interface components {
         /**
          * @description Open enum. Personal: trade_offered, trade_accepted, trade_declined,
          *     trade_reviewed (vetoed or approved by review), trade_processed,
-         *     waivers_due (1 hour before the league's waiver deadline),
+         *     trade_failed (an accepted trade could not execute), waivers_due (1 hour before the league's waiver deadline),
          *     free_agency_closing (1 hour before free agency closes),
          *     waiver_result, player_goal, player_assist, player_own_goal,
          *     player_red_card, player_defensive_contribution (once per match, when
          *     the threshold gives the points), player_clean_sheet (at full time,
          *     or when the player goes off after 60 minutes with it intact),
-         *     player_news. League: league_trade_processed, opponent_goal,
+         *     player_news. League: league_trade_in_review (a trade is open to a
+         *     veto vote), league_trade_vetoed, league_trade_processed, opponent_goal,
          *     opponent_assist, opponent_own_goal, opponent_red_card,
          *     opponent_defensive_contribution, opponent_clean_sheet,
          *     opponent_news. Extras: lineup_invalid (1 hour before lock with an
@@ -4834,10 +4915,13 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         /**
-         * @description Open enum.
+         * @description Open enum. `veto` and `allow` are ballots (`allow` is kept for
+         *     clients that vote to uphold; only vetoes count toward
+         *     `review.votesNeeded`). `withdraw` takes the caller's ballot back and
+         *     is never returned as `review.myVote`.
          * @enum {string}
          */
-        TradeVote: "veto" | "allow";
+        TradeVote: "veto" | "allow" | "withdraw";
         /**
          * @description Open enum. What the caller may do with a trade now.
          * @enum {string}
@@ -4918,6 +5002,55 @@ export interface components {
              */
             decision: "approve" | "veto";
             reason?: string;
+        };
+        /**
+         * @description Open enum. settings_changed, league_renamed, draft_updated,
+         *     draft_started, draft_paused, draft_resumed, draft_pick_for_team,
+         *     member_removed, commissioner_transferred, invite_created,
+         *     invite_revoked, seat_link_issued, signin_link_issued, trade_vetoed,
+         *     trade_approved (the commissioner's early approval), league_resynced.
+         * @example trade_vetoed
+         */
+        CommissionerMoveAction: string;
+        CommissionerMove: {
+            id: components["schemas"]["CommissionerMoveId"];
+            action: components["schemas"]["CommissionerMoveAction"];
+            /** @description A sentence a manager can read, written when it happened. */
+            summary: string;
+            /** @description The commissioner who did it; `displayName` is empty once their account is gone. */
+            actor: components["schemas"]["UserRef"];
+            /** @description The teams it affected that are still in the league. */
+            teams: components["schemas"]["TeamRef"][];
+            /** @description What changed, when that is a few values; null otherwise. */
+            details: components["schemas"]["CommissionerMoveDetails"] | null;
+            /** @description Whether the caller has not seen it yet (never for their own moves). */
+            unseen: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CommissionerMoveDetails: {
+            before?: {
+                [key: string]: unknown;
+            };
+            after?: {
+                [key: string]: unknown;
+            };
+        };
+        CommissionerMoveListResponse: {
+            data: components["schemas"]["CommissionerMove"][];
+            meta: components["schemas"]["PageMeta"];
+        };
+        CommissionerMovesSummary: {
+            unseenCount: number;
+            /** @description The newest unseen move, null when there is none. */
+            latest: components["schemas"]["CommissionerMove"] | null;
+        };
+        CommissionerMovesSummaryResponse: {
+            data: components["schemas"]["CommissionerMovesSummary"];
+            meta: components["schemas"]["Meta"];
+        };
+        CommissionerMovesSeenRequest: {
+            throughId?: components["schemas"]["CommissionerMoveId"];
         };
         RealtimeTicketRequest: {
             /** @description Subscribe to this league at once. More can be added over the socket. */
@@ -7112,6 +7245,112 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listCommissionerMoves: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from `meta.nextCursor` of the previous page. */
+                cursor?: components["parameters"]["CursorParam"];
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Our opaque league id (not the FPL league id). */
+                leagueId: components["parameters"]["LeagueIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of moves. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionerMoveListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getCommissionerMovesSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Our opaque league id (not the FPL league id). */
+                leagueId: components["parameters"]["LeagueIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The unseen count and the latest unseen move. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionerMovesSummaryResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+            default: components["responses"]["Error"];
+        };
+    };
+    markCommissionerMovesSeen: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional. A client-generated unique key (a UUID is fine) that makes
+                 *     a retry of this POST safe: the same key and body within 24 hours
+                 *     replay the first response.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyParam"];
+            };
+            path: {
+                /** @description Our opaque league id (not the FPL league id). */
+                leagueId: components["parameters"]["LeagueIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CommissionerMovesSeenRequest"];
+            };
+        };
+        responses: {
+            /** @description The summary after marking. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionerMovesSummaryResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

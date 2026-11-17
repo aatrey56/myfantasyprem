@@ -131,14 +131,21 @@ const (
 	MaxTeams = 20
 )
 
+// Trade review defaults (ADR 0017): an accepted trade waits a day for a
+// league vote, and a third of the managers not in it (rounded up) can veto.
+const (
+	DefaultReviewHours   = 24
+	DefaultVetoThreshold = 1.0 / 3
+)
+
 // DefaultSettings for a new league.
 func DefaultSettings(teamCount int) Settings {
 	return Settings{
 		TeamCount:        teamCount,
 		PickTimerSeconds: 60,
-		TradeReview:      ReviewNone,
-		ReviewHours:      0,
-		VetoThreshold:    0.5,
+		TradeReview:      ReviewLeagueVote,
+		ReviewHours:      DefaultReviewHours,
+		VetoThreshold:    DefaultVetoThreshold,
 		StartGameweek:    1,
 		EndGameweek:      38,
 		WaiverOrder:      WaiverReverseStandings,
@@ -436,7 +443,7 @@ func applySettings(s *Settings, in SettingsInput, draftStarted bool, teams int) 
 	if s.TradeReview == ReviewNone {
 		s.ReviewHours = 0
 	} else if s.ReviewHours == 0 {
-		s.ReviewHours = 24
+		s.ReviewHours = DefaultReviewHours
 	}
 	return nil
 }
@@ -517,27 +524,49 @@ func (m *Service) ForUser(ctx context.Context, actor string) ([]*League, error) 
 // A waiver order change needs the game state and the season calendar
 // (setWaiverOrder), so it loads the whole State.
 func (m *Service) Update(ctx context.Context, actor, leagueID string, name *string, in SettingsInput) (*League, error) {
-	update := func(l *League) error {
+	// update applies the change to l and returns what writes its log entry,
+	// to run once nothing else can refuse the change.
+	update := func(l *League) (func(Tx) error, error) {
 		if err := commissioner(l, actor); err != nil {
-			return err
+			return nil, err
 		}
 		if name != nil {
 			if err := validName(*name, 3, 40, "name"); err != nil {
-				return err
+				return nil, err
 			}
 		}
+		prevName, prev := l.Name, l.Settings
 		s := l.Settings
 		if err := applySettings(&s, in, l.Status != StatusPreDraft, len(l.Teams)); err != nil {
-			return err
+			return nil, err
 		}
 		if name != nil {
 			l.Name = strings.TrimSpace(*name)
 		}
 		l.Settings = s
-		return nil
+		return func(tx Tx) error {
+			now := m.now()
+			if l.Name != prevName {
+				if err := Record(ctx, tx, l, actor, now, AuditLeagueRenamed,
+					"Renamed the league from “"+prevName+"” to “"+l.Name+"”.", nil,
+					map[string]any{"name": prevName}, map[string]any{"name": l.Name}); err != nil {
+					return err
+				}
+			}
+			if summary, from, to := SettingsDiff(prev, l.Settings); summary != "" {
+				return Record(ctx, tx, l, actor, now, AuditSettingsChanged, summary, nil, from, to)
+			}
+			return nil
+		}, nil
 	}
 	if in.WaiverOrder == nil {
-		return m.mutate(ctx, leagueID, func(_ Tx, l *League) error { return update(l) })
+		return m.mutate(ctx, leagueID, func(tx Tx, l *League) error {
+			record, err := update(l)
+			if err != nil {
+				return err
+			}
+			return record(tx)
+		})
 	}
 	var out *League
 	err := m.repo.Tx(ctx, func(tx Tx) error {
@@ -549,7 +578,8 @@ func (m *Service) Update(ctx context.Context, actor, leagueID string, name *stri
 			return errLeagueNotFound
 		}
 		prev := st.League.Settings.WaiverRule()
-		if err := update(st.League); err != nil {
+		record, err := update(st.League)
+		if err != nil {
 			return err
 		}
 		var w *World
@@ -562,6 +592,9 @@ func (m *Service) Update(ctx context.Context, actor, leagueID string, name *stri
 			}
 		}
 		if err := switchWaiverOrder(st, w, m.now(), prev); err != nil {
+			return err
+		}
+		if err := record(tx); err != nil {
 			return err
 		}
 		out = clone(st.League)
@@ -616,7 +649,7 @@ func removeTeam(l *League, userID string) {
 // RemoveMember removes another member (commissioner only). It returns the
 // changes to report (offers the member's departure closed).
 func (m *Service) RemoveMember(ctx context.Context, actor, leagueID, userID string) ([]Change, error) {
-	return m.leave(ctx, leagueID, userID, func(l *League) error {
+	return m.leave(ctx, leagueID, userID, actor, func(l *League) error {
 		if err := commissioner(l, actor); err != nil {
 			return err
 		}
@@ -634,7 +667,7 @@ func (m *Service) RemoveMember(ctx context.Context, actor, leagueID, userID stri
 // Leave removes the actor from the league. It returns the changes to
 // report (offers the departure closed).
 func (m *Service) Leave(ctx context.Context, actor, leagueID string) ([]Change, error) {
-	return m.leave(ctx, leagueID, actor, func(l *League) error {
+	return m.leave(ctx, leagueID, actor, "", func(l *League) error {
 		if err := member(l, actor); err != nil {
 			return err
 		}
@@ -649,8 +682,9 @@ func (m *Service) Leave(ctx context.Context, actor, leagueID string) ([]Change, 
 // leave takes userID out of the league once check allows it, in one
 // transaction under the league lock: the pending moves are withdrawn and
 // the team deleted or orphaned together, so no claim or offer made
-// meanwhile can survive on the orphaned team.
-func (m *Service) leave(ctx context.Context, leagueID, userID string, check func(l *League) error) ([]Change, error) {
+// meanwhile can survive on the orphaned team. A commissioner removing
+// someone (removedBy) leaves a commissioner move in the same transaction.
+func (m *Service) leave(ctx context.Context, leagueID, userID, removedBy string, check func(l *League) error) ([]Change, error) {
 	var changes []Change
 	err := m.repo.Tx(ctx, func(tx Tx) error {
 		st, err := tx.LoadState(ctx, leagueID)
@@ -663,8 +697,15 @@ func (m *Service) leave(ctx context.Context, leagueID, userID string, check func
 		if err := check(st.League); err != nil {
 			return err
 		}
+		team, _ := st.League.TeamOf(userID)
 		changes = releaseTeam(st, userID, m.now())
 		removeTeam(st.League, userID)
+		if removedBy != "" {
+			if err := Record(ctx, tx, st.League, removedBy, m.now(), AuditMemberRemoved,
+				"Removed the manager of “"+team.Name+"” from the league.", []string{team.ID}, nil, nil); err != nil {
+				return err
+			}
+		}
 		return saveLeaving(ctx, tx, st)
 	})
 	return changes, err
@@ -717,15 +758,20 @@ func saveLeaving(ctx context.Context, tx Tx, st *State) error {
 // (commissioner only). The target must own a team in the league; naming
 // yourself changes nothing.
 func (m *Service) TransferCommissioner(ctx context.Context, actor, leagueID, userID string) (*League, error) {
-	return m.mutate(ctx, leagueID, func(_ Tx, l *League) error {
+	return m.mutate(ctx, leagueID, func(tx Tx, l *League) error {
 		if err := commissioner(l, actor); err != nil {
 			return err
 		}
-		if _, ok := l.TeamOf(userID); !ok {
+		team, ok := l.TeamOf(userID)
+		if !ok {
 			return errorf(KindNotFound, "not-found", "Not found", "That user is not in this league.")
 		}
+		if userID == actor {
+			return nil
+		}
 		l.CommissionerID = userID
-		return nil
+		return Record(ctx, tx, l, actor, m.now(), AuditCommissionerMoved,
+			"Handed the commissioner role to the manager of “"+team.Name+"”.", []string{team.ID}, nil, nil)
 	})
 }
 
@@ -837,7 +883,7 @@ func (m *Service) CreateInvite(ctx context.Context, actor, leagueID string, maxU
 		t := now.Add(ttl)
 		inv.ExpiresAt = &t
 		l.Invites = append(l.Invites, inv)
-		return nil
+		return Record(ctx, tx, l, actor, now, AuditInviteCreated, "Created an invite link.", nil, nil, nil)
 	})
 	return inv, err
 }
@@ -884,7 +930,11 @@ func (m *Service) ClaimInvite(ctx context.Context, actor, leagueID, teamID strin
 		}
 		var err error
 		inv, err = IssueClaimInvite(ctx, tx, l, teamID, m.now())
-		return err
+		if err != nil {
+			return err
+		}
+		return Record(ctx, tx, l, actor, m.now(), AuditSeatLinkIssued,
+			"Issued a new claim link for the manager’s seat of "+TeamLabel(l, teamID)+".", []string{teamID}, nil, nil)
 	})
 	return inv, err
 }
@@ -920,14 +970,18 @@ func (m *Service) ListInvites(ctx context.Context, actor, leagueID string) ([]In
 
 // RevokeInvite (commissioner only).
 func (m *Service) RevokeInvite(ctx context.Context, actor, leagueID, inviteID string) error {
-	_, err := m.mutate(ctx, leagueID, func(_ Tx, l *League) error {
+	_, err := m.mutate(ctx, leagueID, func(tx Tx, l *League) error {
 		if err := commissioner(l, actor); err != nil {
 			return err
 		}
 		for i := range l.Invites {
 			if l.Invites[i].ID == inviteID {
 				l.Invites[i].Revoked = true
-				return nil
+				var teams []string
+				if t := l.Invites[i].TeamID; t != "" {
+					teams = []string{t}
+				}
+				return Record(ctx, tx, l, actor, m.now(), AuditInviteRevoked, "Revoked an invite link.", teams, nil, nil)
 			}
 		}
 		return errInviteNotFound

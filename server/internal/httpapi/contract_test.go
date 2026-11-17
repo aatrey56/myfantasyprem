@@ -239,6 +239,23 @@ var contractCases = map[string][]contractCase{
 		{name: "revoked", method: "DELETE", target: fxL + "/invites/{invite}", wantStatus: 204},
 		{name: "unknown", method: "DELETE", target: fxL + "/invites/" + tInviteNA, wantStatus: 404},
 	},
+	"listCommissionerMoves": {
+		{name: "ok", method: "GET", target: fxL + "/commissioner-moves", wantStatus: 200},
+		{name: "a member reads it too", method: "GET", target: fxL + "/commissioner-moves?limit=5", as: "member", wantStatus: 200},
+		{name: "outsider", method: "GET", target: fxL + "/commissioner-moves", as: "outsider", wantStatus: 403},
+		{name: "unknown league", method: "GET", target: "/v1/leagues/" + tLeague + "/commissioner-moves", wantStatus: 404},
+		{name: "bad cursor", method: "GET", target: fxL + "/commissioner-moves?cursor=x", wantStatus: 400, invalidRequest: true},
+	},
+	"getCommissionerMovesSummary": {
+		{name: "ok", method: "GET", target: fxL + "/commissioner-moves/summary", as: "member", wantStatus: 200},
+		{name: "outsider", method: "GET", target: fxL + "/commissioner-moves/summary", as: "outsider", wantStatus: 403},
+	},
+	"markCommissionerMovesSeen": {
+		{name: "all", method: "POST", target: fxL + "/commissioner-moves/seen", as: "member", wantStatus: 200},
+		{name: "unknown move", method: "POST", target: fxL + "/commissioner-moves/seen", body: `{"throughId":"cmv_01k7m2xq800000000000000401"}`, wantStatus: 404},
+		{name: "malformed id", method: "POST", target: fxL + "/commissioner-moves/seen", body: `{"throughId":"cmv_1"}`, wantStatus: 400, invalidRequest: true},
+		{name: "outsider", method: "POST", target: fxL + "/commissioner-moves/seen", as: "outsider", wantStatus: 403},
+	},
 	"getInvite": {
 		{name: "preview", method: "GET", target: "/v1/invites/{code}", wantStatus: 200},
 		{name: "unknown", method: "GET", target: "/v1/invites/ZZZZ2222", wantStatus: 404},
@@ -571,7 +588,7 @@ var contractCases = map[string][]contractCase{
 		{name: "malformed trade id", method: "GET", target: fxL + "/trades/trd_1", wantStatus: 400, invalidRequest: true},
 	},
 	"acceptTrade": {
-		{name: "processed at once", method: "POST", target: "/v1/leagues/{fal}/trades/{otrade}/accept", as: "fmember", wantStatus: 200},
+		{name: "into review", method: "POST", target: "/v1/leagues/{fal}/trades/{otrade}/accept", as: "fmember", wantStatus: 200},
 		{name: "no longer open", method: "POST", target: "/v1/leagues/{fal}/trades/{otrade}/accept", as: "fmember", wantStatus: 409},
 		{name: "not the receiver", method: "POST", target: fxS + "/trades/{rtrade}/accept", as: "demo", wantStatus: 403},
 	},
@@ -585,8 +602,9 @@ var contractCases = map[string][]contractCase{
 	},
 	"voteOnTrade": {
 		{name: "veto", method: "POST", target: fxS + "/trades/{rtrade}/votes", body: `{"vote":"veto"}`, as: "demo", wantStatus: 200},
+		{name: "withdrawn", method: "POST", target: fxS + "/trades/{rtrade}/votes", body: `{"vote":"withdraw"}`, as: "demo", wantStatus: 200},
 		{name: "changed", method: "POST", target: fxS + "/trades/{rtrade}/votes", body: `{"vote":"allow"}`, as: "demo", wantStatus: 200},
-		{name: "no vote in this league", method: "POST", target: "/v1/leagues/{fal}/trades/{otrade}/votes", body: `{"vote":"veto"}`, as: "fmember", wantStatus: 409},
+		{name: "a team in the trade cannot vote", method: "POST", target: "/v1/leagues/{fal}/trades/{otrade}/votes", body: `{"vote":"veto"}`, as: "fmember", wantStatus: 403},
 	},
 	"reviewTrade": {
 		{name: "approved", method: "POST", target: fxS + "/trades/{rtrade}/review", body: `{"decision":"approve","reason":"Fine by me"}`, as: "demo", wantStatus: 200},

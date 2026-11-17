@@ -183,7 +183,7 @@ func runSeason(t *testing.T, pool *pgxpool.Pool) {
 	// ------------------------------------------------------------ league
 	s.tokens, s.users = []string{testToken}, []string{userOf(t, srv, testToken)}
 	var created LeagueResponse
-	s.call(0, "POST", "/v1/leagues", `{"name":"Mini Season","teamCount":5,"teamName":"Commish FC","settings":{"draft":{"pickTimerSeconds":30}}}`, 201, &created)
+	s.call(0, "POST", "/v1/leagues", `{"name":"Mini Season","teamCount":5,"teamName":"Commish FC","settings":{"draft":{"pickTimerSeconds":30},"trades":{"review":"none"}}}`, 201, &created)
 	s.lid = created.Data.League.Id
 	// A realtime client on the league, as a connected socket would be.
 	// Delivery to the hub is synchronous here, so every event is in

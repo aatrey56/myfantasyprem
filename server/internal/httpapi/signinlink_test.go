@@ -75,6 +75,11 @@ func TestSeatSignInLink(t *testing.T) {
 				t.Errorf("link = %+v", first)
 			}
 			second := issue()
+			// Each link is a commissioner move: it lets the commissioner in as the manager.
+			if es, err := srv.leagues.Repo().Audit(context.Background(), l.ID, 0, 5); err != nil || len(es) != 2 ||
+				es[0].Action != league.AuditSignInLinkIssued || es[0].ActorID != commish || len(es[0].TeamIDs) != 1 || es[0].TeamIDs[0] != seat.ID {
+				t.Errorf("log after two links = %+v %v", es, err)
+			}
 			oldCode, code := signInLinkCodeOf(t, first.Url), signInLinkCodeOf(t, second.Url)
 
 			body := func(c string) string { return `{"code":"` + c + `"}` }

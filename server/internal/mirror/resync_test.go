@@ -172,6 +172,11 @@ func TestResyncResetsToFPLAndCancelsPendingMoves(t *testing.T) {
 		if _, err := e.svc.RequestResync(ctx, owner, lid, true); slug(err) != "sync-pending" {
 			t.Errorf("second request: %v", err)
 		}
+		// One commissioner move, for the request that was accepted.
+		if es, err := e.svc.Leagues.Audit(ctx, lid, 0, 10); err != nil || len(es) != 1 ||
+			es[0].Action != league.AuditLeagueResynced || es[0].ActorID != owner {
+			t.Errorf("log after a re-sync request = %+v %v", es, err)
+		}
 		if _, err := e.svc.RequestCheck(ctx, owner, lid); slug(err) != "sync-pending" {
 			t.Errorf("check while a re-sync is pending: %v", err)
 		}

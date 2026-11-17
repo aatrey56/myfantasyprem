@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/ids"
@@ -279,7 +280,7 @@ type Update struct {
 
 // UpdateDraft schedules or orders the draft (commissioner, before it starts).
 func (s *Service) UpdateDraft(ctx context.Context, actor, leagueID string, in Update) (*View, error) {
-	return s.change(ctx, leagueID, func(_ league.Tx, st *league.State, _ *league.World, _ time.Time, ch *[]league.Change) error {
+	return s.change(ctx, leagueID, func(tx league.Tx, st *league.State, _ *league.World, now time.Time, ch *[]league.Change) error {
 		if err := league.Commissioner(st.League, actor); err != nil {
 			return err
 		}
@@ -289,6 +290,7 @@ func (s *Service) UpdateDraft(ctx context.Context, actor, leagueID string, in Up
 		if st.Draft.Status != league.DraftScheduled {
 			return errDraftStarted
 		}
+		prevSettings, prevOrder := st.League.Settings, slices.Clone(st.Draft.Order)
 		var errs []league.FieldError
 		if in.Order != nil && in.Randomize {
 			errs = append(errs, league.FieldError{Code: "order_and_randomize", Message: "Send order or randomizeOrder, not both.", Field: "/order"})
@@ -321,8 +323,38 @@ func (s *Service) UpdateDraft(ctx context.Context, actor, leagueID string, in Up
 			st.League.Settings.DraftStartsAt = &t
 		}
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeDraft})
-		return nil
+		return recordUpdate(ctx, tx, st, actor, now, prevSettings, prevOrder)
 	})
+}
+
+// recordUpdate logs a commissioner's change to the draft: its timer, start
+// time and order.
+func recordUpdate(ctx context.Context, tx league.Tx, st *league.State, actor string, now time.Time,
+	prev league.Settings, prevOrder []string,
+) error {
+	l := st.League
+	summary, from, to := league.SettingsDiff(prev, l.Settings)
+	if !slices.Equal(prevOrder, st.Draft.Order) {
+		from, to = orEmpty(from), orEmpty(to)
+		from["draftOrder"], to["draftOrder"] = prevOrder, slices.Clone(st.Draft.Order)
+		order := "the draft order"
+		if summary == "" {
+			summary = "Changed " + order + "."
+		} else {
+			summary = strings.TrimSuffix(summary, ".") + " and " + order + "."
+		}
+	}
+	if summary == "" {
+		return nil
+	}
+	return league.Record(ctx, tx, l, actor, now, league.AuditDraftUpdated, summary, nil, from, to)
+}
+
+func orEmpty(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 func teamIDs(l *league.League) []string {
@@ -353,7 +385,10 @@ func (s *Service) Start(ctx context.Context, actor, leagueID string) (*View, err
 		if err := league.Commissioner(st.League, actor); err != nil {
 			return err
 		}
-		return s.start(ctx, tx, st, w, now, ch)
+		if err := s.start(ctx, tx, st, w, now, ch); err != nil {
+			return err
+		}
+		return league.Record(ctx, tx, st.League, actor, now, league.AuditDraftStarted, "Started the draft.", nil, nil, nil)
 	})
 }
 
@@ -461,7 +496,7 @@ func (s *Service) Pause(ctx context.Context, actor, leagueID string) (*View, err
 		}
 		st.Draft.Status, st.Draft.PausedAt = league.DraftPaused, &now
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeDraft})
-		return nil
+		return league.Record(ctx, tx, st.League, actor, now, league.AuditDraftPaused, "Paused the draft.", nil, nil, nil)
 	})
 }
 
@@ -479,7 +514,10 @@ func (s *Service) Resume(ctx context.Context, actor, leagueID string) (*View, er
 		}
 		st.Draft.Status, st.Draft.PausedAt, st.Draft.ClockStartedAt = league.DraftInProgress, nil, &now
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeDraft})
-		return s.advance(ctx, tx, st, w, now, ch)
+		if err := s.advance(ctx, tx, st, w, now, ch); err != nil {
+			return err
+		}
+		return league.Record(ctx, tx, st.League, actor, now, league.AuditDraftResumed, "Resumed the draft.", nil, nil, nil)
 	})
 }
 
@@ -529,7 +567,15 @@ func (s *Service) Pick(ctx context.Context, actor, leagueID, playerID string) (*
 				league.FieldError{Code: "position_full", Message: msg, Field: "/playerId", PlayerID: playerID})
 		}
 		made = s.record(st, team, playerID, method, now, ch)
-		return s.advance(ctx, tx, st, w, now, ch)
+		if err := s.advance(ctx, tx, st, w, now, ch); err != nil {
+			return err
+		}
+		if method != league.PickCommissioner {
+			return nil
+		}
+		return league.Record(ctx, tx, l, actor, now, league.AuditDraftPick,
+			fmt.Sprintf("Picked %s for %s (pick %d).", p.DisplayName, league.TeamLabel(l, team), made.Overall),
+			[]string{team}, nil, nil)
 	})
 	return v, made, err
 }

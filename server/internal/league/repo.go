@@ -10,6 +10,8 @@ import (
 // Repo stores leagues (the League aggregate) and their game state. Memory
 // and Postgres implement it; the same test suite runs against both.
 type Repo interface {
+	AuditRepo
+
 	// Tx runs fn atomically. Leagues loaded through tx are locked until fn
 	// returns (SELECT ... FOR UPDATE in Postgres, one mutex in memory), so
 	// every change to a league is a load, a change in Go and a save.
@@ -83,6 +85,11 @@ type Tx interface {
 	// Postgres. Without a Scheduler (SetScheduler) it does nothing and the
 	// periodic tick picks the work up instead.
 	Schedule(ctx context.Context, args JobArgs, at time.Time) error
+	// AddAudit records a commissioner move in this transaction (ADR 0017):
+	// it commits, or rolls back, with the action. Call it after the action's
+	// last check, so the memory store (no rollback) keeps no entry for a
+	// refused action. It sets e.Seq.
+	AddAudit(ctx context.Context, e *AuditEntry) error
 }
 
 // Game is a league's game state: who owns whom in which gameweeks, the
