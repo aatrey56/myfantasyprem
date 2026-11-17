@@ -881,12 +881,17 @@ export function FixturesCard({
 
 /** The injuries card's owner column: room for `You` or a short first name. */
 const INJURY_OWNER_WIDTH = 56;
+/** The other fixed columns, shared by the header and the rows so they line up. */
+const INJURY_BADGE_WIDTH = 68;
+const INJURY_POSITION_WIDTH = 36;
+const INJURY_CLUB_WIDTH = 40;
 
 export function InjuriesCard({
   players,
   onOpen,
   myTeamId,
 }: {
+  /** As the server sends them: news since the last gameweek ended, owned first, by minutes. */
   players: readonly Schemas['StatusFlaggedPlayer'][];
   onOpen: (playerId: string) => void;
   /** My team in this league: its players' owner chip says `You`. */
@@ -898,119 +903,162 @@ export function InjuriesCard({
   const narrow = useLayout().width < 360;
   return (
     <Card testID="status-injuries" style={{ gap: spacing.sm }}>
-      <Heading>Injuries and Suspensions</Heading>
+      <Heading>Latest Injuries and Suspensions</Heading>
       {players.length === 0 ? (
-        <EmptyState icon={TriangleAlert} title="Nobody flagged" body="Every player is fit." />
+        <EmptyState
+          icon={TriangleAlert}
+          title="Nothing new"
+          body="No injuries or suspensions since the last gameweek."
+        />
       ) : (
-        <ScrollView
-          style={{ maxHeight: 560 }}
-          nestedScrollEnabled
-          accessibilityLabel="All flagged players"
-          {...({ tabIndex: 0 } as object)}
-        >
-          {players.map((f, i) => {
-            const badge = injuryBadge(f);
-            const out = badge.kind === 'out';
-            const open = () => onOpen(f.player.id);
-            return (
-              <View
-                key={f.player.id}
-                testID={`injury-${f.player.id}`}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: spacing.sm,
-                  paddingVertical: spacing.sm,
-                  borderTopWidth: i > 0 ? 1 : 0,
-                  borderTopColor: colors.border,
-                }}
-              >
-                <Pressable
-                  testID={`injury-badge-${f.player.id}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Player card for ${f.player.displayName}, ${badge.a11y}`}
-                  onPress={open}
-                  style={(state: PressState) => [
-                    {
-                      width: 68,
-                      height: 28,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      borderRadius: radii.sm,
-                      backgroundColor: out ? STATUS_COLORS.stop : STATUS_COLORS.hazard,
-                    },
-                    ...pressFeedback(colors, state, { hoverFill: false }),
-                  ]}
-                >
-                  {out ? <StopIcon size={13} /> : <HazardIcon size={14} />}
-                  <AppText
-                    variant="meta"
-                    weight="bold"
-                    color={out ? STATUS_COLORS.onStop : STATUS_COLORS.onHazard}
-                  >
-                    {badge.label}
-                  </AppText>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Player card for ${f.player.displayName}`}
-                  onPress={open}
-                  style={(state: PressState) => [
-                    { flex: 1, minWidth: 0, borderRadius: radii.sm },
-                    ...pressFeedback(colors, state, { hoverFill: false }),
-                  ]}
-                >
-                  <AppText
-                    weight="semibold"
-                    numberOfLines={1}
-                    testID={`injury-name-${f.player.id}`}
-                  >
-                    {f.player.displayName}
-                  </AppText>
-                </Pressable>
-                <AppText variant="meta" weight="semibold" muted style={{ width: 36 }}>
-                  {positionLabel(f.player.position)}
-                </AppText>
-                {narrow ? null : (
-                  <AppText variant="meta" muted style={{ width: 40 }}>
-                    {f.player.club.code}
-                  </AppText>
-                )}
-                {/* A fixed column: the chip shrinks to an ellipsis inside it,
-                    so the player's name keeps its room and the rows line up. */}
+        <>
+          <View
+            testID="injuries-header"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
+          >
+            <View style={{ width: INJURY_BADGE_WIDTH }} />
+            <AppText variant="meta" weight="semibold" muted style={{ flex: 1, minWidth: 0 }}>
+              Player
+            </AppText>
+            <AppText
+              variant="meta"
+              weight="semibold"
+              muted
+              style={{ width: INJURY_POSITION_WIDTH }}
+            >
+              Pos
+            </AppText>
+            {narrow ? null : (
+              <AppText variant="meta" weight="semibold" muted style={{ width: INJURY_CLUB_WIDTH }}>
+                Club
+              </AppText>
+            )}
+            <AppText
+              variant="meta"
+              weight="semibold"
+              muted
+              style={{ width: INJURY_OWNER_WIDTH, textAlign: 'right' }}
+            >
+              Mgr
+            </AppText>
+          </View>
+          <ScrollView
+            style={{ maxHeight: 560 }}
+            nestedScrollEnabled
+            accessibilityLabel="Latest injuries and suspensions"
+            {...({ tabIndex: 0 } as object)}
+          >
+            {players.map((f, i) => {
+              const badge = injuryBadge(f);
+              const out = badge.kind === 'out';
+              const open = () => onOpen(f.player.id);
+              return (
                 <View
-                  testID={`injury-owner-slot-${f.player.id}`}
+                  key={f.player.id}
+                  testID={`injury-${f.player.id}`}
                   style={{
-                    width: INJURY_OWNER_WIDTH,
                     flexDirection: 'row',
-                    justifyContent: 'flex-end',
+                    alignItems: 'center',
+                    gap: spacing.sm,
+                    paddingVertical: spacing.sm,
+                    borderTopWidth: i > 0 ? 1 : 0,
+                    borderTopColor: colors.border,
                   }}
                 >
-                  {f.owner ? (
-                    <OwnerChip
-                      team={f.owner}
-                      mine={f.owner.id === myTeamId}
-                      a11y={`Owned by ${f.owner.name}`}
-                      testID={`injury-owner-${f.player.id}`}
-                    />
-                  ) : (
+                  <Pressable
+                    testID={`injury-badge-${f.player.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Player card for ${f.player.displayName}, ${badge.a11y}`}
+                    onPress={open}
+                    style={(state: PressState) => [
+                      {
+                        width: INJURY_BADGE_WIDTH,
+                        height: 28,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        borderRadius: radii.sm,
+                        backgroundColor: out ? STATUS_COLORS.stop : STATUS_COLORS.hazard,
+                      },
+                      ...pressFeedback(colors, state, { hoverFill: false }),
+                    ]}
+                  >
+                    {out ? <StopIcon size={13} /> : <HazardIcon size={14} />}
                     <AppText
                       variant="meta"
-                      weight="semibold"
-                      muted
-                      accessibilityLabel="Not owned"
-                      style={{ textAlign: 'right' }}
+                      weight="bold"
+                      color={out ? STATUS_COLORS.onStop : STATUS_COLORS.onHazard}
                     >
-                      –
+                      {badge.label}
+                    </AppText>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Player card for ${f.player.displayName}`}
+                    onPress={open}
+                    style={(state: PressState) => [
+                      { flex: 1, minWidth: 0, borderRadius: radii.sm },
+                      ...pressFeedback(colors, state, { hoverFill: false }),
+                    ]}
+                  >
+                    <AppText
+                      weight="semibold"
+                      numberOfLines={1}
+                      testID={`injury-name-${f.player.id}`}
+                    >
+                      {f.player.displayName}
+                    </AppText>
+                  </Pressable>
+                  <AppText
+                    variant="meta"
+                    weight="semibold"
+                    muted
+                    style={{ width: INJURY_POSITION_WIDTH }}
+                  >
+                    {positionLabel(f.player.position)}
+                  </AppText>
+                  {narrow ? null : (
+                    <AppText variant="meta" muted style={{ width: INJURY_CLUB_WIDTH }}>
+                      {f.player.club.code}
                     </AppText>
                   )}
+                  {/* A fixed column: the chip shrinks to an ellipsis inside it,
+                    so the player's name keeps its room and the rows line up. */}
+                  <View
+                    testID={`injury-owner-slot-${f.player.id}`}
+                    style={{
+                      width: INJURY_OWNER_WIDTH,
+                      flexDirection: 'row',
+                      justifyContent: 'flex-end',
+                    }}
+                  >
+                    {f.owner ? (
+                      <OwnerChip
+                        team={f.owner}
+                        mine={f.owner.id === myTeamId}
+                        a11y={`Owned by ${f.owner.name}`}
+                        testID={`injury-owner-${f.player.id}`}
+                      />
+                    ) : (
+                      <AppText
+                        variant="meta"
+                        weight="semibold"
+                        muted
+                        accessibilityLabel="Not owned"
+                        style={{ textAlign: 'right' }}
+                      >
+                        –
+                      </AppText>
+                    )}
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </ScrollView>
+              );
+            })}
+          </ScrollView>
+        </>
       )}
     </Card>
   );

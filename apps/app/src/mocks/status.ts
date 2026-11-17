@@ -10,12 +10,15 @@ import {
   CURRENT_GW,
   fixturesFor,
   fixturesInGameweek,
+  gameweekFixtures,
   PLAYERS,
+  seasonTotals,
   toPlayerRef,
   type PlayerRecord,
 } from './world';
 import { playerOfTheWeek, teamOfTheWeek, type AwardCandidate } from '@/lib/awards';
 import { compareForm } from '@/lib/form';
+import { gameweekEnd, latestInjuries } from '@/lib/status';
 
 type Position = Schemas['Position'];
 type AwardStats = Schemas['AwardStats'];
@@ -223,17 +226,18 @@ function topAvailable(league: InSeasonLeague): Schemas['StatusAvailablePlayer'][
 }
 
 function injuries(league: InSeasonLeague): Schemas['StatusFlaggedPlayer'][] {
-  return PLAYERS.filter((p) => p.availability !== 'available')
-    .map((p) => {
-      const player = toPlayerRef(p);
-      return { player, owner: league.ownerOf(p.id), chanceOfPlaying: chanceOfPlaying(player) };
-    })
-    .sort(
-      (a, b) =>
-        Number(a.player.availability === 'doubtful') -
-          Number(b.player.availability === 'doubtful') ||
-        a.player.displayName.localeCompare(b.player.displayName),
-    );
+  // The end of the last finished gameweek (the server's lastGameweekEnd).
+  const since = gameweekEnd(gameweekFixtures(CURRENT_GW - 1).map((f) => f.kickoffAt));
+  const rows = PLAYERS.filter((p) => p.availability !== 'available').map((p) => {
+    const player = toPlayerRef(p);
+    return {
+      player,
+      owner: league.ownerOf(p.id),
+      chanceOfPlaying: chanceOfPlaying(player),
+      minutes: seasonTotals(p.id).minutes,
+    };
+  });
+  return latestInjuries(rows, since).map(({ minutes: _minutes, ...row }) => row);
 }
 
 /** The Status page for the demo user in an in-season league. */

@@ -343,14 +343,34 @@ function buildPlayers(): PlayerRecord[] {
             : doubtful
               ? `${chance}% chance of playing`
               : null,
-        // News times spread over the last three days, from the id (not the generator).
-        newsAt: injured || doubtful ? new Date(NOW - (1 + (seq % 70)) * HOUR).toISOString() : null,
+        // News times spread over the last three days, from the id (not the
+        // generator); every third doubt is a stale flag from weeks ago,
+        // before the last gameweek ended, so the Status list leaves it out.
+        newsAt:
+          injured || doubtful
+            ? new Date(
+                NOW - (doubtful && seq % 3 === 0 ? (20 + (seq % 30)) * 24 : 1 + (seq % 70)) * HOUR,
+              ).toISOString()
+            : null,
         quality,
         startRate: injured ? 0.1 : 0.35 + quality * 0.55,
       });
       n++;
     }
   }
+  // A few undrafted players are flagged too, so the Status list has free
+  // agents beside owned players. Done after the loop (the generator and
+  // `startRate` are untouched): injured, doubtful, suspended, recent news.
+  const free = out.filter((p) => p.quality < 0.15 && p.availability === 'available');
+  const flags: Pick<PlayerRecord, 'availability' | 'news'>[] = [
+    { availability: 'injured', news: 'Ankle injury, out for two weeks' },
+    { availability: 'doubtful', news: '50% chance of playing' },
+    { availability: 'suspended', news: 'Suspended for one match' },
+  ];
+  flags.forEach((flag, i) => {
+    const p = free[i * 3];
+    if (p) Object.assign(p, flag, { newsAt: new Date(NOW - (5 + i * 11) * HOUR).toISOString() });
+  });
   return out;
 }
 

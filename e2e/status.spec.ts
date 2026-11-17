@@ -29,7 +29,9 @@ for (const vp of [
       for (const id of ['gw-summary', 'top-available', 'potw', 'totw', 'status-table']) {
         await expect(visible(page, id)).toBeAttached();
       }
-      await expect(page.getByRole('heading', { name: 'Injuries and Suspensions' })).toBeAttached();
+      await expect(
+        page.getByRole('heading', { name: 'Latest Injuries and Suspensions' }),
+      ).toBeAttached();
       await expect(page.getByText('Transactions')).toHaveCount(0);
       expect(await overflowingElements(page)).toEqual([]);
     });
@@ -98,13 +100,44 @@ for (const vp of [
     test('an injury badge opens the player card', async ({ page }) => {
       await page.goto(LEAGUE);
       const badge = visibleStarting(page, 'injury-badge-').first();
-      await expect(badge).toHaveText('Out');
+      await expect(badge).toHaveText(/^(Out|Doubt|\d+%)$/);
       const label = (await badge.getAttribute('aria-label'))!;
       const name = /^Player card for (.+?), /.exec(label)![1]!;
       await badge.click();
       const card = visible(page, 'player-card');
       await expect(card).toBeVisible();
       await expect(card).toContainText(name);
+    });
+
+    test('latest injuries: owned players first, free agents after, columns aligned', async ({
+      page,
+    }) => {
+      await page.goto(LEAGUE);
+      const card = visible(page, 'status-injuries');
+      await expect(card).toBeVisible();
+      const rows = card.locator('[data-testid^="injury-plr_"]');
+      expect(await rows.count()).toBeGreaterThan(3);
+      // The mock world has stale flags from before the last gameweek ended: left out.
+      expect(await rows.count()).toBeLessThan(10);
+      // Owned (a chip in the Mgr column) before unowned (a dash).
+      const owned = await rows.evaluateAll((els) =>
+        els.map((el) => el.querySelector('[data-testid^="injury-owner-plr_"]') !== null),
+      );
+      const firstFree = owned.indexOf(false);
+      expect(firstFree).toBeGreaterThan(0);
+      expect(owned.slice(firstFree).every((o) => !o)).toBe(true);
+      // The header names the columns and sits over them.
+      const header = card.getByTestId('injuries-header');
+      await expect(header).toContainText('Player');
+      await expect(header).toContainText('Pos');
+      await expect(header).toContainText('Mgr');
+      if (vp.width >= 360) await expect(header).toContainText('Club');
+      const mgr = (await header.getByText('Mgr').boundingBox())!;
+      for (const slot of await card.getByTestId(/^injury-owner-slot-/).all()) {
+        const b = (await slot.boundingBox())!;
+        expect(Math.abs(b.x + b.width - (mgr.x + mgr.width))).toBeLessThan(1.5);
+      }
+      expect(await overflowingElements(page)).toEqual([]);
     });
 
     test('Sign opens the free-agent flow on the drop step', async ({ page }) => {

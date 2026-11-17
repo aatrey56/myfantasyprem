@@ -212,6 +212,57 @@ export function injuryBadge(
   return { kind: 'out', label: 'Out', a11y: `Out, ${why}` };
 }
 
+/** How long after kickoff a match counts as over when a gameweek's end is read from its last kickoff. */
+export const MATCH_LENGTH_MS = 2 * 3_600_000;
+
+/**
+ * When a gameweek ended, as epoch ms: its latest kickoff plus a match. Null
+ * without a kickoff (a postponed fixture has none). The server's
+ * `statuspage.GameweekEnd`.
+ */
+export function gameweekEnd(kickoffs: readonly (string | null)[]): number | null {
+  const times = kickoffs
+    .flatMap((k) => (k === null ? [] : [Date.parse(k)]))
+    .filter(Number.isFinite);
+  return times.length === 0 ? null : Math.max(...times) + MATCH_LENGTH_MS;
+}
+
+const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The Status injuries list ("Latest injuries and suspensions"): the
+ * flagged players whose news is newer than `since` (epoch ms, the end of the
+ * last finished gameweek; null before any has finished, which keeps every
+ * player that has a news time). Older news, or none, is left out. Owned
+ * players come first, then the rest; each group by season minutes, most
+ * first, then out before doubtful, then name, then id. The server's
+ * `statuspage.LatestInjuries`, which the mocks use through this.
+ */
+export function latestInjuries<
+  T extends {
+    player: Pick<Schemas['PlayerRef'], 'id' | 'displayName' | 'availability' | 'newsAt'>;
+    owner: unknown;
+    minutes: number;
+  },
+>(rows: readonly T[], since: number | null): T[] {
+  const isNewer = (r: T) => {
+    const at = r.player.newsAt ? Date.parse(r.player.newsAt) : NaN;
+    return Number.isFinite(at) && (since === null || at > since);
+  };
+  const doubtful = (r: T) => Number(r.player.availability === 'doubtful');
+  return rows
+    .filter(isNewer)
+    .sort(
+      (a, b) =>
+        Number(b.owner !== null) - Number(a.owner !== null) ||
+        b.minutes - a.minutes ||
+        doubtful(a) - doubtful(b) ||
+        compareText(a.player.displayName.toLowerCase(), b.player.displayName.toLowerCase()) ||
+        compareText(a.player.displayName, b.player.displayName) ||
+        compareText(a.player.id, b.player.id),
+    );
+}
+
 // ---------------------------------------------------------------- league table
 
 export interface TableRow {
