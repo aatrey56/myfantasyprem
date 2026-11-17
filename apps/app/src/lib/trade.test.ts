@@ -5,14 +5,15 @@ import {
   pendingOnFPL,
   positionSummary,
   sidesFor,
+  presetVetoThreshold,
   splitTrades,
-  nearestVetoThreshold,
   togglePlayer,
   tradeBucket,
   tradeStatusLabel,
   vetoControl,
   vetoesNeeded,
   vetoTally,
+  vetoThresholdPercent,
   vetoThresholdText,
   voteLabel,
 } from './trade';
@@ -197,12 +198,27 @@ describe('veto votes', () => {
     expect(vetoesNeeded(1 / 3, 2)).toBe(1);
   });
 
-  it('picks the preset the server value is nearest to', () => {
-    expect(nearestVetoThreshold(0.3333333432674408)).toBe(1 / 3);
-    expect(nearestVetoThreshold(0.5)).toBe(0.5);
-    expect(nearestVetoThreshold(0.6)).toBe(2 / 3);
+  it('recognises a preset through a float32, and keeps a custom threshold as it is', () => {
+    expect(presetVetoThreshold(0.3333333432674408)).toBe(1 / 3);
+    expect(presetVetoThreshold(Math.fround(2 / 3))).toBe(2 / 3);
+    expect(presetVetoThreshold(0.5)).toBe(0.5);
+    expect(presetVetoThreshold(0.6)).toBeNull();
+    expect(presetVetoThreshold(0.4000000059604645)).toBeNull();
+    expect(vetoThresholdPercent(0.4000000059604645)).toBe('40%');
+    expect(vetoThresholdPercent(0.375)).toBe('37.5%');
+  });
+
+  it('counts the managers the server counts: the league now, or a full league before it exists', () => {
     expect(vetoThresholdText(1 / 3, 12)).toBe(
-      '4 of the 10 managers outside a trade must veto it to block it.',
+      'In a full league of 12, 4 of the 10 managers outside a trade must veto it to block it.',
+    );
+    // 12 seats, 9 with a manager: the server counts the 7 outside a trade.
+    expect(vetoThresholdText(1 / 3, 12, 9)).toBe(
+      'With 9 managers, 3 of the 7 outside a trade must veto it to block it.',
+    );
+    // A custom 60% of 10 is 6; snapped to the nearest preset (two thirds) it would read 7.
+    expect(vetoThresholdText(0.6, 12, 12)).toBe(
+      'With 12 managers, 6 of the 10 outside a trade must veto it to block it.',
     );
   });
 });

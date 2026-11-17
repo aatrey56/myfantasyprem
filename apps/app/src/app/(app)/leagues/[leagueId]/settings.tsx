@@ -155,6 +155,7 @@ function SettingsBody({
           onChange={() => undefined}
           locked
           readOnly
+          managers={home.league.memberCount}
         />
       )}
 
@@ -239,6 +240,7 @@ function CommissionerSettings({
         onChange={setSettings}
         locked={locked}
         minTeams={home.league.memberCount}
+        managers={home.league.memberCount}
         waiverNote={waiverOrderEffect(waivers.data?.data, home.league.status)}
       />
       <Button

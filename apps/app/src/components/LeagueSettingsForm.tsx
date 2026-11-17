@@ -7,7 +7,12 @@ import { SegmentedControl } from './SegmentedControl';
 import { SectionHeader } from './SectionHeader';
 import { Stepper } from './TextField';
 import { MIN_TEAMS } from '@/lib/draft';
-import { nearestVetoThreshold, VETO_THRESHOLDS, vetoThresholdText } from '@/lib/trade';
+import {
+  presetVetoThreshold,
+  VETO_THRESHOLDS,
+  vetoThresholdPercent,
+  vetoThresholdText,
+} from '@/lib/trade';
 import { waiverOrderText } from '@/lib/waivers';
 import { useTheme } from '@/theme';
 
@@ -82,6 +87,12 @@ interface Props {
   readOnly?: boolean;
   /** When a waiver order change applies (the next run). */
   waiverNote?: string;
+  /**
+   * An existing league's managers now (teams with one): the vetoes a trade
+   * needs are counted from them, as on the server. Unset for a league not
+   * created yet, whose help text is for a full league.
+   */
+  managers?: number;
 }
 
 /** Team count, pick clock and trade review, plus the fixed rules as a summary. */
@@ -92,9 +103,19 @@ export function LeagueSettingsForm({
   minTeams = MIN_TEAMS,
   readOnly,
   waiverNote,
+  managers,
 }: Props) {
   const { spacing } = useTheme();
   const set = (patch: Partial<EditableSettings>) => onChange({ ...value, ...patch });
+  // A threshold set outside the presets (by the API) shows as it is, as its own segment.
+  const preset = presetVetoThreshold(value.vetoThreshold);
+  const thresholdSegments = [
+    ...VETO_THRESHOLDS.map((t) => ({ value: String(t.value), label: t.label })),
+    ...(preset === null
+      ? [{ value: String(value.vetoThreshold), label: vetoThresholdPercent(value.vetoThreshold) }]
+      : []),
+  ];
+  const thresholdHelp = vetoThresholdText(value.vetoThreshold, value.teamCount, managers);
   const timerValue = PICK_TIMERS.some((t) => Number(t.value) === value.pickTimerSeconds)
     ? String(value.pickTimerSeconds)
     : '60';
@@ -175,7 +196,7 @@ export function LeagueSettingsForm({
         {value.review !== 'none' && readOnly ? (
           <AppText variant="meta" testID="review-summary">
             {value.review === 'league_vote'
-              ? `${value.reviewHours} hour review. ${vetoThresholdText(value.vetoThreshold, value.teamCount)}`
+              ? `${value.reviewHours} hour review. ${thresholdHelp}`
               : `${value.reviewHours} hour review.`}
           </AppText>
         ) : null}
@@ -207,13 +228,13 @@ export function LeagueSettingsForm({
             <SegmentedControl
               kind="radio"
               accessibilityLabel="Veto threshold"
-              segments={VETO_THRESHOLDS.map((t) => ({ value: String(t.value), label: t.label }))}
-              value={String(nearestVetoThreshold(value.vetoThreshold))}
+              segments={thresholdSegments}
+              value={String(preset ?? value.vetoThreshold)}
               onChange={(v) => set({ vetoThreshold: Number(v) })}
               testID="veto-threshold"
             />
             <AppText variant="meta" muted testID="veto-threshold-help">
-              {vetoThresholdText(nearestVetoThreshold(value.vetoThreshold), value.teamCount)}
+              {thresholdHelp}
             </AppText>
           </View>
         ) : null}
