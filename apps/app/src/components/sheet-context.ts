@@ -23,7 +23,11 @@ export const useSheetScrollIntoView = () => useContext(SheetScrollContext);
  * Does nothing when either is missing or the node cannot be measured.
  */
 export function scrollNodeIntoView(scroller: ScrollView | null, node: View | null, inset = 160) {
-  const inner = scroller?.getInnerViewNode?.();
+  // measureLayout needs the inner view's host ref: on iOS and Android
+  // getInnerViewNode() is a numeric tag, which measureLayout ignores.
+  // getInnerViewRef exists on both platforms but is missing from the types.
+  const withRef = scroller as (ScrollView & { getInnerViewRef?: () => View | null }) | null;
+  const inner = withRef?.getInnerViewRef?.() ?? null;
   if (!scroller || !node || !inner) return;
   node.measureLayout(
     inner,
