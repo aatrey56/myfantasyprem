@@ -143,7 +143,7 @@ Every store has a Postgres and a memory implementation of one interface
 | `notifications` | Notification types, per-league preferences (default on), the inbox, push devices, the push outbox and dispatcher, producers from league changes, deadlines, live stats and news (ADR 0015); `notifications/webpush` is the Web Push client | `league`, `draft`, `stats`, `scoring`, `store`, `ids`               |
 | `realtime`      | Event log (per-league `seq`, 5-minute replay), tickets, hub (subscriptions, replay, backpressure), LISTEN/NOTIFY                                                                                                                           | `store`                                                             |
 | `scoring`       | Pure functions: stats → points (FPL 2026-27), bonus from BPS, lineup rules, auto-subs, H2H, average, Player and Team of the Week                                                                                                           | nothing                                                             |
-| `statuspage`    | Pure rules of the Status page: form, attention items, top available by form, injuries and chance of playing                                                                                                                                | nothing                                                             |
+| `statuspage`    | Pure rules of the Status page: form, attention items, top available by form, latest injuries and chance of playing                                                                                                                         | nothing                                                             |
 | `projection`    | Pure rules of fixture difficulty, Expected points, win odds and start/sit accuracy (ADR 0014)                                                                                                                                              | `scoring`                                                           |
 | `stats`         | Tier 1: clubs, players, gameweeks, fixtures, per-fixture stats and points, poll state; ingest; snapshot pruning                                                                                                                            | `scoring`, `provider`, `store`, `ids`                               |
 | `poller`        | The single stats poller: cadence, backoff, last-good snapshot, rescoring, metrics                                                                                                                                                          | `provider`, `stats`, `league`                                       |
@@ -580,7 +580,12 @@ the rest in `statuspage`; `httpapi` gathers the inputs.
   standings after the league's last two completed gameweeks; top
   available lists the next three gameweeks of fixtures from that
   gameweek. Chance of playing is read from FPL's news ("75% chance of
-  playing"), 0 for anyone out.
+  playing"), 0 for anyone out. Injuries are the latest ones, as in FPL
+  Draft: flagged players whose news was added after the last completed
+  gameweek ended (its last kickoff plus two hours); older news, or none,
+  is left out. Players owned in the league come first, then the rest, each
+  by season minutes (`statuspage.LatestInjuries`, the app's
+  `lib/status.ts`).
 - **Per-game stats** on the player card are FPL's gameweek line (ICT and
   expected stats included); bonus and defensive-contribution points come
   from the points breakdown so they match the points. Everything is null

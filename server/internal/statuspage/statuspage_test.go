@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 )
 
 // The cases in testdata/form_cases.json are also the app's form tests
@@ -169,21 +170,79 @@ func TestUpcoming(t *testing.T) {
 	}
 }
 
-func TestSortInjuries(t *testing.T) {
-	ps := []Flagged{
-		{ID: "1", Name: "Zed", Availability: "doubtful"},
-		{ID: "2", Name: "bell", Availability: "injured"},
-		{ID: "3", Name: "Abe", Availability: "doubtful"},
-		{ID: "4", Name: "Cole", Availability: "suspended"},
-		{ID: "5", Name: "Adams", Availability: "unavailable"},
+func TestLatestInjuries(t *testing.T) {
+	end := time.Date(2026, 10, 12, 21, 0, 0, 0, time.UTC) // the last gameweek ended
+	at := func(d time.Duration) *time.Time { v := end.Add(d); return &v }
+	ids := func(ps []Flagged) []string {
+		var out []string
+		for _, p := range ps {
+			out = append(out, p.ID)
+		}
+		return out
 	}
-	SortInjuries(ps)
-	var ids []string
-	for _, p := range ps {
-		ids = append(ids, p.ID)
+
+	t.Run("only news newer than the gameweek end, owned first, then minutes", func(t *testing.T) {
+		in := []Flagged{
+			{ID: "old", Name: "Old", Availability: "injured", NewsAt: at(-time.Hour), Owned: true, Minutes: 3000},
+			{ID: "boundary", Name: "Boundary", Availability: "injured", NewsAt: at(0), Owned: true, Minutes: 3000},
+			{ID: "none", Name: "None", Availability: "injured", Owned: true, Minutes: 3000},
+			{ID: "free-lots", Name: "Free lots", Availability: "injured", NewsAt: at(time.Hour), Minutes: 900},
+			{ID: "own-few", Name: "Own few", Availability: "doubtful", NewsAt: at(time.Minute), Owned: true, Minutes: 100},
+			{ID: "own-many", Name: "Own many", Availability: "suspended", NewsAt: at(48 * time.Hour), Owned: true, Minutes: 700},
+			{ID: "free-few", Name: "Free few", Availability: "doubtful", NewsAt: at(2 * time.Hour), Minutes: 50},
+		}
+		before := slices.Clone(in)
+		got := LatestInjuries(in, end)
+		if want := []string{"own-many", "own-few", "free-lots", "free-few"}; !slices.Equal(ids(got), want) {
+			t.Fatalf("order = %v, want %v", ids(got), want)
+		}
+		if !slices.EqualFunc(in, before, func(a, b Flagged) bool { return a.ID == b.ID }) {
+			t.Error("the input was reordered")
+		}
+	})
+
+	t.Run("ties: minutes, then out before doubtful, then name, then id", func(t *testing.T) {
+		in := []Flagged{
+			{ID: "5", Name: "Zed", Availability: "injured", NewsAt: at(time.Hour), Minutes: 10},
+			{ID: "4", Name: "bell", Availability: "doubtful", NewsAt: at(time.Hour), Minutes: 90},
+			{ID: "3", Name: "Cole", Availability: "doubtful", NewsAt: at(time.Hour), Minutes: 90},
+			{ID: "2", Name: "Adams", Availability: "suspended", NewsAt: at(time.Hour), Minutes: 90},
+			{ID: "1", Name: "Adams", Availability: "suspended", NewsAt: at(time.Hour), Minutes: 90},
+		}
+		got := LatestInjuries(in, end)
+		if want := []string{"1", "2", "4", "3", "5"}; !slices.Equal(ids(got), want) {
+			t.Fatalf("order = %v, want %v", ids(got), want)
+		}
+	})
+
+	t.Run("before any gameweek has finished every player with news counts", func(t *testing.T) {
+		in := []Flagged{
+			{ID: "a", NewsAt: at(-1000 * time.Hour)},
+			{ID: "b"},
+		}
+		if got := LatestInjuries(in, time.Time{}); !slices.Equal(ids(got), []string{"a"}) {
+			t.Fatalf("got %v, want only the player with a news time", ids(got))
+		}
+	})
+
+	t.Run("nobody qualifies", func(t *testing.T) {
+		if got := LatestInjuries([]Flagged{{ID: "a", NewsAt: at(-time.Hour)}}, end); len(got) != 0 {
+			t.Fatalf("got %v", ids(got))
+		}
+		if got := LatestInjuries(nil, end); len(got) != 0 {
+			t.Fatalf("got %v", ids(got))
+		}
+	})
+}
+
+func TestGameweekEnd(t *testing.T) {
+	k := func(h int) time.Time { return time.Date(2026, 10, 10, h, 0, 0, 0, time.UTC) }
+	if _, ok := GameweekEnd(nil); ok {
+		t.Error("a gameweek without kickoffs has no end")
 	}
-	if want := []string{"5", "2", "4", "3", "1"}; !slices.Equal(ids, want) {
-		t.Fatalf("order = %v, want %v (out before doubtful, then name ignoring case)", ids, want)
+	got, ok := GameweekEnd([]time.Time{k(12), k(19), k(15)})
+	if !ok || !got.Equal(k(19).Add(MatchLength)) {
+		t.Errorf("end = %v %v, want the last kickoff plus a match", got, ok)
 	}
 }
 
