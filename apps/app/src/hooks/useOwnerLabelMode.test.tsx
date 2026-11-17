@@ -10,26 +10,32 @@ beforeEach(async () => {
 });
 
 describe('useOwnerLabelMode', () => {
-  it('starts on first names', async () => {
+  it('starts on team names', async () => {
     const { result } = await renderHook(() => useOwnerLabelMode());
-    expect(result.current[0]).toBe('first_name');
+    expect(result.current[0]).toBe('team_name');
+  });
+
+  it('reads a stored choice back', async () => {
+    await AsyncStorage.setItem(OWNER_LABEL_KEY, '"first_name"');
+    const { result } = await renderHook(() => useOwnerLabelMode());
+    await waitFor(() => expect(result.current[0]).toBe('first_name'));
   });
 
   it('keeps a change on the device and reads it back after a restart', async () => {
     const { result } = await renderHook(() => useOwnerLabelMode());
-    await act(async () => result.current[1]('team_name'));
-    expect(result.current[0]).toBe('team_name');
-    expect(await AsyncStorage.getItem(OWNER_LABEL_KEY)).toBe('"team_name"');
+    await act(async () => result.current[1]('manager_name'));
+    expect(result.current[0]).toBe('manager_name');
+    expect(await AsyncStorage.getItem(OWNER_LABEL_KEY)).toBe('"manager_name"');
 
     resetOwnerLabelModeForTests();
     const again = await renderHook(() => useOwnerLabelMode());
-    await waitFor(() => expect(again.result.current[0]).toBe('team_name'));
+    await waitFor(() => expect(again.result.current[0]).toBe('manager_name'));
   });
 
   it('shows a change in every place at once', async () => {
     const a = await renderHook(() => useOwnerLabelMode());
     const b = await renderHook(() => useOwnerLabelMode());
-    await act(async () => a.result.current[1]('team_name'));
-    expect(b.result.current[0]).toBe('team_name');
+    await act(async () => a.result.current[1]('first_name'));
+    expect(b.result.current[0]).toBe('first_name');
   });
 });
