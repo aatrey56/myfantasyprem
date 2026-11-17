@@ -2,8 +2,12 @@ import { expect, test, type Locator, type Page } from './fixtures';
 
 import { LEAGUE, signIn, startWithScenario } from './helpers';
 
-// Owner chips (FixtureScreen, InjuriesCard) name the manager, "You" on my
-// own team; Account → "Show owners as" switches them to team names. The
+// OwnerChip.tsx's OWNER_CHIP_MAX_WIDTH.
+const OWNER_CHIP_MAX_WIDTH = 96;
+
+// Owner chips (FixtureScreen, InjuriesCard) name the team, "You" on my own
+// team; Account → "Show owners as" switches them to the manager's name or
+// first name. The
 // League tab's matchup cards wrap long team names to two lines.
 // 'shared-owners': each player of mine is also on a second team of mine and
 // on Sam Rivers' and Dana Cole's teams, so other owners are always there.
@@ -56,7 +60,7 @@ for (const vp of [
   test.describe(`owner chips (${vp.name})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test('first names by default, one You, clear of the points', async ({ page }) => {
+    test('team names by default, one You, clear of the points', async ({ page }) => {
       await startWithScenario(page, 'shared-owners');
       const detail = await openFixtureWithMine(page);
       const row = mineRow(detail);
@@ -64,14 +68,14 @@ for (const vp of [
       await expect(row.getByTestId('owner-badge-mine')).toHaveCount(1);
       await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
       const other = row.getByTestId('owner-badge');
-      await expect(other.first()).toHaveText('Sam');
+      await expect(other.first()).toHaveText('Riverside Rovers');
       if (vp.width < 768) {
         // Two chips, then the third owner as +1, hidden from screen readers.
         await expect(other).toHaveCount(1);
         await expect(row.getByTestId('owner-badges-more')).toHaveText('+1');
         await expect(row.getByTestId('owner-badges-more')).toHaveAttribute('aria-hidden', 'true');
       } else {
-        await expect(other).toHaveText(['Sam', 'Dana']);
+        await expect(other).toHaveText(['Riverside Rovers', 'Cole Miners FC']);
         await expect(row.getByTestId('owner-badges-more')).toHaveCount(0);
       }
       // The row's label names every owner.
@@ -82,26 +86,69 @@ for (const vp of [
       await expectChipsClearOfPoints(page);
     });
 
-    test('Show owners as: Team name, kept after a reload', async ({ page }) => {
+    test('Show owners as: Team name, Manager name or First name, kept after a reload', async ({
+      page,
+    }) => {
       await startWithScenario(page, 'shared-owners');
       await page.goto('/account');
       const setting = visible(page, 'owner-label-setting');
       await expect(setting).toContainText('Show owners as');
-      await setting.getByTestId('owner-label-team-name').click();
-      // Kept on the device: a fresh load (openFixtureWithMine navigates) still shows team names.
+      const picks = {
+        team: setting.getByTestId('owner-label-team-name'),
+        manager: setting.getByTestId('owner-label-manager-name'),
+        first: setting.getByTestId('owner-label-first-name'),
+      };
+      await expect(picks.team).toHaveText('Team name');
+      await expect(picks.manager).toHaveText('Manager name');
+      await expect(picks.first).toHaveText('First name');
+      // Team name is the pick for a device that never chose.
+      await expect(picks.team).toHaveAttribute('aria-checked', 'true');
+      await expect(picks.manager).toHaveAttribute('aria-checked', 'false');
+      await expect(picks.first).toHaveAttribute('aria-checked', 'false');
+
+      // Every pick shows at once on the fixture's chips, clear of the points.
+      const modes = [
+        { pick: picks.manager, names: ['Sam Rivers', 'Dana Cole'] },
+        { pick: picks.first, names: ['Sam', 'Dana'] },
+        { pick: picks.team, names: ['Riverside Rovers', 'Cole Miners FC'] },
+      ];
+      for (const mode of modes) {
+        await page.goto('/account');
+        await mode.pick.click();
+        await expect(mode.pick).toHaveAttribute('aria-checked', 'true');
+        const detail = await openFixtureWithMine(page);
+        const row = mineRow(detail);
+        await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
+        const other = row.getByTestId('owner-badge');
+        await expect(other.first()).toHaveText(mode.names[0]!);
+        if (vp.width >= 768) await expect(other).toHaveText(mode.names);
+        // Whatever the label, the chip reads out the team and the league.
+        await expect(other.first()).toHaveAttribute(
+          'aria-label',
+          'Riverside Rovers in Office League',
+        );
+        for (const chip of await other.all()) {
+          expect((await chip.boundingBox())!.width).toBeLessThanOrEqual(OWNER_CHIP_MAX_WIDTH + 0.5);
+        }
+        await expectChipsClearOfPoints(page);
+      }
+
+      // Kept on the device: a fresh load still shows the manager's name.
+      await page.goto('/account');
+      await picks.manager.click();
       await page.reload();
       await expect(visible(page, 'owner-label-setting')).toBeVisible();
-
       const detail = await openFixtureWithMine(page);
-      const row = mineRow(detail);
-      await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
-      const other = row.getByTestId('owner-badge');
-      await expect(other.first()).toHaveText('Riverside Rovers');
-      await expect(other.first()).toHaveAttribute(
-        'aria-label',
-        'Riverside Rovers in Office League',
-      );
-      await expectChipsClearOfPoints(page);
+      await expect(mineRow(detail).getByTestId('owner-badge').first()).toHaveText('Sam Rivers');
+    });
+
+    test('a device that chose first names before keeps them', async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('mfp.ownerLabel', JSON.stringify('first_name'));
+      });
+      await startWithScenario(page, 'shared-owners');
+      const detail = await openFixtureWithMine(page);
+      await expect(mineRow(detail).getByTestId('owner-badge').first()).toHaveText('Sam');
     });
   });
 }

@@ -120,9 +120,9 @@ for (const vp of [
       expect(points.every(Number.isInteger)).toBe(true);
       // Highest first: the first row of a side outscores its last.
       expect(points[0]).toBeGreaterThanOrEqual(points.at(-1)!);
-      // Players owned in my leagues carry the owner's first name, not initials.
+      // Players owned in my leagues carry the owner's team name, not initials.
       await expect(detail.getByTestId('owner-badges').first()).toBeVisible();
-      await expect(detail.getByTestId('owner-badge').first()).toHaveText(/^\p{Lu}\p{Ll}+$/u);
+      await expect(detail.getByTestId('owner-badge').first()).toHaveText(/\p{L}{3}/u);
       expect(await overflowingElements(page)).toEqual([]);
 
       // Back to the same gameweek's list.
