@@ -339,6 +339,16 @@ func TestCommissionerReviewIsLogged(t *testing.T) {
 		if len(log()) != 0 {
 			t.Fatalf("a member's vote was logged: %+v", log())
 		}
+		// The commissioner voting and withdrawing as a manager is not a
+		// commissioner move either.
+		for _, v := range []string{VoteVeto, VoteWithdraw} {
+			if _, _, err := s.Vote(ctx, f.users[0], f.l.ID, a.ID, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(log()) != 0 {
+			t.Fatalf("the commissioner's own vote was logged: %+v", log())
+		}
 		// A refused review writes nothing either.
 		if _, _, err := s.Review(ctx, f.users[3], f.l.ID, a.ID, DecisionVeto, ""); slug(err) != "not-commissioner" {
 			t.Fatalf("manager review: %v", err)
