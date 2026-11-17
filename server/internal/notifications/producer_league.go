@@ -311,24 +311,36 @@ func (c *Changes) notify(ctx context.Context, ch league.Change) error {
 	default:
 		return nil
 	}
+	if ch.Kind == league.ChangeTrade {
+		return c.trade(ctx, ch)
+	}
 	st, err := c.Leagues.State(ctx, ch.LeagueID)
 	if err != nil || st == nil || st.League == nil {
 		return err
 	}
 	var ns []Notification
 	switch ch.Kind {
-	case league.ChangeTrade:
-		for _, tr := range st.Trades {
-			if tr.ID == ch.TradeID {
-				ns = TradeEvents(st.League, tr, c.names(ctx))
-			}
-		}
 	case league.ChangeWaivers:
 		ns = WaiverEvents(st.League, st.Claims, ch.Gameweek, c.names(ctx))
 	case league.ChangePick, league.ChangeDraft:
 		ns = PickEvent(st.League, st.Draft)
 	}
 	_, err = c.Notifier.Send(ctx, ns...)
+	return err
+}
+
+// trade reads the changed trade by id: State holds only open trades, and
+// the outcomes (vetoed, failed, processed, declined) are closed ones.
+func (c *Changes) trade(ctx context.Context, ch league.Change) error {
+	l, err := c.Leagues.Get(ctx, ch.LeagueID)
+	if err != nil || l == nil {
+		return err
+	}
+	tr, err := c.Leagues.Trade(ctx, ch.LeagueID, ch.TradeID)
+	if err != nil || tr == nil {
+		return err
+	}
+	_, err = c.Notifier.Send(ctx, TradeEvents(l, *tr, c.names(ctx))...)
 	return err
 }
 

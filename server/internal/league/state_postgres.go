@@ -280,6 +280,16 @@ func (p *Postgres) Trades(ctx context.Context, leagueID string) ([]Trade, error)
 	return read(ctx, p, func(db store.DB) ([]Trade, error) { return loadTrades(ctx, db, `league_id = $1`, leagueID) })
 }
 
+func (p *Postgres) Trade(ctx context.Context, leagueID, tradeID string) (*Trade, error) {
+	ts, err := read(ctx, p, func(db store.DB) ([]Trade, error) {
+		return loadTrades(ctx, db, `league_id = $1 AND id = $2`, leagueID, tradeID)
+	})
+	if err != nil || len(ts) == 0 {
+		return nil, err
+	}
+	return &ts[0], nil
+}
+
 func (p *Postgres) Transactions(ctx context.Context, leagueID string) ([]Txn, error) {
 	return loadTxns(ctx, p.pool, leagueID)
 }

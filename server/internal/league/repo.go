@@ -49,6 +49,9 @@ type Repo interface {
 	Claims(ctx context.Context, leagueID, teamID string) ([]Claim, error)
 	// Trades returns every trade of a league, open or closed, newest first.
 	Trades(ctx context.Context, leagueID string) ([]Trade, error)
+	// Trade returns one trade of a league, open or closed, or nil. State
+	// holds only open trades; this is how a closed one is read.
+	Trade(ctx context.Context, leagueID, tradeID string) (*Trade, error)
 	// Transactions returns the league's activity feed, newest first.
 	Transactions(ctx context.Context, leagueID string) ([]Txn, error)
 	// History is State with every claim and trade, decided and closed
