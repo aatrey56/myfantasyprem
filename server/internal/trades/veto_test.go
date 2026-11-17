@@ -496,3 +496,90 @@ func TestVetoThresholdIsFrozenAtAccept(t *testing.T) {
 	})
 }
 
+// Vetoes racing each other and the closing workers: the threshold's veto
+// wins once, the trade never executes, and nothing later changes that.
+func TestConcurrentVetoesNeverExecute(t *testing.T) {
+	leaguetest.Each(t, func(t *testing.T, e *leaguetest.Env) {
+		f := voteFixture(t, e)
+		ctx, s := e.Ctx, f.s
+		tr := f.accepted(t, scoring.GKP) // 4 of 10 veto it
+		e.Clock.Set(tr.ReviewEndsAt.Add(-time.Minute))
+		var (
+			wg             sync.WaitGroup
+			mu             sync.Mutex
+			counted, late  int
+			closed, closes int
+		)
+		for i := 2; i <= 9; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, got, err := s.Vote(ctx, f.users[i], f.l.ID, tr.ID, VoteVeto)
+				mu.Lock()
+				defer mu.Unlock()
+				switch {
+				case err == nil && (got.Status == league.TradeInReview || got.Status == league.TradeVetoed):
+					counted++
+				case slug(err) == "trade-not-in-review":
+					late++
+				default:
+					t.Errorf("vote %d = %s %v", i, got.Status, err)
+				}
+			}()
+		}
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				n, err := s.CloseDue(ctx, f.l.ID)
+				if err != nil {
+					t.Error(err)
+				}
+				mu.Lock()
+				closes++
+				closed += n
+				mu.Unlock()
+			}()
+		}
+		wg.Wait()
+		got := f.trade(t, tr.ID)
+		if counted != 4 || late != 4 || got.Status != league.TradeVetoed || len(got.Votes) != 4 {
+			t.Fatalf("%d vetoes counted, %d refused, trade %s with %d votes; want 4, 4, vetoed, 4", counted, late, got.Status, len(got.Votes))
+		}
+		if closed != 0 {
+			t.Fatalf("%d of %d closes did work before the window's end", closed, closes)
+		}
+		// The window ends, every worker runs again: still vetoed, nobody moved.
+		e.Clock.Set(*tr.ReviewEndsAt)
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if n, err := s.CloseDue(ctx, f.l.ID); n != 0 || err != nil {
+					t.Errorf("close after the veto: %d %v", n, err)
+				}
+			}()
+		}
+		wg.Wait()
+		if got := f.trade(t, tr.ID); got.Status != league.TradeVetoed {
+			t.Fatalf("after the window = %s", got.Status)
+		}
+		owners := e.State(t, f.l.ID).Game.OwnerAt(38)
+		if owners[tr.Offered[0]] != f.teams[0] || owners[tr.Requested[0]] != f.teams[1] {
+			t.Fatal("a vetoed trade moved players")
+		}
+		feed, err := e.Repo.Transactions(ctx, f.l.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entries []string
+		for _, x := range feed {
+			if x.Kind == league.TxnTrade && x.TradeID == tr.ID {
+				entries = append(entries, x.Status)
+			}
+		}
+		if !slices.Equal(entries, []string{league.TradeVetoed}) {
+			t.Fatalf("feed entries for the trade = %v, want one vetoed", entries)
+		}
+	})
+}

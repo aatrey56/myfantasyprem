@@ -50,6 +50,10 @@ func TestVotesNeeded(t *testing.T) {
 		{"threshold 0 still needs one veto", 8, 0, nil, 1},
 		{"2 teams: nobody can vote, one veto needed", 2, 0.5, nil, 1},
 		{"8 teams, 2 unmanaged: ceil(0.5×4) = 2", 8, 0.5, []int{5, 6}, 2},
+		{"a team in the trade lost its manager: ceil(0.5×6) = 3", 8, 0.5, []int{1}, 3},
+		{"12 teams, a third: ceil(10/3) = 4", 12, 1.0 / 3, nil, 4},
+		{"11 teams, a third: ceil(9/3) = 3", 11, 1.0 / 3, nil, 3},
+		{"11 teams, a third through float32: still 3", 11, float64(float32(1.0 / 3)), nil, 3},
 	} {
 		if got := VotesNeeded(leagueOf(tt.teams, tt.threshold, tt.unowned...), tr); got != tt.want {
 			t.Errorf("%s: got %d", tt.name, got)
