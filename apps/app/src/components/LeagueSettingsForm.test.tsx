@@ -1,6 +1,46 @@
+import type { Schemas } from '@myfantasyprem/api-client';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { DEFAULT_SETTINGS, LeagueSettingsForm } from './LeagueSettingsForm';
+import {
+  DEFAULT_SETTINGS,
+  fromLeagueSettings,
+  LeagueSettingsForm,
+  settingsInput,
+  type EditableSettings,
+} from './LeagueSettingsForm';
+import { VETO_THRESHOLDS } from '@/lib/trade';
+
+/** The settings the server sends back after saving s: its threshold is a float32. */
+function saved(s: EditableSettings): Schemas['LeagueSettings'] {
+  const input = settingsInput(s);
+  return {
+    teamCount: s.teamCount,
+    draft: { pickTimerSeconds: s.pickTimerSeconds },
+    trades: {
+      review: s.review,
+      reviewHours: input.trades?.reviewHours ?? 0,
+      vetoThreshold: Math.fround(input.trades?.vetoThreshold ?? s.vetoThreshold),
+    },
+    waivers: { order: s.waiverOrder },
+  } as Schemas['LeagueSettings'];
+}
+
+describe('fromLeagueSettings', () => {
+  // The Settings screen compares the form with the saved settings: a preset
+  // must read back as the value the form chose, or the form stays dirty.
+  it.each(VETO_THRESHOLDS.map((t) => [t.label, t.value]))(
+    'reads a saved "%s" back as the form chose it',
+    (_label, value) => {
+      const chosen = { ...DEFAULT_SETTINGS, review: 'league_vote' as const, vetoThreshold: value };
+      expect(fromLeagueSettings(saved(chosen))).toEqual(chosen);
+    },
+  );
+
+  it('keeps a threshold outside the presets as the server sent it', () => {
+    const custom = { ...DEFAULT_SETTINGS, review: 'league_vote' as const, vetoThreshold: 0.4 };
+    expect(fromLeagueSettings(saved(custom)).vetoThreshold).toBe(Math.fround(0.4));
+  });
+});
 
 describe('LeagueSettingsForm after the draft', () => {
   it('keeps the trade review control enabled, with a hint about trades in review', async () => {

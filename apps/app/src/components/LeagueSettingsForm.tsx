@@ -65,13 +65,18 @@ export function settingsInput(s: EditableSettings): Schemas['LeagueSettingsInput
   };
 }
 
+/**
+ * The form's values for saved settings. A preset threshold comes back from
+ * the server as a float32 (0.33333334): it reads as the preset itself, the
+ * value the form sets, so a saved form compares equal and is not dirty.
+ */
 export function fromLeagueSettings(s: Schemas['LeagueSettings']): EditableSettings {
   return {
     teamCount: s.teamCount,
     pickTimerSeconds: s.draft.pickTimerSeconds,
     review: s.trades.review,
     reviewHours: s.trades.reviewHours || 24,
-    vetoThreshold: s.trades.vetoThreshold,
+    vetoThreshold: presetVetoThreshold(s.trades.vetoThreshold) ?? s.trades.vetoThreshold,
     waiverOrder: s.waivers.order,
   };
 }
