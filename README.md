@@ -47,8 +47,15 @@ codebase.
 
 - **Waivers** with claims processed at the league's waiver deadline, and
   **free agency** once waivers clear.
-- **Trades** between managers, with review by the commissioner or a league
-  vote, and a trade block to show who you are willing to move.
+- **Trades** between managers. By default the league decides: an accepted
+  trade is open to a veto for 24 hours, and a third of the managers not in
+  it (4 of 10) block it, otherwise it goes through by itself. The
+  commissioner can instead review trades or turn review off. A trade block
+  shows who you are willing to move.
+- **Commissioner moves**: everything the commissioner does with powers a
+  manager lacks (overriding a trade, changing the rules, removing a manager,
+  drafting for a team) is listed in League settings, and the Status screen
+  shows a banner until you have looked.
 
 ### Match tab
 
