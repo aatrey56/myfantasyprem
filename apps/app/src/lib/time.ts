@@ -8,6 +8,10 @@
  * - A kickoff: {@link formatKickoff}, `Sat 15:00` within six days, otherwise
  *   as a scheduled moment. The team header's one-line lock time uses it too
  *   (`Locks Sat 11:00`), with the full moment as its accessible name.
+ * - A kickoff with its date, where the date is the point (the player card's
+ *   next fixture): {@link formatKickoffDate}, `Sat 22 Nov, 12:30`.
+ * - A match date in a narrow table cell or card: {@link formatShortDate},
+ *   `27 Oct`, with {@link formatWeekday}, `Tue`, beside or above it.
  * - Kickoffs listed under a day heading (SCORES): the heading
  *   {@link formatDay}, `Sat 17 Oct`, and each kickoff {@link formatClock},
  *   `15:00`.
@@ -130,6 +134,24 @@ export function formatKickoff(ms: number, now = Date.now(), timeZone?: string): 
   if (Math.abs(ms - now) >= 6 * DAY) return formatDateTime(ms, now, timeZone);
   const f = fields(ms, timeZone);
   return `${DAYS[f.weekday]} ${clock(f)}`;
+}
+
+/** A kickoff with its date, day first like the rest of the app: `Sat 22 Nov, 12:30` (`Sat 22 Nov 2027, 12:30` far off). */
+export function formatKickoffDate(ms: number, now = Date.now(), timeZone?: string): string {
+  const f = fields(ms, timeZone);
+  const year = Math.abs(ms - now) > SIX_MONTHS ? ` ${f.year}` : '';
+  return `${DAYS[f.weekday]} ${f.day} ${MONTHS[f.month]}${year}, ${clock(f)}`;
+}
+
+/** A date as short as a table cell needs, day first, no year: `27 Oct`. */
+export function formatShortDate(ms: number, timeZone?: string): string {
+  const f = fields(ms, timeZone);
+  return `${f.day} ${MONTHS[f.month]}`;
+}
+
+/** The weekday alone: `Tue`. */
+export function formatWeekday(ms: number, timeZone?: string): string {
+  return DAYS[fields(ms, timeZone).weekday];
 }
 
 /** Days and hours, or hours and minutes under a day. */

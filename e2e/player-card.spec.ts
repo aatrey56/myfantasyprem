@@ -27,6 +27,62 @@ async function openFreeAgent(page: Page) {
 const settled = (card: Locator) =>
   expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(20);
 
+const DATE = /^\d{1,2} [A-Z][a-z]{2}$/;
+const WEEKDAY = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/;
+
+/** The Summary's By gameweek cards (not the day and date inside each). */
+const gwCards = (card: Locator) => card.getByTestId(/^gw-card-\d+$/);
+
+/**
+ * The game log's pinned GW, OPP and DATE headings sit side by side, whole and
+ * level, with each row's date centred under the DATE heading.
+ */
+async function expectDateColumn(card: Locator) {
+  const box = async (l: Locator) => (await l.boundingBox())!;
+  const head = card.getByTestId('log-date-head');
+  await expect(head).toHaveText(/^date$/i);
+  const pinned = await box(card.getByTestId('log-pinned-head'));
+  const h = await box(head);
+  // Inside the pinned block, which holds GW, OPP and DATE in that order.
+  expect(h.x).toBeGreaterThanOrEqual(pinned.x);
+  expect(h.x + h.width).toBeLessThanOrEqual(pinned.x + pinned.width);
+  const gw = await box(card.getByText('GW', { exact: true }).first());
+  const oppHead = await box(card.getByText('OPP', { exact: true }).first());
+  expect(gw.x).toBeLessThan(oppHead.x);
+  expect(oppHead.x + oppHead.width).toBeLessThanOrEqual(h.x + 1);
+  // The heading's text is whole: it needs no more room than it has.
+  expect(
+    await head.evaluate((el) =>
+      [el, ...el.querySelectorAll('*')].every((n) => n.scrollWidth <= n.clientWidth + 1),
+    ),
+  ).toBe(true);
+  const dates = card.locator('[data-testid^="log-date-"]:not([data-testid="log-date-head"])');
+  await expect(dates.first()).toBeVisible();
+  for (const cell of await dates.all()) {
+    const c = await box(cell);
+    expect(Math.abs(c.x + c.width / 2 - (h.x + h.width / 2))).toBeLessThanOrEqual(1);
+    for (const t of (await cell.locator('div').allTextContents()).filter(Boolean)) {
+      expect(t).toMatch(/^(\d{1,2} [A-Z][a-z]{2}|–)+$/);
+    }
+  }
+}
+
+/** Each next-fixture kickoff reads `Sat 22 Nov, 12:30` whole, on one line inside the card. */
+async function expectDatedKickoff(next: Locator) {
+  const card = (await next.boundingBox())!;
+  const kickoffs = next.locator('[data-testid^="card-next-kickoff-"]');
+  await expect(kickoffs.first()).toBeVisible();
+  for (const k of await kickoffs.all()) {
+    await expect(k).toHaveText(
+      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}, \d\d:\d\d$|^(Moved|TBC)$/,
+    );
+    const b = (await k.boundingBox())!;
+    expect(b.height).toBeLessThan(24);
+    expect(b.x).toBeGreaterThanOrEqual(card.x);
+    expect(b.x + b.width).toBeLessThanOrEqual(card.x + card.width);
+  }
+}
+
 const headers = (page: Page) =>
   page
     .locator('[data-testid="player-card"]:visible:not([inert] *) [data-testid^="log-head-"]')
@@ -90,6 +146,44 @@ test.describe('player card (desktop)', () => {
     const card = await openFreeAgent(page);
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
+  });
+
+  test('dates each game log row, right of the opponent, and the Summary cards and next fixture', async ({
+    page,
+  }) => {
+    const card = await openFreeAgent(page);
+    // Summary: the next fixture has its date (`Sat 22 Nov, 12:30`), not just the weekday.
+    const next = card.getByTestId('card-next');
+    if ((await next.count()) > 0) {
+      await expectDatedKickoff(next);
+    }
+    // Each By gameweek card: weekday top right, date bottom right.
+    const first = gwCards(card).first();
+    await expect(first).toBeVisible();
+    const id = (await first.getAttribute('data-testid'))!.replace('gw-card-', '');
+    const day = card.getByTestId(`gw-card-${id}-day`);
+    const date = card.getByTestId(`gw-card-${id}-date`);
+    await expect(day).toHaveText(WEEKDAY);
+    await expect(date).toHaveText(DATE);
+    const [c, d, t] = [
+      await first.boundingBox(),
+      await day.boundingBox(),
+      await date.boundingBox(),
+    ];
+    expect(d!.x + d!.width).toBeGreaterThan(c!.x + c!.width / 2);
+    expect(t!.x + t!.width).toBeGreaterThan(c!.x + c!.width / 2);
+    expect(t!.y).toBeGreaterThan(d!.y + d!.height);
+    expect(d!.x + d!.width).toBeLessThanOrEqual(c!.x + c!.width);
+    expect(t!.x + t!.width).toBeLessThanOrEqual(c!.x + c!.width);
+    // One line each: the existing content is not pushed around.
+    expect(d!.height).toBeLessThan(24);
+    expect(t!.height).toBeLessThan(24);
+    // The same date reads in the game log.
+    const cardDate = await date.textContent();
+    await card.getByTestId('card-tab-log').click();
+    await expectDateColumn(card);
+    await expect(card.getByTestId(`log-date-${id}`)).toHaveText(cardDate!);
+    expect(await overflowingElements(page)).toEqual([]);
   });
 });
 
@@ -203,6 +297,36 @@ test.describe('player card (phone 390)', () => {
     await card.getByTestId('sheet-close').click();
     await expect(card).toBeHidden();
   });
+
+  test('a By gameweek card opens the game log at its row and highlights it', async ({ page }) => {
+    const card = await openFreeAgent(page);
+    const target = gwCards(card).nth(1);
+    await expect(target).toBeVisible();
+    const id = (await target.getAttribute('data-testid'))!.replace('gw-card-', '');
+    await expect(target).toHaveAttribute('role', 'button');
+    await expect(target).toHaveAttribute('aria-label', new RegExp(`^Gameweek ${id}: `));
+    await target.click();
+    await expect(card.getByTestId('card-log')).toBeVisible();
+    const row = card.getByTestId(`log-row-${id}`);
+    await expect(row).toHaveAttribute('aria-current', 'true');
+    await expect(row).toBeInViewport();
+    // Only a moment: the highlight goes, the row stays.
+    await expect(row).not.toHaveAttribute('aria-current', 'true');
+    await expect(row).toBeVisible();
+    // Opening the log by hand later points at nothing.
+    await card.getByTestId('card-tab-overview').click();
+    await card.getByTestId('card-tab-log').click();
+    await expect(card.getByTestId('card-log')).toBeVisible();
+    await expect(card.locator('[aria-current="true"]')).toHaveCount(0);
+    // Back on the Summary, another tap points at its own row.
+    await card.getByTestId('card-tab-overview').click();
+    const firstId = (await gwCards(card).first().getAttribute('data-testid'))!.replace(
+      'gw-card-',
+      '',
+    );
+    await gwCards(card).first().click();
+    await expect(card.getByTestId(`log-row-${firstId}`)).toHaveAttribute('aria-current', 'true');
+  });
 });
 
 test.describe('player card (phone)', () => {
@@ -280,7 +404,10 @@ test.describe('player card (phone)', () => {
           for (let y = top + 4; y < bottom - 4; y += 10) {
             const el = document.elementFromPoint(x, y);
             const id = el?.closest('[data-testid^="log-"]')?.getAttribute('data-testid') ?? '';
-            if (/^log-(group-|head-(?!$))/.test(id) || /^log-(?!row|blank|next|pinned)/.test(id)) {
+            if (
+              /^log-(group-|head-(?!$))/.test(id) ||
+              /^log-(?!row|blank|next|pinned|date)/.test(id)
+            ) {
               out.push(`${id}@${x},${y}`);
             }
           }
@@ -295,6 +422,48 @@ test.describe('player card (phone)', () => {
       },
     );
     expect(leaks).toEqual([]);
+  });
+
+  test('the game log dates fit beside GW and OPP, and the gameweek cards fit their dates', async ({
+    page,
+  }) => {
+    const card = await openFreeAgent(page);
+    await settled(card);
+    if ((await card.getByTestId('card-next').count()) > 0) {
+      await expectDatedKickoff(card.getByTestId('card-next'));
+    }
+    const last = gwCards(card).last();
+    await last.scrollIntoViewIfNeeded();
+    const id = (await last.getAttribute('data-testid'))!.replace('gw-card-', '');
+    for (const part of ['day', 'date']) {
+      const text = card.getByTestId(`gw-card-${id}-${part}`);
+      const [c, t] = [await last.boundingBox(), await text.boundingBox()];
+      expect(t!.x).toBeGreaterThanOrEqual(c!.x);
+      expect(t!.x + t!.width).toBeLessThanOrEqual(c!.x + c!.width);
+      expect(t!.height).toBeLessThan(24);
+    }
+    await card.getByTestId('card-tab-log').click();
+    await expectDateColumn(card);
+    // The pinned columns leave most of the width to the stats beside them.
+    const log = (await card.getByTestId('card-log').boundingBox())!;
+    const pinned = (await card.getByTestId('log-pinned-head').boundingBox())!;
+    expect(pinned.x + pinned.width).toBeLessThan(log.x + log.width * 0.6);
+    expect(await overflowingElements(page)).toEqual([]);
+  });
+
+  test('tapping a gameweek card on a phone scrolls that row into view', async ({ page }) => {
+    // A short window, so the newest row is below the fold of a log opened at the top.
+    await page.setViewportSize({ width: 375, height: 520 });
+    const card = await openFreeAgent(page);
+    await settled(card);
+    const target = gwCards(card).last();
+    await expect(target).toBeAttached();
+    const id = (await target.getAttribute('data-testid'))!.replace('gw-card-', '');
+    // A click without Playwright's own scroll-to-target: the sheet stays at the top.
+    await target.dispatchEvent('click');
+    const row = card.getByTestId(`log-row-${id}`);
+    await expect(row).toHaveAttribute('aria-current', 'true');
+    await expect(row).toBeInViewport();
   });
 
   test('the summary strip splits into three equal thirds', async ({ page }) => {
