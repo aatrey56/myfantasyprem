@@ -332,3 +332,33 @@ func TestFailedResyncKeepsTheLeague(t *testing.T) {
 		}
 	})
 }
+
+// The trade review is the commissioner's to change (ADR 0017): an imported
+// league switched to a league vote stays on it, with its period and
+// threshold, through a re-sync (FPL's import sets commissioner review).
+func TestResyncKeepsTheTradeReview(t *testing.T) {
+	realEnvs(t, func(t *testing.T, e *env) {
+		owner, imported, _ := importReal(t, e)
+		lid := imported.League.ID
+		if imported.League.Settings.TradeReview != league.ReviewCommissioner {
+			t.Fatalf("imported review = %q", imported.League.Settings.TradeReview)
+		}
+		review, hours, threshold := league.ReviewLeagueVote, 48, 2.0/3
+		ms := league.NewService(e.leagues, e.now)
+		if _, err := ms.Update(ctx, owner, lid, nil, league.SettingsInput{TradeReview: &review, ReviewHours: &hours,
+			VetoThreshold: &threshold}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.RequestResync(ctx, owner, lid, true); err != nil {
+			t.Fatal(err)
+		}
+		*e.clock = e.clock.Add(time.Minute)
+		if err := e.svc.Resync(ctx, lid); err != nil {
+			t.Fatal(err)
+		}
+		s := e.state(t, lid).League.Settings
+		if s.TradeReview != review || s.ReviewHours != hours || s.VetoThreshold != threshold {
+			t.Errorf("after the re-sync: review %q, %d hours, threshold %v", s.TradeReview, s.ReviewHours, s.VetoThreshold)
+		}
+	})
+}
