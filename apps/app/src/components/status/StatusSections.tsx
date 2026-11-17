@@ -9,7 +9,7 @@ import { Button, IconButton } from '../Button';
 import { Card } from '../Card';
 import { Chip, Pill } from '../Chip';
 import { EmptyState } from '../EmptyState';
-import { OwnerChip } from '../OwnerChip';
+import { OWNER_CHIP_MAX_WIDTH, OwnerChip } from '../OwnerChip';
 import { ChevronLeft, ChevronRight, TriangleAlert, Users } from '../icons';
 import { pressFeedback, type PressState } from '../pressable';
 import { PressableLink } from '../PressableLink';
@@ -879,12 +879,18 @@ export function FixturesCard({
 
 // ---------------------------------------------------------------- injuries
 
-/** The injuries card's owner column: room for `You` or a short first name. */
-const INJURY_OWNER_WIDTH = 56;
-/** The other fixed columns, shared by the header and the rows so they line up. */
+/** The fixed columns of a wide row, shared by the header and the rows so they line up. */
 const INJURY_BADGE_WIDTH = 68;
 const INJURY_POSITION_WIDTH = 36;
 const INJURY_CLUB_WIDTH = 40;
+/** The owner column: as wide as an owner chip gets, so a team name has its room. */
+const INJURY_OWNER_WIDTH = OWNER_CHIP_MAX_WIDTH;
+/**
+ * The card width from which a row is one line of columns: the name keeps
+ * about 150pt beside them. Narrower (a phone, or the side column on a
+ * desktop) it takes two lines.
+ */
+const INJURY_COLUMNS_FROM = 480;
 
 export function InjuriesCard({
   players,
@@ -898,11 +904,55 @@ export function InjuriesCard({
   myTeamId?: string;
 }) {
   const { colors, spacing, radii } = useTheme();
-  // The smallest phones drop the club column (the player card has it), so
-  // the name keeps room beside the status, position and owner.
-  const narrow = useLayout().width < 360;
+  // A narrow card (by its own width: the Status page's side column is as
+  // narrow as a phone) has no room for five columns beside a team-name
+  // chip, so a row takes two lines. The name has the whole first line;
+  // below it go position and club, with the owner chip at the right end.
+  const [width, setWidth] = useState(0);
+  const stacked = width < INJURY_COLUMNS_FROM;
+  const header = stacked ? null : (
+    <View
+      testID="injuries-header"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingBottom: spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        // The header scrolls with the rows (stuck to the top), so the two
+        // share one width and line up whatever the scrollbar takes.
+        backgroundColor: colors.surface,
+      }}
+    >
+      <View style={{ width: INJURY_BADGE_WIDTH }} />
+      <AppText variant="meta" weight="semibold" muted style={{ flex: 1, minWidth: 0 }}>
+        Player
+      </AppText>
+      <AppText variant="meta" weight="semibold" muted style={{ width: INJURY_POSITION_WIDTH }}>
+        Pos
+      </AppText>
+      <AppText variant="meta" weight="semibold" muted style={{ width: INJURY_CLUB_WIDTH }}>
+        Club
+      </AppText>
+      <AppText
+        variant="meta"
+        weight="semibold"
+        muted
+        style={{ width: INJURY_OWNER_WIDTH, textAlign: 'right' }}
+      >
+        Mgr
+      </AppText>
+    </View>
+  );
   return (
-    <Card testID="status-injuries" style={{ gap: spacing.sm }}>
+    <Card
+      testID="status-injuries"
+      style={{ gap: spacing.sm }}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
       <Heading>Latest Injuries and Suspensions</Heading>
       {players.length === 0 ? (
         <EmptyState
@@ -911,96 +961,98 @@ export function InjuriesCard({
           body="No injuries or suspensions since the last gameweek."
         />
       ) : (
-        <>
-          <View
-            testID="injuries-header"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
-          >
-            <View style={{ width: INJURY_BADGE_WIDTH }} />
-            <AppText variant="meta" weight="semibold" muted style={{ flex: 1, minWidth: 0 }}>
-              Player
-            </AppText>
-            <AppText
-              variant="meta"
-              weight="semibold"
-              muted
-              style={{ width: INJURY_POSITION_WIDTH }}
-            >
-              Pos
-            </AppText>
-            {narrow ? null : (
-              <AppText variant="meta" weight="semibold" muted style={{ width: INJURY_CLUB_WIDTH }}>
-                Club
-              </AppText>
-            )}
-            <AppText
-              variant="meta"
-              weight="semibold"
-              muted
-              style={{ width: INJURY_OWNER_WIDTH, textAlign: 'right' }}
-            >
-              Mgr
-            </AppText>
-          </View>
-          <ScrollView
-            style={{ maxHeight: 560 }}
-            nestedScrollEnabled
-            accessibilityLabel="Latest injuries and suspensions"
-            {...({ tabIndex: 0 } as object)}
-          >
-            {players.map((f, i) => {
-              const badge = injuryBadge(f);
-              const out = badge.kind === 'out';
-              const open = () => onOpen(f.player.id);
-              return (
-                <View
-                  key={f.player.id}
-                  testID={`injury-${f.player.id}`}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: spacing.sm,
-                    paddingVertical: spacing.sm,
-                    borderTopWidth: i > 0 ? 1 : 0,
-                    borderTopColor: colors.border,
-                  }}
-                >
-                  <Pressable
-                    testID={`injury-badge-${f.player.id}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Player card for ${f.player.displayName}, ${badge.a11y}`}
-                    onPress={open}
-                    style={(state: PressState) => [
-                      {
-                        width: INJURY_BADGE_WIDTH,
-                        height: 28,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        borderRadius: radii.sm,
-                        backgroundColor: out ? STATUS_COLORS.stop : STATUS_COLORS.hazard,
-                      },
-                      ...pressFeedback(colors, state, { hoverFill: false }),
-                    ]}
+        <ScrollView
+          style={{ maxHeight: 560 }}
+          nestedScrollEnabled
+          stickyHeaderIndices={header ? [0] : undefined}
+          accessibilityLabel="Latest injuries and suspensions"
+          {...({ tabIndex: 0 } as object)}
+        >
+          {header}
+          {players.map((f, i) => {
+            const badge = injuryBadge(f);
+            const out = badge.kind === 'out';
+            const open = () => onOpen(f.player.id);
+            const owner = (
+              // A fixed column: the chip shrinks to an ellipsis inside it,
+              // so the player's name keeps its room and the rows line up.
+              <View
+                testID={`injury-owner-slot-${f.player.id}`}
+                style={{
+                  width: INJURY_OWNER_WIDTH,
+                  flexDirection: 'row',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                {f.owner ? (
+                  <OwnerChip
+                    team={f.owner}
+                    mine={f.owner.id === myTeamId}
+                    a11y={`Owned by ${f.owner.name}`}
+                    testID={`injury-owner-${f.player.id}`}
+                  />
+                ) : (
+                  <AppText
+                    variant="meta"
+                    weight="semibold"
+                    muted
+                    accessibilityLabel="Not owned"
+                    numberOfLines={1}
+                    style={{ textAlign: 'right' }}
                   >
-                    {out ? <StopIcon size={13} /> : <HazardIcon size={14} />}
-                    <AppText
-                      variant="meta"
-                      weight="bold"
-                      color={out ? STATUS_COLORS.onStop : STATUS_COLORS.onHazard}
-                    >
-                      {badge.label}
-                    </AppText>
-                  </Pressable>
+                    {stacked ? 'Free agent' : '–'}
+                  </AppText>
+                )}
+              </View>
+            );
+            return (
+              <View
+                key={f.player.id}
+                testID={`injury-${f.player.id}`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: spacing.sm,
+                  paddingVertical: spacing.sm,
+                  borderTopWidth: i > 0 ? 1 : 0,
+                  borderTopColor: colors.border,
+                }}
+              >
+                <Pressable
+                  testID={`injury-badge-${f.player.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Player card for ${f.player.displayName}, ${badge.a11y}`}
+                  onPress={open}
+                  style={(state: PressState) => [
+                    {
+                      width: INJURY_BADGE_WIDTH,
+                      height: 28,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      borderRadius: radii.sm,
+                      backgroundColor: out ? STATUS_COLORS.stop : STATUS_COLORS.hazard,
+                    },
+                    ...pressFeedback(colors, state, { hoverFill: false }),
+                  ]}
+                >
+                  {out ? <StopIcon size={13} /> : <HazardIcon size={14} />}
+                  <AppText
+                    variant="meta"
+                    weight="bold"
+                    color={out ? STATUS_COLORS.onStop : STATUS_COLORS.onHazard}
+                  >
+                    {badge.label}
+                  </AppText>
+                </Pressable>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Player card for ${f.player.displayName}`}
                     onPress={open}
                     style={(state: PressState) => [
-                      { flex: 1, minWidth: 0, borderRadius: radii.sm },
+                      { minWidth: 0, borderRadius: radii.sm },
                       ...pressFeedback(colors, state, { hoverFill: false }),
                     ]}
                   >
@@ -1012,53 +1064,48 @@ export function InjuriesCard({
                       {f.player.displayName}
                     </AppText>
                   </Pressable>
-                  <AppText
-                    variant="meta"
-                    weight="semibold"
-                    muted
-                    style={{ width: INJURY_POSITION_WIDTH }}
-                  >
-                    {positionLabel(f.player.position)}
-                  </AppText>
-                  {narrow ? null : (
+                  {stacked ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: spacing.sm,
+                      }}
+                    >
+                      <AppText
+                        variant="meta"
+                        muted
+                        numberOfLines={1}
+                        testID={`injury-detail-${f.player.id}`}
+                        style={{ flexShrink: 1 }}
+                      >
+                        {positionLabel(f.player.position)} · {f.player.club.code}
+                      </AppText>
+                      {owner}
+                    </View>
+                  ) : null}
+                </View>
+                {stacked ? null : (
+                  <>
+                    <AppText
+                      variant="meta"
+                      weight="semibold"
+                      muted
+                      style={{ width: INJURY_POSITION_WIDTH }}
+                    >
+                      {positionLabel(f.player.position)}
+                    </AppText>
                     <AppText variant="meta" muted style={{ width: INJURY_CLUB_WIDTH }}>
                       {f.player.club.code}
                     </AppText>
-                  )}
-                  {/* A fixed column: the chip shrinks to an ellipsis inside it,
-                    so the player's name keeps its room and the rows line up. */}
-                  <View
-                    testID={`injury-owner-slot-${f.player.id}`}
-                    style={{
-                      width: INJURY_OWNER_WIDTH,
-                      flexDirection: 'row',
-                      justifyContent: 'flex-end',
-                    }}
-                  >
-                    {f.owner ? (
-                      <OwnerChip
-                        team={f.owner}
-                        mine={f.owner.id === myTeamId}
-                        a11y={`Owned by ${f.owner.name}`}
-                        testID={`injury-owner-${f.player.id}`}
-                      />
-                    ) : (
-                      <AppText
-                        variant="meta"
-                        weight="semibold"
-                        muted
-                        accessibilityLabel="Not owned"
-                        style={{ textAlign: 'right' }}
-                      >
-                        –
-                      </AppText>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </>
+                    {owner}
+                  </>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
       )}
     </Card>
   );

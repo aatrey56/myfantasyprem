@@ -582,10 +582,10 @@ the rest in `statuspage`; `httpapi` gathers the inputs.
   gameweek. Chance of playing is read from FPL's news ("75% chance of
   playing"), 0 for anyone out. Injuries are the latest ones, as in FPL
   Draft: flagged players whose news was added after the last completed
-  gameweek ended (its last kickoff plus two hours); older news, or none,
-  is left out. Players owned in the league come first, then the rest, each
-  by season minutes (`statuspage.LatestInjuries`, the app's
-  `lib/status.ts`).
+  gameweek ended (its last kickoff plus two hours, or its deadline when no
+  fixture of it has a kickoff time); older news, or none, is left out.
+  Players owned in the league come first, then the rest, each by season
+  minutes (`statuspage.LatestInjuries`, the app's `lib/status.ts`).
 - **Per-game stats** on the player card are FPL's gameweek line (ICT and
   expected stats included); bonus and defensive-contribution points come
   from the points breakdown so they match the points. Everything is null

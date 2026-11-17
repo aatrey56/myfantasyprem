@@ -6,6 +6,7 @@ import {
   defaultAwardsGameweek,
   fixtureCell,
   gameweekEnd,
+  lastGameweekEnd,
   gameweekSummary,
   injuryBadge,
   latestInjuries,
@@ -373,6 +374,39 @@ describe('gameweekEnd', () => {
   it('is null without a kickoff', () => {
     expect(gameweekEnd([])).toBeNull();
     expect(gameweekEnd([null])).toBeNull();
+  });
+});
+
+describe('lastGameweekEnd', () => {
+  const week = (finished: boolean, deadlineAt: string, kickoffs: (string | null)[]) => ({
+    finished,
+    deadlineAt,
+    kickoffs: () => kickoffs,
+  });
+  const last = '2026-10-12T20:00:00.000Z';
+
+  it('is the end of the last finished gameweek, not a later unfinished one', () => {
+    expect(
+      lastGameweekEnd([
+        week(true, '2026-10-02T10:00:00.000Z', ['2026-10-03T14:00:00.000Z']),
+        week(true, '2026-10-09T10:00:00.000Z', ['2026-10-10T14:00:00.000Z', last]),
+        week(false, '2026-10-16T10:00:00.000Z', ['2026-10-17T14:00:00.000Z']),
+      ]),
+    ).toBe(Date.parse(last) + MATCH_LENGTH_MS);
+  });
+
+  it('falls back to its deadline when no fixture has a kickoff time', () => {
+    expect(
+      lastGameweekEnd([
+        week(true, '2026-10-02T10:00:00.000Z', ['2026-10-03T14:00:00.000Z']),
+        week(true, '2026-10-09T10:00:00.000Z', [null, null]),
+      ]),
+    ).toBe(Date.parse('2026-10-09T10:00:00.000Z'));
+  });
+
+  it('is null before any gameweek has finished', () => {
+    expect(lastGameweekEnd([week(false, '2026-10-02T10:00:00.000Z', [last])])).toBeNull();
+    expect(lastGameweekEnd([])).toBeNull();
   });
 });
 

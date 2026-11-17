@@ -4298,8 +4298,9 @@ export interface components {
              * @description The latest injuries and suspensions: players in the game whose
              *     availability is not `available` and whose news (`player.newsAt`)
              *     was added after the last finished gameweek ended (its last
-             *     kickoff plus two hours; every player with a news time before
-             *     a gameweek has finished). Older news, or none, is left out.
+             *     kickoff plus two hours, or its deadline when no fixture of it
+             *     has a kickoff time; every player with a news time before a
+             *     gameweek has finished). Older news, or none, is left out.
              *     Players owned in this league come first, then the others; each
              *     group by season minutes, most first, then out before doubtful,
              *     then by name.

@@ -227,6 +227,23 @@ export function gameweekEnd(kickoffs: readonly (string | null)[]): number | null
   return times.length === 0 ? null : Math.max(...times) + MATCH_LENGTH_MS;
 }
 
+/**
+ * When the last finished gameweek ended, as epoch ms: `gameweekEnd` of its
+ * kickoffs, or its deadline when none has a time. Null before any has
+ * finished. `weeks` are in gameweek order; kickoffs are read only for the
+ * one that counts. The server's `lastGameweekEnd`.
+ */
+export function lastGameweekEnd(
+  weeks: readonly {
+    finished: boolean;
+    deadlineAt: string;
+    kickoffs: () => readonly (string | null)[];
+  }[],
+): number | null {
+  const last = weeks.findLast((w) => w.finished);
+  return last ? (gameweekEnd(last.kickoffs()) ?? Date.parse(last.deadlineAt)) : null;
+}
+
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**

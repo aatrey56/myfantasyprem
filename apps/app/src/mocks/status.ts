@@ -10,6 +10,7 @@ import {
   CURRENT_GW,
   fixturesFor,
   fixturesInGameweek,
+  gameweek,
   gameweekFixtures,
   PLAYERS,
   seasonTotals,
@@ -18,7 +19,7 @@ import {
 } from './world';
 import { playerOfTheWeek, teamOfTheWeek, type AwardCandidate } from '@/lib/awards';
 import { compareForm } from '@/lib/form';
-import { gameweekEnd, latestInjuries } from '@/lib/status';
+import { lastGameweekEnd, latestInjuries } from '@/lib/status';
 
 type Position = Schemas['Position'];
 type AwardStats = Schemas['AwardStats'];
@@ -227,7 +228,12 @@ function topAvailable(league: InSeasonLeague): Schemas['StatusAvailablePlayer'][
 
 function injuries(league: InSeasonLeague): Schemas['StatusFlaggedPlayer'][] {
   // The end of the last finished gameweek (the server's lastGameweekEnd).
-  const since = gameweekEnd(gameweekFixtures(CURRENT_GW - 1).map((f) => f.kickoffAt));
+  const since = lastGameweekEnd(
+    Array.from({ length: 38 }, (_, i) => ({
+      ...gameweek(i + 1),
+      kickoffs: () => gameweekFixtures(i + 1).map((f) => f.kickoffAt),
+    })),
+  );
   const rows = PLAYERS.filter((p) => p.availability !== 'available').map((p) => {
     const player = toPlayerRef(p);
     return {

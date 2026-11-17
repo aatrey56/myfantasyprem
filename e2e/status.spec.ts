@@ -126,17 +126,20 @@ for (const vp of [
       const firstFree = owned.indexOf(false);
       expect(firstFree).toBeGreaterThan(0);
       expect(owned.slice(firstFree).every((o) => !o)).toBe(true);
-      // The header names the columns and sits over them.
-      const header = card.getByTestId('injuries-header');
-      await expect(header).toContainText('Player');
-      await expect(header).toContainText('Pos');
-      await expect(header).toContainText('Mgr');
-      if (vp.width >= 360) await expect(header).toContainText('Club');
-      const mgr = (await header.getByText('Mgr').boundingBox())!;
+      // The card is a column too narrow for columns (a phone, or a desktop's
+      // side column): each row names position and club under the player, and
+      // the owner column, chip or "Free agent", ends at the same edge.
+      await expect(card.getByTestId('injuries-header')).toHaveCount(0);
+      await expect(card.getByTestId(/^injury-detail-/).first()).toHaveText(
+        /^(GK|DEF|MID|FWD) · [A-Z]{3}$/,
+      );
+      await expect(card.getByText('Free agent').first()).toBeVisible();
+      const edges = new Set<number>();
       for (const slot of await card.getByTestId(/^injury-owner-slot-/).all()) {
         const b = (await slot.boundingBox())!;
-        expect(Math.abs(b.x + b.width - (mgr.x + mgr.width))).toBeLessThan(1.5);
+        edges.add(Math.round(b.x + b.width));
       }
+      expect(edges.size).toBe(1);
       expect(await overflowingElements(page)).toEqual([]);
     });
 
@@ -240,3 +243,29 @@ for (const vp of [
     });
   });
 }
+
+// A card wide enough for columns (a tablet: one column of cards) reads like
+// a table: a header over Pos, Club and Mgr, the owner column right-aligned.
+test.describe('status injuries (tablet 768)', () => {
+  test.use({ viewport: { width: 768, height: 900 } });
+
+  test('columns under a header that sticks to the top of the list', async ({ page }) => {
+    await page.goto(LEAGUE);
+    const card = visible(page, 'status-injuries');
+    await expect(card).toBeVisible();
+    const header = card.getByTestId('injuries-header');
+    for (const label of ['Player', 'Pos', 'Club', 'Mgr']) await expect(header).toContainText(label);
+    await expect(card.getByTestId(/^injury-detail-/)).toHaveCount(0);
+    // The header is inside the scrolling list, so a classic scrollbar takes
+    // from both alike: it stays at the top as the rows scroll under it.
+    expect(await header.evaluate((el) => getComputedStyle(el.parentElement!).position)).toBe(
+      'sticky',
+    );
+    const mgr = (await header.getByText('Mgr').boundingBox())!;
+    for (const slot of await card.getByTestId(/^injury-owner-slot-/).all()) {
+      const b = (await slot.boundingBox())!;
+      expect(Math.abs(b.x + b.width - (mgr.x + mgr.width))).toBeLessThan(1.5);
+    }
+    expect(await overflowingElements(page)).toEqual([]);
+  });
+});
