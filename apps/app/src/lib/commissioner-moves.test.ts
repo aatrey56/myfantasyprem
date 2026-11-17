@@ -51,8 +51,8 @@ describe('the settings section', () => {
     expect(wantsMovesSection(undefined)).toBe(false);
   });
 
-  it('names who made a move, or a former manager', () => {
+  it('names who made a move, or a former commissioner once their account is deleted', () => {
     expect(moveByline(move('x'))).toBe('By Jo T.');
-    expect(moveByline({ actor: { id: '', displayName: '' } })).toBe('By a former manager');
+    expect(moveByline({ actor: null })).toBe('By a former commissioner');
   });
 });

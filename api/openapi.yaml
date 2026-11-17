@@ -9318,8 +9318,10 @@ components:
           type: string
           description: A sentence a manager can read, written when it happened.
         actor:
-          description: The commissioner who did it; `displayName` is empty once their account is gone.
-          $ref: '#/components/schemas/UserRef'
+          description: The commissioner who did it; null once their account is deleted.
+          oneOf:
+            - $ref: '#/components/schemas/UserRef'
+            - type: 'null'
         teams:
           type: array
           description: The teams it affected that are still in the league.

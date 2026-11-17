@@ -29,7 +29,7 @@ export function wantsMovesSection(section: string | string[] | undefined): boole
   return (Array.isArray(section) ? section[0] : section) === MOVES_SECTION;
 }
 
-/** "By Sam P." under a move; a deleted account's moves read "By a former manager". */
+/** "By Sam P." under a move; a deleted account's moves (actor null) read "By a former commissioner". */
 export function moveByline(move: Pick<Schemas['CommissionerMove'], 'actor'>): string {
-  return move.actor.displayName ? `By ${move.actor.displayName}` : 'By a former manager';
+  return move.actor?.displayName ? `By ${move.actor.displayName}` : 'By a former commissioner';
 }

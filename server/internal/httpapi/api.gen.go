@@ -1777,8 +1777,8 @@ type CommissionerMove struct {
 	// Examples: trade_vetoed
 	Action CommissionerMoveAction `json:"action"`
 
-	// Actor The commissioner who did it; `displayName` is empty once their account is gone.
-	Actor     UserRef   `json:"actor"`
+	// Actor The commissioner who did it; null once their account is deleted.
+	Actor     *UserRef  `json:"actor"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// Details What changed, when that is a few values; null otherwise.

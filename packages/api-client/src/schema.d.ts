@@ -5021,8 +5021,8 @@ export interface components {
             action: components["schemas"]["CommissionerMoveAction"];
             /** @description A sentence a manager can read, written when it happened. */
             summary: string;
-            /** @description The commissioner who did it; `displayName` is empty once their account is gone. */
-            actor: components["schemas"]["UserRef"];
+            /** @description The commissioner who did it; null once their account is deleted. */
+            actor: components["schemas"]["UserRef"] | null;
             /** @description The teams it affected that are still in the league. */
             teams: components["schemas"]["TeamRef"][];
             /** @description What changed, when that is a few values; null otherwise. */

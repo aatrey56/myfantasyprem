@@ -48,6 +48,13 @@ describe('the mock commissioner log', () => {
     expect(l.summary()).toMatchObject({ unseenCount: 1, latest: { summary: 'new' } });
     expect(l.markSeen()).toMatchObject({ unseenCount: 0, latest: null });
   });
+
+  it("keeps a deleted commissioner's moves, with no actor, unseen like any other", () => {
+    const l = log();
+    l.add({ action: 'member_removed', summary: 'gone', actor: null, createdAt: at(4) });
+    expect(l.list(0, 1).slice[0]).toMatchObject({ summary: 'gone', actor: null, unseen: true });
+    expect(l.summary()).toMatchObject({ unseenCount: 3, latest: { summary: 'gone', actor: null } });
+  });
 });
 
 describe('settingsChange', () => {

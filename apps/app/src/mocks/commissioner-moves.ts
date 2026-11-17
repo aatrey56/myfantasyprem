@@ -15,7 +15,8 @@ type TeamRef = Schemas['TeamRef'];
 export interface MoveInput {
   action: string;
   summary: string;
-  actor: Schemas['UserRef'];
+  /** null once the commissioner's account is deleted. */
+  actor: Schemas['UserRef'] | null;
   teams?: TeamRef[];
   details?: Schemas['CommissionerMoveDetails'];
   createdAt: string;
@@ -39,7 +40,7 @@ export function createMovesLog(viewerId: string, idSeed: number) {
     });
   }
 
-  const unseen = (i: number) => i > seenThrough && moves[i]!.actor.id !== viewerId;
+  const unseen = (i: number) => i > seenThrough && moves[i]!.actor?.id !== viewerId;
   const view = (i: number): Move => ({ ...moves[i]!, unseen: unseen(i) });
 
   function list(offset: number, limit: number) {

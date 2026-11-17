@@ -19,8 +19,12 @@ func moveBody(l *league.League, n names, e league.AuditEntry, unseen bool) Commi
 			teams = append(teams, teamRef(t, n))
 		}
 	}
-	// A commissioner whose account is gone has no name to show.
-	actor := UserRef{Id: e.ActorID, DisplayName: n[e.ActorID]}
+	// A commissioner whose account was deleted is no one: Postgres clears
+	// actor_id, and the memory store keeps an id nobody has (no name).
+	var actor *UserRef
+	if name, ok := n[e.ActorID]; e.ActorID != "" && ok {
+		actor = &UserRef{Id: e.ActorID, DisplayName: name}
+	}
 	m := CommissionerMove{
 		Id: e.ID, Action: CommissionerMoveAction(e.Action), Summary: e.Summary, Actor: actor, Teams: teams,
 		Unseen: unseen, CreatedAt: e.At,

@@ -3,9 +3,14 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
 
 // The commissioner's log over HTTP: entries newest first with who and what
@@ -117,5 +122,80 @@ func TestCommissionerMovesEndpoints(t *testing.T) {
 	}
 	if rec := doAs(h, memberTok, http.MethodPost, base+"/seen", `{"throughId":"cmv_01k7m2xq800000000000000401"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown move = %d", rec.Code)
+	}
+}
+
+// A commissioner who hands the role over and deletes their account leaves
+// their moves in the log with no actor: null, as the contract has it, not
+// an empty id that breaks the usr_ pattern.
+func TestCommissionerMovesOfADeletedAccount(t *testing.T) {
+	for _, store := range []string{"memory", "postgres"} {
+		t.Run(store, func(t *testing.T) {
+			var pool *pgxpool.Pool
+			if store == "postgres" {
+				pool = storetest.New(t)
+			}
+			srv, clock := newTestServerOn(pool)
+			opts := testOptions()
+			h := newHandler(opts, newRoutes(opts, srv))
+			commish := userOf(t, srv, testToken)
+			memberTok := signIn(srv, "Priya N.", "priya@example.com")
+			member := userOf(t, srv, memberTok)
+			l := importedLeague(t, srv, commish, member, true)
+			clock.Set(clock.Now().Add(time.Minute))
+			if rec := do(h, http.MethodPatch, "/v1/leagues/"+l.ID, `{"settings":{"trades":{"reviewHours":36}}}`); rec.Code != http.StatusOK {
+				t.Fatalf("PATCH = %d %s", rec.Code, rec.Body)
+			}
+			if rec := do(h, http.MethodPost, "/v1/leagues/"+l.ID+"/commissioner", `{"userId":"`+member+`"}`); rec.Code != http.StatusOK {
+				t.Fatalf("transfer = %d %s", rec.Code, rec.Body)
+			}
+			if rec := do(h, http.MethodDelete, "/v1/me", ""); rec.Code != http.StatusNoContent {
+				t.Fatalf("delete = %d %s", rec.Code, rec.Body)
+			}
+
+			for _, path := range []string{"", "/summary"} {
+				req := httptest.NewRequest(http.MethodGet, "/v1/leagues/"+l.ID+"/commissioner-moves"+path, nil)
+				req.Header.Set("Authorization", "Bearer "+memberTok)
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("GET %s = %d %s", path, rec.Code, rec.Body)
+				}
+				_, v := loadSpec(t)
+				if ok, errs := v.ValidateHttpResponse(req, rec.Result()); !ok {
+					for _, e := range errs {
+						t.Errorf("GET %s does not match the contract: %s: %s", path, e.Message, e.Reason)
+					}
+				}
+				var raw struct {
+					Data json.RawMessage `json:"data"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+					t.Fatal(err)
+				}
+				var moves []map[string]json.RawMessage
+				if path == "" {
+					err := json.Unmarshal(raw.Data, &moves)
+					if err != nil || len(moves) != 2 {
+						t.Fatalf("moves = %s %v", raw.Data, err)
+					}
+				} else {
+					var s map[string]json.RawMessage
+					if err := json.Unmarshal(raw.Data, &s); err != nil {
+						t.Fatal(err)
+					}
+					var latest map[string]json.RawMessage
+					if err := json.Unmarshal(s["latest"], &latest); err != nil || latest == nil {
+						t.Fatalf("summary = %s %v", raw.Data, err)
+					}
+					moves = append(moves, latest)
+				}
+				for _, m := range moves {
+					if string(m["actor"]) != "null" {
+						t.Errorf("GET %s: actor = %s, want null", path, m["actor"])
+					}
+				}
+			}
+		})
 	}
 }
