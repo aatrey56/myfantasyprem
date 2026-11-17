@@ -28,6 +28,15 @@ func (t pgTx) AddAudit(ctx context.Context, e *AuditEntry) error {
 	if teams == nil {
 		teams = []string{}
 	}
+	// The league's row lock first (held already when the action loaded the
+	// league): the identity is then drawn in commit order within the
+	// league, so a member's seen-up-to marker never passes an entry that
+	// commits later. Without it an insert draws its number, then waits for
+	// the lock in its foreign key check while a later entry commits.
+	var one int
+	if err := t.tx.QueryRow(ctx, `SELECT 1 FROM leagues WHERE id = $1 FOR UPDATE`, e.LeagueID).Scan(&one); err != nil {
+		return err
+	}
 	return t.tx.QueryRow(ctx,
 		`INSERT INTO commissioner_moves (id, league_id, actor_id, action, summary, team_ids, details, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING seq`,

@@ -88,7 +88,8 @@ type Tx interface {
 	// AddAudit records a commissioner move in this transaction (ADR 0017):
 	// it commits, or rolls back, with the action. Call it after the action's
 	// last check, so the memory store (no rollback) keeps no entry for a
-	// refused action. It sets e.Seq.
+	// refused action. It takes the league's lock (when the action has not)
+	// so entries are numbered in commit order. It sets e.Seq.
 	AddAudit(ctx context.Context, e *AuditEntry) error
 }
 
