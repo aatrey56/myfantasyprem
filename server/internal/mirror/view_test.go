@@ -135,6 +135,13 @@ func (r *recording) ScheduleTx(_ context.Context, _ any, args league.JobArgs, _ 
 	return nil
 }
 
+// schedFails is a job queue that is down.
+type schedFails struct{}
+
+func (schedFails) ScheduleTx(context.Context, any, league.JobArgs, time.Time) error {
+	return errors.New("queue down")
+}
+
 // An import that cannot reach FPL fails with a problem; starting it again
 // is allowed. A seat out of range and an unknown league are refused at once.
 func TestImportFailures(t *testing.T) {

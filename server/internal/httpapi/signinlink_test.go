@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -15,6 +16,13 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
+
+// issueFails is an auth store whose sign-in links fail to issue.
+type issueFails struct{ auth.Service }
+
+func (issueFails) IssueSignInLink(context.Context, string, string, string) (auth.SignInLink, error) {
+	return auth.SignInLink{}, errors.New("auth store down")
+}
 
 // signInLinkCodeOf is the code at the end of a sign-in link's URL.
 func signInLinkCodeOf(t *testing.T, url string) string {
@@ -70,6 +78,16 @@ func TestSeatSignInLink(t *testing.T) {
 				}
 				return out.Data
 			}
+			// A link that fails to issue is no commissioner move.
+			real := srv.auth
+			srv.auth = issueFails{real}
+			if rec := do(h, http.MethodPost, path, ""); rec.Code != http.StatusInternalServerError {
+				t.Fatalf("failed issue = %d %s", rec.Code, rec.Body)
+			}
+			srv.auth = real
+			if es, err := srv.leagues.Repo().Audit(context.Background(), l.ID, 0, 5); err != nil || len(es) != 0 {
+				t.Fatalf("log after a failed link = %+v %v", es, err)
+			}
 			first := issue()
 			if first.Owner.Id != jordan || first.Team.Id != seat.ID || !first.ExpiresAt.Equal(srv.now().Add(auth.SignInLinkTTL)) {
 				t.Errorf("link = %+v", first)
@@ -116,8 +134,8 @@ func TestSeatSignInLink(t *testing.T) {
 				}
 			}
 
-			// Limited per commissioner: the burst, then 429.
-			n := 2
+			// Limited per commissioner: the burst (the failed attempt counts), then 429.
+			n := 3
 			for ; n < 50; n++ {
 				if rec := do(h, http.MethodPost, path, ""); rec.Code == http.StatusTooManyRequests {
 					if rec.Header().Get("Retry-After") == "" {

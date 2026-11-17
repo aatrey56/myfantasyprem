@@ -159,6 +159,15 @@ func TestResyncResetsToFPLAndCancelsPendingMoves(t *testing.T) {
 		if _, err := e.svc.RequestResync(ctx, owner, lid, false); slug(err) != "invalid-request" {
 			t.Errorf("unconfirmed: %v", err)
 		}
+		// A request whose job cannot be queued is no commissioner move, and
+		// leaves nothing pending.
+		e.svc.Sched = schedFails{}
+		if _, err := e.svc.RequestResync(ctx, owner, lid, true); err == nil {
+			t.Fatal("re-sync with a failing queue succeeded")
+		}
+		if es, err := e.svc.Leagues.Audit(ctx, lid, 0, 10); err != nil || len(es) != 0 {
+			t.Fatalf("log after a failed request = %+v %v", es, err)
+		}
 		rec := &recording{}
 		e.svc.Sched = rec
 		v, err := e.svc.RequestResync(ctx, owner, lid, true)
@@ -174,7 +183,8 @@ func TestResyncResetsToFPLAndCancelsPendingMoves(t *testing.T) {
 		}
 		// One commissioner move, for the request that was accepted.
 		if es, err := e.svc.Leagues.Audit(ctx, lid, 0, 10); err != nil || len(es) != 1 ||
-			es[0].Action != league.AuditLeagueResynced || es[0].ActorID != owner {
+			es[0].Action != league.AuditLeagueResynced || es[0].ActorID != owner ||
+			es[0].Summary != "Requested a re-sync of the league from FPL Draft." {
 			t.Errorf("log after a re-sync request = %+v %v", es, err)
 		}
 		if _, err := e.svc.RequestCheck(ctx, owner, lid); slug(err) != "sync-pending" {

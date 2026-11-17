@@ -74,6 +74,10 @@ func (t pgTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 	return t.sched.ScheduleTx(ctx, t.tx, args, at)
 }
 
+func (t pgTx) ScheduleOn(ctx context.Context, s Scheduler, args JobArgs, at time.Time) error {
+	return s.ScheduleTx(ctx, t.tx, args, at)
+}
+
 // load reads one league; lock adds FOR UPDATE on the league row.
 func load(ctx context.Context, db store.DB, leagueID string, lock bool) (*League, error) {
 	ls, err := loadMany(ctx, db, []string{leagueID}, lock)

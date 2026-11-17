@@ -36,6 +36,10 @@ func (t memTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 	return t.m.sched.ScheduleTx(ctx, nil, args, at)
 }
 
+func (t memTx) ScheduleOn(ctx context.Context, s Scheduler, args JobArgs, at time.Time) error {
+	return s.ScheduleTx(ctx, nil, args, at)
+}
+
 var (
 	_ Repo = (*Memory)(nil)
 	_ Tx   = (*memTx)(nil)

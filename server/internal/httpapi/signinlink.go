@@ -75,19 +75,30 @@ func (s *Server) CreateSeatSignInLink(ctx context.Context, req CreateSeatSignInL
 			Headers: TooManyRequestsResponseHeaders{RetryAfter: secs},
 		}}, nil
 	}
-	// Logged first: the link lives in the auth store, so the entry cannot
-	// share its transaction, and a link nobody was told about is worse than
-	// an entry for one that failed to issue.
-	err = s.leagues.Repo().Tx(ctx, func(tx league.Tx) error {
-		return league.Record(ctx, tx, l, uid, s.now(), league.AuditSignInLinkIssued,
-			"Issued a sign-in link for the manager of "+league.TeamLabel(l, t.ID)+".", []string{t.ID}, nil, nil)
-	})
-	if err != nil {
-		return nil, err
-	}
+	// The link lives in the auth store, so it cannot share the entry's
+	// transaction: it is issued first, and its code is shown only once the
+	// entry has committed. A link whose entry failed is revoked, and its
+	// code was never shown, so nobody can use it.
 	link, err := s.auth.IssueSignInLink(ctx, owner.ID, l.ID, uid)
 	if err != nil {
 		return nil, err
+	}
+	err = s.leagues.Repo().Tx(ctx, func(tx league.Tx) error {
+		cur, err := tx.Load(ctx, l.ID)
+		if err != nil {
+			return err
+		}
+		if cur == nil {
+			return league.ErrLeagueNotFound
+		}
+		return league.Record(ctx, tx, cur, uid, s.now(), league.AuditSignInLinkIssued,
+			"Issued a sign-in link for the manager of "+league.TeamLabel(cur, t.ID)+".", []string{t.ID}, nil, nil)
+	})
+	if err != nil {
+		if rerr := s.auth.RevokeSignInLinks(ctx, l.ID, owner.ID); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
+		return failLeague[resp](ctx, err)
 	}
 	n, err := s.namesFor(ctx, l)
 	if err != nil {
