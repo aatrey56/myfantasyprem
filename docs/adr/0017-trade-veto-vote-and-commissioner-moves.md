@@ -69,14 +69,17 @@ UPDATE`, looks at the trade's status and does nothing if it is not
 - The change is a commissioner move: `settings_changed`, with the review
   before and after, written in the transaction of the update like every
   other setting. Saving the same values writes nothing.
-- A trade already `in_review` keeps the `review_mode` and `review_ends_at`
-  it was accepted with: `trades.Accept` stores both on the trade, and the
-  vote, the review and `CloseDue` read the trade's own mode, not the
-  league's. Only offers accepted after the change use the new mode and
-  period. Open offers (not yet accepted) take whichever mode is set when
-  they are accepted. The veto threshold is the one exception: it is read
-  from the league when votes are counted, so a new threshold applies to
-  trades still in a vote.
+- A trade already `in_review` keeps the `review_mode`, `review_ends_at`
+  and, in a league vote, `veto_threshold` it was accepted with:
+  `trades.Accept` stores them on the trade, and the vote, the review and
+  `CloseDue` read the trade's own, not the league's, so changing the
+  threshold mid-vote cannot veto or save a trade already in a vote. The
+  managers are still counted when the votes are (a seat emptied or filled
+  meanwhile counts). Only offers accepted after the change use the new
+  mode, period and threshold. Open offers (not yet accepted) take whichever
+  is set when they are accepted. Migration 24 gives trades already in a
+  vote the league's threshold at the time; a trade without one counts
+  against the league's.
 - The Settings screen keeps the Trade review control enabled after the
   draft, with a hint that trades already in review are not affected.
 
@@ -97,10 +100,13 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   `signin_link_issued`, `trade_vetoed`, `trade_approved` and
   `league_resynced`. A commissioner moving their own team as a manager
   (their picks, lineup, claims, trades, votes) is never logged, nor is a
-  request that changes nothing or fails. Two moves cannot share the
-  transaction: the sign-in link lives in the auth store (the entry is
-  written first) and the re-sync request in the mirror store (the entry
-  follows it).
+  request that changes nothing or fails (revoking a revoked invite is
+  nothing). Two moves cannot share the transaction entirely: the sign-in
+  link lives in the auth store, so it is issued first and its code is
+  returned only once the entry committed (a link whose entry failed is
+  revoked, and nobody saw its code); the re-sync's pending mark lives in
+  the mirror store, and its job is queued in the transaction of the entry
+  (`Tx.ScheduleOn`), which says the re-sync was requested.
 - Not in this repo today, so not logged: editing another team's roster or
   lineup, renaming another manager's team and correcting points. When one
   of them is added it records an entry with `league.Record` like the
@@ -121,7 +127,10 @@ UPDATE`, looks at the trade's status and does nothing if it is not
 - A move counts as unseen when it is after the marker, someone else made
   it, and it was made after the member joined: a new manager does not
   inherit the setup history, and the commissioner is not told about their
-  own moves.
+  own moves. A manager who takes over an existing seat (an open seat after
+  the draft, a claim link) keeps the seat's first `joined_at`, so joining
+  also starts their marker at the league's newest move, in the
+  transaction that gives them the seat (`Tx.StartAuditSeen`).
 - The Status screen shows "Commissioner moves · N new" over the latest
   move's sentence until it is tapped. The tap marks the moves seen and
   opens League settings scrolled to the "Commissioner Moves" section under
@@ -136,7 +145,8 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   the review period and the threshold at any time, in-season included.
 - The log grows with commissioner activity only, a handful of rows per
   league; the list is paged by offset like the other lists.
-- `Seq` is an identity column, assigned in commit order only per
-  transaction: entries are written under the league's row lock (every
-  writer loads the league first), which keeps the seen-up-to marker from
-  skipping an entry that commits late.
+- `Seq` is an identity column, drawn when the row is inserted, not when it
+  commits. `Tx.AddAudit` takes the league's row lock before inserting
+  (already held when the action loaded the league), so a league's entries
+  are numbered in commit order and the seen-up-to marker never skips an
+  entry that commits late (`TestAuditSeqFollowsCommitOrder`).
