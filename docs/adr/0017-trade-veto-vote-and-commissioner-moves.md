@@ -52,7 +52,15 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   vetoes needed), `league_trade_vetoed` when one is vetoed (besides
   `trade_reviewed` for the two teams), `trade_failed` to the two teams
   when an accepted trade cannot execute. Processing keeps
-  `trade_processed` and `league_trade_processed`.
+  `trade_processed` and `league_trade_processed`. The producer reads the
+  changed trade by id (`league.Repo.Trade`), not from `State`, which holds
+  only open trades: an outcome is a closed trade.
+- A manager's ballot counts only while they hold the seat. Leaving (or
+  being removed, or deleting the account) deletes their ballots on trades
+  still in a vote, in the transaction that releases the seat, so whoever
+  takes the seat next inherits no veto and may vote themselves. `Tally`
+  counts only the ballots of seats that have a manager, as `VotesNeeded`
+  counts the managers.
 - The commissioner's early approval or veto (`POST .../review`) still
   works in every mode, and a commissioner in the trade still cannot review
   it (ADR 0010).
@@ -65,7 +73,9 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   gameweek stay locked (`setting-locked`). This is how an imported FPL
   league, left on `commissioner` by migration 24, moves to a league vote:
   the commissioner switches it by hand. Nothing switches a league
-  automatically.
+  automatically, and a re-sync from FPL Draft keeps the league's review,
+  period and threshold, like its waiver order rule (`mirror.Apply`); only
+  the first import takes FPL's commissioner review.
 - The change is a commissioner move: `settings_changed`, with the review
   before and after, written in the transaction of the update like every
   other setting. Saving the same values writes nothing.
@@ -81,7 +91,9 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   vote the league's threshold at the time; a trade without one counts
   against the league's.
 - The Settings screen keeps the Trade review control enabled after the
-  draft, with a hint that trades already in review are not affected.
+  draft, with a hint that trades already in review are not affected. It
+  reads a preset threshold back as the preset (the server's float32
+  `0.33333334` is a third), so a saved form is not left dirty.
 
 ### Commissioner moves
 
@@ -103,8 +115,10 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   request that changes nothing or fails (revoking a revoked invite is
   nothing). Two moves cannot share the transaction entirely: the sign-in
   link lives in the auth store, so it is issued first and its code is
-  returned only once the entry committed (a link whose entry failed is
-  revoked, and nobody saw its code); the re-sync's pending mark lives in
+  returned only once the entry committed (the transaction checks the
+  caller is still the commissioner; a link whose entry failed is revoked
+  by its code, never another link issued meanwhile, and nobody saw its
+  code); the re-sync's pending mark lives in
   the mirror store, and its job is queued in the transaction of the entry
   (`Tx.ScheduleOn`), which says the re-sync was requested.
 - Not in this repo today, so not logged: editing another team's roster or
@@ -131,6 +145,11 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   the draft, a claim link) keeps the seat's first `joined_at`, so joining
   also starts their marker at the league's newest move, in the
   transaction that gives them the seat (`Tx.StartAuditSeen`).
+- Every commissioner move sends a realtime event once it commits
+  (`league.updated`, or the trade and draft events for those moves),
+  which refetches the summary; the summary also refetches when Status
+  comes back into view and every two minutes while it is in view, as the
+  events are best effort.
 - The Status screen shows "Commissioner moves · N new" over the latest
   move's sentence until it is tapped. The tap marks the moves seen and
   opens League settings scrolled to the "Commissioner Moves" section under
