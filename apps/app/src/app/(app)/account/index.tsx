@@ -156,8 +156,9 @@ export default function AccountScreen() {
             value={ownerLabel}
             onChange={setOwnerLabel}
             segments={[
+              { value: 'team_name', label: 'Team', testID: 'owner-label-team-name' },
+              { value: 'manager_name', label: 'Manager', testID: 'owner-label-manager-name' },
               { value: 'first_name', label: 'First name', testID: 'owner-label-first-name' },
-              { value: 'team_name', label: 'Team name', testID: 'owner-label-team-name' },
             ]}
           />
         </View>

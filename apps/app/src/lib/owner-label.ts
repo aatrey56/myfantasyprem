@@ -1,10 +1,21 @@
 import { userColor } from './identity';
 import { tint, type ColorTokens } from '@/theme/tokens';
 
-/** How an owner chip names a team's manager: `Sam` or `Sunday League Heroes`. */
-export type OwnerLabelMode = 'first_name' | 'team_name';
+/**
+ * How an owner chip names a team: its name (`Sunday League Heroes`), its
+ * manager's display name (`Sam P.`) or the manager's first name (`Sam`).
+ */
+export type OwnerLabelMode = 'team_name' | 'manager_name' | 'first_name';
 
-export const DEFAULT_OWNER_LABEL: OwnerLabelMode = 'first_name';
+/** Every mode, in the order Account lists them. */
+export const OWNER_LABEL_MODES: readonly OwnerLabelMode[] = [
+  'team_name',
+  'manager_name',
+  'first_name',
+];
+
+/** For a device that never chose. */
+export const DEFAULT_OWNER_LABEL: OwnerLabelMode = 'team_name';
 
 /** The device's stored choice (AsyncStorage; localStorage on web). */
 export const OWNER_LABEL_KEY = 'mfp.ownerLabel';
@@ -12,14 +23,14 @@ export const OWNER_LABEL_KEY = 'mfp.ownerLabel';
 export function parseOwnerLabel(raw: string | null): OwnerLabelMode {
   try {
     const v: unknown = raw === null ? null : JSON.parse(raw);
-    return v === 'team_name' || v === 'first_name' ? v : DEFAULT_OWNER_LABEL;
+    return OWNER_LABEL_MODES.find((m) => m === v) ?? DEFAULT_OWNER_LABEL;
   } catch {
     return DEFAULT_OWNER_LABEL;
   }
 }
 
 /** Manager names that stand for no person. */
-const NO_PERSON = /^(open seat|unclaimed|league average)$/i;
+const NO_PERSON = /^(open seat|unclaimed|league average|former manager)$/i;
 
 /** Titles that come before a name: "Dr Sam Rivers" → "Sam". */
 const TITLE = /^(mr|mrs|ms|miss|dr|sir|prof)\.?$/i;
@@ -63,6 +74,16 @@ export function teamLabelOf(name: string): string {
   return name.trim() || 'Team';
 }
 
+/**
+ * The manager's display name as the member set it, trimmed; null when it
+ * is blank, has no letters or stands for no one ("Open seat").
+ */
+export function managerNameOf(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed || NO_PERSON.test(trimmed) || !/\p{L}/u.test(trimmed)) return null;
+  return trimmed;
+}
+
 /** The team a chip names. `avatarColor` when the API sends one. */
 export interface OwnerTeam {
   name: string;
@@ -85,10 +106,25 @@ export function ownerNameOf(team: { name: string; managerName: string }): string
   return firstNameOf(team.managerName) ?? teamLabelOf(team.name);
 }
 
+/** The text for a team in a mode; the team name when there is no person to name. */
+export function ownerTextOf(
+  team: { name: string; managerName: string },
+  mode: OwnerLabelMode,
+): string {
+  switch (mode) {
+    case 'first_name':
+      return ownerNameOf(team);
+    case 'manager_name':
+      return managerNameOf(team.managerName) ?? teamLabelOf(team.name);
+    default:
+      return teamLabelOf(team.name);
+  }
+}
+
 /**
  * What a player's owner chip says: `You` on my own team; otherwise the
- * manager's first name (the team name when there is no person) or, in
- * team-name mode, the team name.
+ * team's name, its manager's display name or first name per `mode`. A
+ * manager mode falls back to the team name when there is no person.
  */
 export function ownerChipLabel(
   team: OwnerTeam,
@@ -97,7 +133,7 @@ export function ownerChipLabel(
 ): OwnerChipLabel {
   const color = userColor(team.name, team.avatarColor).bg;
   if (mine) return { text: 'You', color };
-  const text = mode === 'team_name' ? teamLabelOf(team.name) : ownerNameOf(team);
+  const text = ownerTextOf(team, mode);
   return { text, color };
 }
 
