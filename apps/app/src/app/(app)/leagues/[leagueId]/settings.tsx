@@ -194,13 +194,17 @@ function CommissionerSettings({
         ...settingsInput(settings),
       };
     } else {
-      // After the draft starts only these change: the review period and veto
-      // threshold (the kind of review is locked) and the waiver order.
+      // After the draft starts only these change: the trade review (kind,
+      // period, veto threshold) and the waiver order.
+      const reviewChanged = settings.review !== initial.review;
       const trades: NonNullable<Schemas['LeagueSettingsInput']['trades']> = {
-        ...(settings.review !== 'none' && settings.reviewHours !== initial.reviewHours
+        ...(reviewChanged ? { review: settings.review } : {}),
+        ...(settings.review !== 'none' &&
+        (reviewChanged || settings.reviewHours !== initial.reviewHours)
           ? { reviewHours: settings.reviewHours }
           : {}),
-        ...(settings.review === 'league_vote' && settings.vetoThreshold !== initial.vetoThreshold
+        ...(settings.review === 'league_vote' &&
+        (reviewChanged || settings.vetoThreshold !== initial.vetoThreshold)
           ? { vetoThreshold: settings.vetoThreshold }
           : {}),
       };

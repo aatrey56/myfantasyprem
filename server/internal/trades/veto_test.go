@@ -371,3 +371,75 @@ func TestCommissionerReviewIsLogged(t *testing.T) {
 		}
 	})
 }
+
+// The commissioner can change the league's review at any time (ADR 0017): a
+// trade already in review keeps the mode and window it was accepted with,
+// and only offers accepted afterwards use the new mode.
+func TestInReviewTradeKeepsItsModeWhenTheLeagueChanges(t *testing.T) {
+	leaguetest.Each(t, func(t *testing.T, e *leaguetest.Env) {
+		f := newFixture(t, e, 12, league.ReviewCommissioner)
+		ctx := e.Ctx
+		propose := func(a, b int, pos scoring.Position) league.Trade {
+			t.Helper()
+			_, tr, err := f.s.Propose(ctx, f.users[a], f.l.ID, f.teams[b], []string{f.at(t, a, pos)[0]}, []string{f.at(t, b, pos)[0]}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return tr
+		}
+		accept := func(b int, tr league.Trade) league.Trade {
+			t.Helper()
+			_, got, err := f.s.Accept(ctx, f.users[b], f.l.ID, tr.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return got
+		}
+		ptr := func(v string) *string { return &v }
+		hours := 48
+		first := accept(1, propose(0, 1, scoring.GKP))
+		// An offer made while the league was on commissioner review, still open.
+		open := propose(2, 3, scoring.DEF)
+		if first.ReviewMode != league.ReviewCommissioner {
+			t.Fatalf("first = %+v", first)
+		}
+		window := *first.ReviewEndsAt
+
+		e.Clock.Advance(time.Hour)
+		l, err := e.Leagues.Update(ctx, f.users[0], f.l.ID, nil, league.SettingsInput{
+			TradeReview: ptr(league.ReviewLeagueVote), ReviewHours: &hours,
+		})
+		if err != nil || l.Settings.TradeReview != league.ReviewLeagueVote || l.Settings.ReviewHours != 48 {
+			t.Fatalf("switch: %+v %v", l, err)
+		}
+
+		// The trade in review is still a commissioner review with its window,
+		// and nobody can veto it by vote.
+		got := f.trade(t, first.ID)
+		if got.Status != league.TradeInReview || got.ReviewMode != league.ReviewCommissioner || !got.ReviewEndsAt.Equal(window) {
+			t.Fatalf("in-review trade after the switch = %+v", got)
+		}
+		if _, _, err := f.s.Vote(ctx, f.users[4], f.l.ID, first.ID, VoteVeto); slug(err) != "no-league-vote" {
+			t.Fatalf("vote on a commissioner review: %v", err)
+		}
+		// An offer accepted after the change uses the new mode and period.
+		second := accept(3, open)
+		if second.ReviewMode != league.ReviewLeagueVote || !second.ReviewEndsAt.Equal(e.Clock.Now().Add(48*time.Hour)) {
+			t.Fatalf("accepted after the switch = %+v", second)
+		}
+		if _, _, err := f.s.Vote(ctx, f.users[4], f.l.ID, second.ID, VoteVeto); err != nil {
+			t.Fatalf("vote on the new trade: %v", err)
+		}
+		// And the old window ends on its own schedule, not the new 48 hours.
+		e.Clock.Set(window)
+		if n, err := f.s.CloseDue(ctx, f.l.ID); n != 1 || err != nil {
+			t.Fatalf("close: %d %v", n, err)
+		}
+		if got := f.trade(t, first.ID); got.Status != league.TradeProcessed {
+			t.Fatalf("the old trade did not end with its window: %+v", got)
+		}
+		if got := f.trade(t, second.ID); got.Status != league.TradeInReview {
+			t.Fatalf("the new trade ended with the old window: %+v", got)
+		}
+	})
+}

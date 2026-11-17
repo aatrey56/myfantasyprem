@@ -337,8 +337,12 @@ paths:
       summary: Change league settings (commissioner)
       description: |
         Commissioner only. Some settings lock once the draft starts
-        (`teamCount`, `roster`, `lineup`, `draft.type`, `trades.review`) and
-        answer 409 `setting-locked` after that. `waivers.order` can change
+        (`teamCount`, `roster`, `lineup`, `draft.type`) and answer 409
+        `setting-locked` after that. `trades.review`, `trades.reviewHours`
+        and `trades.vetoThreshold` can change at any time, mid-season too
+        (ADR 0017): a trade already in review keeps the mode and window it
+        was accepted with, and the change applies to offers accepted after
+        it. `waivers.order` can change
         at any time and applies from the next waiver run (`nextRunGameweek`
         and `nextRunAt` in `GET /v1/leagues/{leagueId}/waivers`); while a
         run is due (its deadline passed, not yet processed) it answers 409

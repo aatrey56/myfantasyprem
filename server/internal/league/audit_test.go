@@ -257,3 +257,60 @@ func TestCommissionerMovesSeen(t *testing.T) {
 		}
 	})
 }
+
+// The trade review can be changed at any time, after the draft too (ADR
+// 0017), and the change is a commissioner move; the draft-time settings stay
+// locked.
+func TestTradeReviewChangesAfterTheDraft(t *testing.T) {
+	impls(t, func(t *testing.T, m *Service, c *clock) {
+		l := joined(t, m, c, usrB)
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{TradeReview: ptr(ReviewCommissioner)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.Repo().Tx(ctx, func(tx Tx) error { return tx.StartSeason(ctx, l.ID, &Game{}) }); err != nil {
+			t.Fatal(err)
+		}
+		base := len(moves(t, m, usrA, l.ID))
+		c.t = c.t.Add(time.Minute)
+
+		if _, err := m.Update(ctx, usrB, l.ID, nil, SettingsInput{TradeReview: ptr(ReviewLeagueVote)}); slug(err) != "not-commissioner" {
+			t.Fatalf("manager change: %v", err)
+		}
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{TradeReview: ptr("mob_rule")}); kind(err) != KindInvalid {
+			t.Fatalf("unknown mode: %v", err)
+		}
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{PickTimerSeconds: ptr(30)}); slug(err) != "setting-locked" {
+			t.Fatalf("pick clock stays locked: %v", err)
+		}
+		if got := len(moves(t, m, usrA, l.ID)); got != base {
+			t.Fatalf("a refused change was logged (%d entries, want %d)", got, base)
+		}
+
+		got, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{TradeReview: ptr(ReviewLeagueVote), VetoThreshold: ptr(0.5)})
+		if err != nil {
+			t.Fatalf("switching to a vote after the draft: %v", err)
+		}
+		if got.Settings.TradeReview != ReviewLeagueVote || got.Settings.VetoThreshold != 0.5 {
+			t.Fatalf("settings = %+v", got.Settings)
+		}
+		es := moves(t, m, usrA, l.ID)
+		top := es[0]
+		if len(es) != base+1 || top.Action != AuditSettingsChanged || top.ActorID != usrA || !top.At.Equal(c.t) ||
+			top.Summary != "Changed the trade review to league vote, veto threshold to 50% of managers." ||
+			top.Before["tradeReview"] != ReviewCommissioner || top.After["tradeReview"] != ReviewLeagueVote {
+			t.Fatalf("entry = %+v (%d entries, want %d)", top, len(es), base+1)
+		}
+		// Saving the same mode again changes nothing and logs nothing.
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{TradeReview: ptr(ReviewLeagueVote)}); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(moves(t, m, usrA, l.ID)); got != base+1 {
+			t.Fatalf("a no-op change was logged (%d entries)", got)
+		}
+		// Back to no review: the period goes to zero, as before the draft.
+		got, err = m.Update(ctx, usrA, l.ID, nil, SettingsInput{TradeReview: ptr(ReviewNone)})
+		if err != nil || got.Settings.TradeReview != ReviewNone || got.Settings.ReviewHours != 0 {
+			t.Fatalf("to none: %+v %v", got, err)
+		}
+	})
+}

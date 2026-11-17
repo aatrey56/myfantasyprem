@@ -369,7 +369,7 @@ func settingsRangeErrors(in SettingsInput) []FieldError {
 }
 
 // applySettings validates and applies in to s. draftStarted locks the
-// draft-time settings.
+// draft-time settings (not the trade review, ADR 0017).
 func applySettings(s *Settings, in SettingsInput, draftStarted bool, teams int) error {
 	if errs := settingsRangeErrors(in); len(errs) > 0 {
 		return Errorf(KindInvalid, "invalid-request", "Invalid request", "Some settings are out of range.", errs...)
@@ -391,10 +391,9 @@ func applySettings(s *Settings, in SettingsInput, draftStarted bool, teams int) 
 		}
 		s.TeamCount = *in.TeamCount
 	}
+	// The review mode can change at any time (ADR 0017): a trade already in
+	// review keeps its own mode and window (trades.Accept stores them).
 	if in.TradeReview != nil {
-		if draftStarted {
-			return lockedErr("trades.review")
-		}
 		switch *in.TradeReview {
 		case ReviewNone, ReviewCommissioner, ReviewLeagueVote:
 			s.TradeReview = *in.TradeReview

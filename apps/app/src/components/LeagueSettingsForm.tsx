@@ -103,11 +103,10 @@ export function LeagueSettingsForm({
       <Card style={{ gap: spacing.lg }}>
         {locked ? (
           <AppText variant="meta" muted testID="settings-locked">
-            The draft has started, so team count, the pick clock and the kind of trade review are
-            locked.
+            The draft has started, so team count and the pick clock are locked.
             {readOnly
               ? ''
-              : ' The review period, veto threshold and waiver order can still change.'}
+              : ' The trade review, review period, veto threshold and waiver order can still change.'}
           </AppText>
         ) : null}
         {locked ? (
@@ -149,7 +148,7 @@ export function LeagueSettingsForm({
           <AppText variant="meta" weight="semibold">
             Trade review
           </AppText>
-          {locked ? null : (
+          {readOnly ? null : (
             <SegmentedControl
               kind="radio"
               accessibilityLabel="Trade review"
@@ -166,6 +165,12 @@ export function LeagueSettingsForm({
           <AppText variant="meta" muted>
             {REVIEW_HELP[value.review] ?? 'Custom review rules.'}
           </AppText>
+          {locked && !readOnly ? (
+            <AppText variant="meta" muted testID="trade-review-hint">
+              A change applies to offers accepted after you save. Trades already in review keep the
+              review they started with.
+            </AppText>
+          ) : null}
         </View>
         {value.review !== 'none' && readOnly ? (
           <AppText variant="meta" testID="review-summary">

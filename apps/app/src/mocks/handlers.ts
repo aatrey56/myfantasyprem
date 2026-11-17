@@ -771,13 +771,11 @@ const leagueHandlers = [
       const lockedField = started
         ? s?.teamCount !== undefined
           ? 'teamCount'
-          : s?.trades?.review !== undefined
-            ? 'trades.review'
-            : s?.draft !== undefined
-              ? 'draft'
-              : s?.startGameweek !== undefined
-                ? 'startGameweek'
-                : null
+          : s?.draft !== undefined
+            ? 'draft'
+            : s?.startGameweek !== undefined
+              ? 'startGameweek'
+              : null
         : null;
       if (lockedField) {
         return problem(

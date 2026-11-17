@@ -57,6 +57,29 @@ UPDATE`, looks at the trade's status and does nothing if it is not
   works in every mode, and a commissioner in the trade still cannot review
   it (ADR 0010).
 
+### The review can change at any time
+
+- `trades.review`, `trades.reviewHours` and `trades.vetoThreshold` are no
+  longer locked once the draft starts: the commissioner can change them
+  in-season. Team count, the pick clock, the draft start and the start
+  gameweek stay locked (`setting-locked`). This is how an imported FPL
+  league, left on `commissioner` by migration 24, moves to a league vote:
+  the commissioner switches it by hand. Nothing switches a league
+  automatically.
+- The change is a commissioner move: `settings_changed`, with the review
+  before and after, written in the transaction of the update like every
+  other setting. Saving the same values writes nothing.
+- A trade already `in_review` keeps the `review_mode` and `review_ends_at`
+  it was accepted with: `trades.Accept` stores both on the trade, and the
+  vote, the review and `CloseDue` read the trade's own mode, not the
+  league's. Only offers accepted after the change use the new mode and
+  period. Open offers (not yet accepted) take whichever mode is set when
+  they are accepted. The veto threshold is the one exception: it is read
+  from the league when votes are counted, so a new threshold applies to
+  trades still in a vote.
+- The Settings screen keeps the Trade review control enabled after the
+  draft, with a hint that trades already in review are not affected.
+
 ### Commissioner moves
 
 - An entry is written whenever the commissioner uses a power a manager
@@ -109,8 +132,8 @@ UPDATE`, looks at the trade's status and does nothing if it is not
 - Existing leagues that never chose a review get one. That is the owner's
   intent (the old default was the absence of a decision), but a league that
   did choose `none` explicitly cannot be told apart in the stored settings
-  and is switched too; its commissioner can change the review period and
-  threshold at any time, and the kind of review before the draft starts.
+  and is switched too; its commissioner can change the kind of review,
+  the review period and the threshold at any time, in-season included.
 - The log grows with commissioner activity only, a handful of rows per
   league; the list is paged by offset like the other lists.
 - `Seq` is an identity column, assigned in commit order only per

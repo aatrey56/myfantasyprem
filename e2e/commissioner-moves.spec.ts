@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures';
 
-import { LEAGUE, overflowingElements, signIn } from './helpers';
+import { LATE_LEAGUE, LEAGUE, overflowingElements, signIn } from './helpers';
 
 test.beforeEach(async ({ page }) => signIn(page));
 
@@ -52,6 +52,33 @@ for (const vp of [
       await page.goBack();
       await expect(visible(page, 'status-loaded')).toBeVisible();
       await expect(page.getByTestId('commissioner-moves-banner')).toHaveCount(0);
+    });
+
+    test('the commissioner switches an in-season league to a league vote, and it is logged', async ({
+      page,
+    }) => {
+      // Drafted mid-season, on commissioner review; the demo user is its commissioner.
+      await page.goto(`${LATE_LEAGUE}/settings`);
+      const review = visible(page, 'trade-review');
+      await expect(review).toBeVisible();
+      await expect(visible(page, 'trade-review-hint')).toContainText(
+        'Trades already in review keep the review they started with',
+      );
+      await expect(visible(page, 'veto-threshold')).toHaveCount(0);
+      await review.getByRole('radio', { name: 'Vote' }).click();
+      await expect(visible(page, 'veto-threshold')).toBeVisible();
+      await visible(page, 'save-settings').click();
+      await expect(page.getByTestId('toast')).toContainText('Settings saved');
+      await expect(visible(page, 'save-settings')).toBeDisabled();
+      // The league came back on a vote: its veto threshold shows.
+      await expect(visible(page, 'veto-threshold')).toBeVisible();
+
+      const section = page.getByTestId('commissioner-moves-section');
+      const rows = section.locator('[data-testid^="commissioner-move-cmv_"]');
+      // The league's three earlier moves, and this one on top.
+      await expect(rows).toHaveCount(4);
+      await expect(rows.first()).toContainText('Changed the trade review to league vote');
+      expect(await overflowingElements(page)).toEqual([]);
     });
   });
 }
