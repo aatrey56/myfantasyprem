@@ -1098,6 +1098,9 @@ func ClaimSeatIn(ctx context.Context, tx Tx, code string, now time.Time, owner f
 	if err := tx.Save(ctx, l); err != nil {
 		return nil, Team{}, err
 	}
+	if err := tx.StartAuditSeen(ctx, l.ID, uid); err != nil {
+		return nil, Team{}, err
+	}
 	return out, out.Teams[ti], nil
 }
 
@@ -1135,7 +1138,7 @@ func (m *Service) AcceptInvite(ctx context.Context, actor, code, teamName string
 			}
 			inv.Uses++
 			out = clone(l)
-			return tx.Save(ctx, l)
+			return joinSave(ctx, tx, l, actor)
 		}
 		if err := validName(teamName, 1, 32, "teamName"); err != nil {
 			return err
@@ -1156,10 +1159,21 @@ func (m *Service) AcceptInvite(ctx context.Context, actor, code, teamName string
 		}
 		inv.Uses++
 		out = clone(l)
-		return tx.Save(ctx, l)
+		return joinSave(ctx, tx, l, actor)
 	})
 	if err != nil {
 		return nil, Team{}, err
 	}
 	return out, t, nil
+}
+
+// joinSave saves a league a manager just joined and starts their seen
+// marker at its newest commissioner move: a seat taken over keeps its
+// first manager's JoinedAt, so that alone would show the newcomer the
+// moves made before they arrived.
+func joinSave(ctx context.Context, tx Tx, l *League, userID string) error {
+	if err := tx.Save(ctx, l); err != nil {
+		return err
+	}
+	return tx.StartAuditSeen(ctx, l.ID, userID)
 }

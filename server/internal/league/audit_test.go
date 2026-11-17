@@ -258,6 +258,98 @@ func TestCommissionerMovesSeen(t *testing.T) {
 	})
 }
 
+// A manager who takes over a seat (an open seat after the draft, or a claim
+// link's) starts with nothing unseen: the team's JoinedAt is its first
+// manager's, and the moves before the newcomer arrived are not theirs.
+func TestNewManagerOfASeatInheritsNoMoves(t *testing.T) {
+	impls(t, func(t *testing.T, m *Service, c *clock) {
+		l := joined(t, m, c, usrB, usrC)
+		if err := m.Repo().Tx(ctx, func(tx Tx) error { return tx.StartSeason(ctx, l.ID, &Game{}) }); err != nil {
+			t.Fatal(err)
+		}
+		step := func() { c.t = c.t.Add(time.Minute) }
+		unseen := func(u string) int {
+			t.Helper()
+			s, _, err := m.CommissionerMovesSummary(ctx, u, l.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return s.Unseen
+		}
+		step()
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{ReviewHours: ptr(36)}); err != nil {
+			t.Fatal(err)
+		}
+		// Two seats empty; their teams keep their old JoinedAt.
+		for _, u := range []string{usrB, usrC} {
+			step()
+			if _, err := m.RemoveMember(ctx, usrA, l.ID, u); err != nil {
+				t.Fatal(err)
+			}
+		}
+		step()
+		inv, err := m.CreateInvite(ctx, usrA, l.ID, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		step()
+		if _, _, err := m.AcceptInvite(ctx, usrD, inv.Code, "New Owners"); err != nil {
+			t.Fatal(err)
+		}
+		if n := unseen(usrD); n != 0 {
+			t.Fatalf("D took over a seat with %d moves unseen, want 0", n)
+		}
+		cur, err := m.Get(ctx, usrA, l.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var open string
+		for _, tm := range cur.Teams {
+			if tm.OwnerID == "" {
+				open = tm.ID
+			}
+		}
+		step()
+		claim, err := m.ClaimInvite(ctx, usrA, l.ID, open)
+		if err != nil {
+			t.Fatal(err)
+		}
+		step()
+		if _, _, err := m.ClaimSeat(ctx, claim.Code, func() (string, error) { return usrE, nil }); err != nil {
+			t.Fatal(err)
+		}
+		// E arrived last; D has seen nothing since arriving, the claim link.
+		for u, want := range map[string]int{usrD: 1, usrE: 0} {
+			if n := unseen(u); n != want {
+				t.Fatalf("%s: %d moves unseen, want %d", u, n, want)
+			}
+			p, err := m.CommissionerMoves(ctx, u, l.ID, 0, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := 0
+			for _, e := range p.Entries {
+				if p.Unseen(e) {
+					n++
+				}
+			}
+			if n != want {
+				t.Fatalf("%s: %d listed as unseen, want %d", u, n, want)
+			}
+		}
+		// What happens from then on is theirs to see.
+		step()
+		if _, err := m.Update(ctx, usrA, l.ID, nil, SettingsInput{ReviewHours: ptr(48)}); err != nil {
+			t.Fatal(err)
+		}
+		for u, want := range map[string]int{usrD: 2, usrE: 1} {
+			if n := unseen(u); n != want {
+				t.Fatalf("%s: %d unseen after a new move, want %d", u, n, want)
+			}
+		}
+	})
+}
+
 // The trade review can be changed at any time, after the draft too (ADR
 // 0017), and the change is a commissioner move; the draft-time settings stay
 // locked.

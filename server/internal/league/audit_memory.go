@@ -13,6 +13,18 @@ func (t memTx) AddAudit(_ context.Context, e *AuditEntry) error {
 	return nil
 }
 
+func (t memTx) StartAuditSeen(_ context.Context, leagueID, userID string) error {
+	all := t.m.audit[leagueID]
+	if len(all) == 0 {
+		return nil
+	}
+	if t.m.auditSeen[leagueID] == nil {
+		t.m.auditSeen[leagueID] = map[string]int64{}
+	}
+	t.m.auditSeen[leagueID][userID] = max(t.m.auditSeen[leagueID][userID], all[len(all)-1].Seq)
+	return nil
+}
+
 func (m *Memory) Audit(_ context.Context, leagueID string, offset, limit int) ([]AuditEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -43,6 +43,16 @@ func (t pgTx) AddAudit(ctx context.Context, e *AuditEntry) error {
 		e.ID, e.LeagueID, nullable(e.ActorID), e.Action, e.Summary, teams, details, e.At).Scan(&e.Seq)
 }
 
+func (t pgTx) StartAuditSeen(ctx context.Context, leagueID, userID string) error {
+	_, err := t.tx.Exec(ctx,
+		`INSERT INTO commissioner_moves_seen (league_id, user_id, seen_seq, updated_at)
+		 SELECT $1, $2, max(seq), now() FROM commissioner_moves WHERE league_id = $1 HAVING max(seq) IS NOT NULL
+		 ON CONFLICT (league_id, user_id) DO UPDATE
+		   SET seen_seq = greatest(commissioner_moves_seen.seen_seq, EXCLUDED.seen_seq), updated_at = now()`,
+		leagueID, userID)
+	return err
+}
+
 const auditColumns = `seq, id, league_id, coalesce(actor_id, ''), action, summary, team_ids, details, created_at`
 
 func scanAudit(rows pgx.Rows) ([]AuditEntry, error) {

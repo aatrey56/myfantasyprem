@@ -94,6 +94,11 @@ type Tx interface {
 	// refused action. It takes the league's lock (when the action has not)
 	// so entries are numbered in commit order. It sets e.Seq.
 	AddAudit(ctx context.Context, e *AuditEntry) error
+	// StartAuditSeen moves userID's seen-up-to marker to the league's newest
+	// entry (never back), for a manager who just took a seat: the moves
+	// before they arrived are not theirs to see. Call it with the league
+	// loaded, so no entry can commit in between.
+	StartAuditSeen(ctx context.Context, leagueID, userID string) error
 }
 
 // Game is a league's game state: who owns whom in which gameweeks, the
