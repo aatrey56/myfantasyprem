@@ -107,11 +107,11 @@ export function TradeCard({ trade, myTeamId, now, onAction, busy }: Props) {
     (trade.offeringTeam.id === myTeamId || trade.receivingTeam.id === myTeamId);
   const s = sidesFor(trade, myTeamId);
   const actions = new Set(trade.viewerActions);
+  const veto = vetoControl(trade, now);
   const commissioner = actions.has('review');
   const memberActions = [...actions].some((a) => a !== 'review' && (a !== 'vote' || veto !== null));
   const review = trade.review;
   const reviewOpen = trade.status === 'in_review' && review && !onFPL;
-  const veto = vetoControl(trade, now);
   const title = involved
     ? trade.offeringTeam.id === myTeamId
       ? `You offered ${trade.receivingTeam.name}`
