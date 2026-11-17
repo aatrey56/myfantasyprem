@@ -9,7 +9,7 @@ import { Button, IconButton } from '../Button';
 import { Card } from '../Card';
 import { Chip, Pill } from '../Chip';
 import { EmptyState } from '../EmptyState';
-import { OwnerChip } from '../OwnerChip';
+import { OWNER_CHIP_MAX_WIDTH, OwnerChip } from '../OwnerChip';
 import { ChevronLeft, ChevronRight, TriangleAlert, Users } from '../icons';
 import { pressFeedback, type PressState } from '../pressable';
 import { PressableLink } from '../PressableLink';
@@ -879,8 +879,8 @@ export function FixturesCard({
 
 // ---------------------------------------------------------------- injuries
 
-/** The injuries card's owner column: room for `You` or a short first name. */
-const INJURY_OWNER_WIDTH = 56;
+/** The injuries card's owner column: as wide as the widest chip (team names by default). */
+const INJURY_OWNER_WIDTH = OWNER_CHIP_MAX_WIDTH;
 
 export function InjuriesCard({
   players,

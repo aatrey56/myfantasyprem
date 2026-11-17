@@ -7,8 +7,7 @@ const OWNER_CHIP_MAX_WIDTH = 96;
 
 // Owner chips (FixtureScreen, InjuriesCard) name the team, "You" on my own
 // team; Account → "Show owners as" switches them to the manager's name or
-// first name. The
-// League tab's matchup cards wrap long team names to two lines.
+// first name. The League tab's matchup cards wrap long team names to two lines.
 // 'shared-owners': each player of mine is also on a second team of mine and
 // on Sam Rivers' and Dana Cole's teams, so other owners are always there.
 
@@ -86,9 +85,7 @@ for (const vp of [
       await expectChipsClearOfPoints(page);
     });
 
-    test('Show owners as: Team name, Manager name or First name, kept after a reload', async ({
-      page,
-    }) => {
+    test('Show owners as: Team, Manager or First name, kept after a reload', async ({ page }) => {
       await startWithScenario(page, 'shared-owners');
       await page.goto('/account');
       const setting = visible(page, 'owner-label-setting');
@@ -98,8 +95,8 @@ for (const vp of [
         manager: setting.getByTestId('owner-label-manager-name'),
         first: setting.getByTestId('owner-label-first-name'),
       };
-      await expect(picks.team).toHaveText('Team name');
-      await expect(picks.manager).toHaveText('Manager name');
+      await expect(picks.team).toHaveText('Team');
+      await expect(picks.manager).toHaveText('Manager');
       await expect(picks.first).toHaveText('First name');
       // Team name is the pick for a device that never chose.
       await expect(picks.team).toHaveAttribute('aria-checked', 'true');
