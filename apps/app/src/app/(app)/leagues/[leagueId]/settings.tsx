@@ -1,7 +1,8 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, type ScrollView } from 'react-native';
+import type { RefObject } from 'react';
 
 import { useDraft, useDraftControl, useUpdateDraft } from '@/api/draft-hooks';
 import { useFreshness } from '@/api/freshness';
@@ -19,6 +20,7 @@ import { Avatar } from '@/components/Badges';
 import { Button, IconButton } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Pill } from '@/components/Chip';
+import { CommissionerMovesSection } from '@/components/league/CommissionerMovesSection';
 import { Crown, LayoutGrid, LogOut, Play, Trash } from '@/components/icons';
 import { InviteCard } from '@/components/InviteCard';
 import {
@@ -38,6 +40,7 @@ import { SkeletonRows } from '@/components/Skeleton';
 import { TextField } from '@/components/TextField';
 import { useToast } from '@/components/Toast';
 import { startBlocker, startExplanation } from '@/lib/draft';
+import { wantsMovesSection } from '@/lib/commissioner-moves';
 import { describeError } from '@/lib/errors';
 import { leagueStatus } from '@/lib/leagues';
 import { formatDateTime } from '@/lib/time';
@@ -48,29 +51,66 @@ export { RouteError as ErrorBoundary } from '@/components/RouteError';
 
 /** Commissioner settings, invites, members and the draft schedule. Read-only for members. */
 export default function LeagueSettingsScreen() {
-  const { leagueId } = useLocalSearchParams<{ leagueId: string }>();
+  const { leagueId, section } = useLocalSearchParams<{ leagueId: string; section?: string }>();
   const home = useLeagueHome(leagueId);
   const freshness = useFreshness(home);
+  const scrollRef = useRef<ScrollView>(null);
   return (
     <Screen
       title="League settings"
       back={{ label: 'League', href: `/leagues/${leagueId}/league` }}
       freshness={freshness}
       maxWidth={720}
+      scrollRef={scrollRef}
     >
       <QueryStatus query={home}>
-        {({ data }) => <SettingsBody leagueId={leagueId} home={data} />}
+        {({ data }) => (
+          <SettingsBody
+            leagueId={leagueId}
+            home={data}
+            scrollRef={scrollRef}
+            scrollToMoves={wantsMovesSection(section)}
+          />
+        )}
       </QueryStatus>
     </Screen>
   );
 }
 
-function SettingsBody({ leagueId, home }: { leagueId: string; home: Schemas['LeagueHome'] }) {
+function SettingsBody({
+  leagueId,
+  home,
+  scrollRef,
+  scrollToMoves,
+}: {
+  leagueId: string;
+  home: Schemas['LeagueHome'];
+  scrollRef: RefObject<ScrollView | null>;
+  scrollToMoves: boolean;
+}) {
   const isCommissioner = home.viewer.role === 'commissioner';
   const imported = home.league.source === 'fpl_import';
   const preDraft = home.league.status === 'pre_draft';
   const { spacing } = useTheme();
   const st = leagueStatus(home.league.status);
+  const [now] = useState(() => Date.now());
+  // The Status banner opens this screen at the commissioner's moves: scroll
+  // there once, when the moves have loaded (the page is tall enough then).
+  const movesRef = useRef<View>(null);
+  const scrolled = useRef(false);
+  const scrollToMovesSection = () => {
+    const target = movesRef.current;
+    const scroller = scrollRef.current;
+    if (!scrollToMoves || scrolled.current || !target || !scroller) return;
+    scrolled.current = true;
+    // A ScrollView is a native view: it measures like a View.
+    const frame = scroller as unknown as View;
+    target.measureInWindow((_x, targetY) => {
+      frame.measureInWindow((_sx, scrollerY) => {
+        scroller.scrollTo({ y: Math.max(0, targetY - scrollerY - spacing.lg), animated: false });
+      });
+    });
+  };
   return (
     <View style={{ gap: spacing.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -118,6 +158,10 @@ function SettingsBody({ leagueId, home }: { leagueId: string; home: Schemas['Lea
         />
       )}
 
+      <View ref={movesRef} collapsable={false}>
+        <CommissionerMovesSection leagueId={leagueId} now={now} onLoaded={scrollToMovesSection} />
+      </View>
+
       <MembersSection leagueId={leagueId} home={home} isCommissioner={isCommissioner} />
     </View>
   );
@@ -149,9 +193,25 @@ function CommissionerSettings({
         ...(settings.teamCount !== initial.teamCount ? { teamCount: settings.teamCount } : {}),
         ...settingsInput(settings),
       };
-    } else if (settings.waiverOrder !== initial.waiverOrder) {
-      // The only setting that changes after the draft has started.
-      body.settings = { waivers: { order: settings.waiverOrder } };
+    } else {
+      // After the draft starts only these change: the review period and veto
+      // threshold (the kind of review is locked) and the waiver order.
+      const trades: NonNullable<Schemas['LeagueSettingsInput']['trades']> = {
+        ...(settings.review !== 'none' && settings.reviewHours !== initial.reviewHours
+          ? { reviewHours: settings.reviewHours }
+          : {}),
+        ...(settings.review === 'league_vote' && settings.vetoThreshold !== initial.vetoThreshold
+          ? { vetoThreshold: settings.vetoThreshold }
+          : {}),
+      };
+      const waivers =
+        settings.waiverOrder !== initial.waiverOrder ? { order: settings.waiverOrder } : undefined;
+      if (Object.keys(trades).length > 0 || waivers) {
+        body.settings = {
+          ...(Object.keys(trades).length > 0 ? { trades } : {}),
+          ...(waivers ? { waivers } : {}),
+        };
+      }
     }
     update.mutate(body, {
       onSuccess: () => toast({ message: 'Settings saved', tone: 'success' }),

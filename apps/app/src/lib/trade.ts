@@ -169,11 +169,68 @@ export function sidesFor(t: Trade, myTeamId: string | undefined) {
 }
 
 /**
- * The word for a trade vote. The wire value `allow` reads "Uphold" in the
- * app; unknown values are shown as sent.
+ * The word for a trade vote. The wire value `allow` (an older client's
+ * "uphold") reads "Uphold" and `withdraw` reads "Withdraw veto"; unknown
+ * values are shown as sent.
  */
 export function voteLabel(vote: string): string {
   if (vote === 'veto') return 'Veto';
   if (vote === 'allow') return 'Uphold';
+  if (vote === 'withdraw') return 'Withdraw veto';
   return vote;
+}
+
+/**
+ * What the league vote on a trade in review lets me do, by the clock:
+ * `veto` when I may veto, `withdraw` when I have and the review is still
+ * open, null once the window has closed (the server settles the trade) or
+ * when the trade does not offer me a vote.
+ */
+export function vetoControl(
+  trade: Pick<Trade, 'status' | 'viewerActions' | 'review'>,
+  now: number,
+): 'veto' | 'withdraw' | null {
+  const review = trade.review;
+  if (trade.status !== 'in_review' || !review || !trade.viewerActions.includes('vote')) return null;
+  if (review.endsAt && Date.parse(review.endsAt) <= now) return null;
+  return review.myVote === 'veto' ? 'withdraw' : 'veto';
+}
+
+/** "1 of 4 veto votes": how close a trade in a league vote is to being vetoed. */
+export function vetoTally(
+  review: Pick<NonNullable<Trade['review']>, 'vetoVotes' | 'votesNeeded'>,
+): string {
+  const needed = review.votesNeeded ?? '?';
+  return `${review.vetoVotes} of ${needed} veto ${review.votesNeeded === 1 ? 'vote' : 'votes'}`;
+}
+
+/** The veto thresholds a commissioner picks from: the share of the managers outside a trade that blocks it. */
+export const VETO_THRESHOLDS = [
+  { value: 0.25, label: 'A quarter' },
+  { value: 1 / 3, label: 'A third' },
+  { value: 0.5, label: 'Half' },
+  { value: 2 / 3, label: 'Two thirds' },
+] as const;
+
+/** The preset closest to a threshold the server sent (a float32 on the wire). */
+export function nearestVetoThreshold(threshold: number): number {
+  return VETO_THRESHOLDS.reduce((best, t) =>
+    Math.abs(t.value - threshold) < Math.abs(best.value - threshold) ? t : best,
+  ).value;
+}
+
+/**
+ * Veto votes that block a trade in a league of `teams` teams: the threshold
+ * of the managers outside the trade, rounded up, at least one. Mirrors the
+ * server (docs/adr/0017), whose product is rounded to 6 places first.
+ */
+export function vetoesNeeded(threshold: number, teams: number): number {
+  const outside = Math.max(0, teams - 2);
+  return Math.max(1, Math.ceil(Math.round(threshold * outside * 1e6) / 1e6));
+}
+
+/** "4 of 10 managers outside the trade must veto it", for the settings screen. */
+export function vetoThresholdText(threshold: number, teams: number): string {
+  const outside = Math.max(0, teams - 2);
+  return `${vetoesNeeded(threshold, teams)} of the ${outside} managers outside a trade must veto it to block it.`;
 }

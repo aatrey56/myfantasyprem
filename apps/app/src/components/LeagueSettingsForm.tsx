@@ -7,6 +7,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { SectionHeader } from './SectionHeader';
 import { Stepper } from './TextField';
 import { MIN_TEAMS } from '@/lib/draft';
+import { nearestVetoThreshold, VETO_THRESHOLDS, vetoThresholdText } from '@/lib/trade';
 import { waiverOrderText } from '@/lib/waivers';
 import { useTheme } from '@/theme';
 
@@ -16,15 +17,18 @@ export interface EditableSettings {
   pickTimerSeconds: number;
   review: Schemas['TradeReview'];
   reviewHours: number;
+  /** League vote: the share of the managers outside a trade whose vetoes block it. */
+  vetoThreshold: number;
   waiverOrder: Schemas['WaiverOrderRule'];
 }
 
-/** Sensible defaults: 10 teams, 60 s picks, no trade review, reverse-standings waivers (the server's defaults). */
+/** Sensible defaults: 10 teams, 60 s picks, a league veto vote of 24 hours (a third of the managers), reverse-standings waivers (the server's defaults). */
 export const DEFAULT_SETTINGS: EditableSettings = {
   teamCount: 10,
   pickTimerSeconds: 60,
-  review: 'none',
+  review: 'league_vote',
   reviewHours: 24,
+  vetoThreshold: 1 / 3,
   waiverOrder: 'reverse_standings',
 };
 
@@ -39,7 +43,8 @@ export const PICK_TIMERS = [
 const REVIEW_HELP: Record<string, string> = {
   none: 'Accepted trades go through at once.',
   commissioner: 'The commissioner can veto within the review window; otherwise it goes through.',
-  league_vote: 'Other managers can vote to veto; half of them blocks the trade.',
+  league_vote:
+    'Other managers can vote to veto during the review; enough vetoes block the trade, otherwise it goes through when the review ends.',
 };
 
 /** The settings body of a create/edit request. */
@@ -49,7 +54,7 @@ export function settingsInput(s: EditableSettings): Schemas['LeagueSettingsInput
     trades: {
       review: s.review,
       reviewHours: s.review === 'none' ? 0 : s.reviewHours,
-      ...(s.review === 'league_vote' ? { vetoThreshold: 0.5 } : {}),
+      ...(s.review === 'league_vote' ? { vetoThreshold: s.vetoThreshold } : {}),
     },
     waivers: { order: s.waiverOrder },
   };
@@ -61,6 +66,7 @@ export function fromLeagueSettings(s: Schemas['LeagueSettings']): EditableSettin
     pickTimerSeconds: s.draft.pickTimerSeconds,
     review: s.trades.review,
     reviewHours: s.trades.reviewHours || 24,
+    vetoThreshold: s.trades.vetoThreshold,
     waiverOrder: s.waivers.order,
   };
 }
@@ -97,8 +103,11 @@ export function LeagueSettingsForm({
       <Card style={{ gap: spacing.lg }}>
         {locked ? (
           <AppText variant="meta" muted testID="settings-locked">
-            The draft has started, so team count, the pick clock and trade review are locked.
-            {readOnly ? '' : ' The waiver order can still change.'}
+            The draft has started, so team count, the pick clock and the kind of trade review are
+            locked.
+            {readOnly
+              ? ''
+              : ' The review period, veto threshold and waiver order can still change.'}
           </AppText>
         ) : null}
         {locked ? (
@@ -158,22 +167,49 @@ export function LeagueSettingsForm({
             {REVIEW_HELP[value.review] ?? 'Custom review rules.'}
           </AppText>
         </View>
-        {value.review !== 'none' && !locked ? (
+        {value.review !== 'none' && readOnly ? (
+          <AppText variant="meta" testID="review-summary">
+            {value.review === 'league_vote'
+              ? `${value.reviewHours} hour review. ${vetoThresholdText(value.vetoThreshold, value.teamCount)}`
+              : `${value.reviewHours} hour review.`}
+          </AppText>
+        ) : null}
+        {value.review !== 'none' && !readOnly ? (
           <View style={{ gap: spacing.xs }}>
             <AppText variant="meta" weight="semibold">
-              Review window
+              Review period
             </AppText>
             <SegmentedControl
               kind="radio"
-              accessibilityLabel="Review window"
+              accessibilityLabel="Review period"
               segments={[
                 { value: '12', label: '12h' },
                 { value: '24', label: '24h' },
                 { value: '48', label: '48h' },
+                { value: '72', label: '72h' },
               ]}
               value={String(value.reviewHours)}
               onChange={(v) => set({ reviewHours: Number(v) })}
+              testID="review-hours"
             />
+          </View>
+        ) : null}
+        {value.review === 'league_vote' && !readOnly ? (
+          <View style={{ gap: spacing.xs }}>
+            <AppText variant="meta" weight="semibold">
+              Veto threshold
+            </AppText>
+            <SegmentedControl
+              kind="radio"
+              accessibilityLabel="Veto threshold"
+              segments={VETO_THRESHOLDS.map((t) => ({ value: String(t.value), label: t.label }))}
+              value={String(nearestVetoThreshold(value.vetoThreshold))}
+              onChange={(v) => set({ vetoThreshold: Number(v) })}
+              testID="veto-threshold"
+            />
+            <AppText variant="meta" muted testID="veto-threshold-help">
+              {vetoThresholdText(nearestVetoThreshold(value.vetoThreshold), value.teamCount)}
+            </AppText>
           </View>
         ) : null}
       </Card>

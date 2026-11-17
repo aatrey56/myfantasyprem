@@ -20,6 +20,9 @@ describe('realtime', () => {
     expect(invalidationsFor(LG, 'matchups.updated')).toContainEqual(['gameweek']);
     expect(invalidationsFor(LG, 'score.corrected')).toContainEqual(['gameweek']);
     expect(invalidationsFor(LG, 'trade.updated')).toContainEqual(queryKeys.trades(LG));
+    // The commissioner's moves (and the Status banner under them) follow trade and draft events.
+    expect(invalidationsFor(LG, 'trade.updated')).toContainEqual(queryKeys.commissionerMoves(LG));
+    expect(invalidationsFor(LG, 'draft.updated')).toContainEqual(queryKeys.commissionerMoves(LG));
     expect(invalidationsFor(LG, 'trade.updated')).toContainEqual(['league', LG, 'transactions']);
     expect(invalidationsFor(LG, 'waivers.processed')).toContainEqual(queryKeys.waivers(LG));
     expect(invalidationsFor(LG, 'league.updated')).toContainEqual(queryKeys.members(LG));

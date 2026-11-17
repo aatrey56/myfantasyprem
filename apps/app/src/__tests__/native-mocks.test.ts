@@ -564,9 +564,9 @@ describe('trades', () => {
     expect(review.viewerActions).toEqual(expect.arrayContaining(['vote', 'review']));
     expect(review.review).toMatchObject({
       mode: 'league_vote',
-      vetoVotes: 1,
-      allowVotes: 1,
-      votesNeeded: 4,
+      vetoVotes: 0,
+      allowVotes: 0,
+      votesNeeded: 3, // a third of the 8 managers outside the trade, rounded up
     });
     expectPublicIds(trades);
 
@@ -592,7 +592,15 @@ describe('trades', () => {
         body: { vote: 'veto' },
       }),
     ).data;
-    expect(voted.review).toMatchObject({ vetoVotes: 2, myVote: 'veto' });
+    expect(voted.review).toMatchObject({ vetoVotes: 1, myVote: 'veto' });
+    // A veto can be withdrawn while the review is open.
+    const withdrawnVeto = unwrap(
+      await api.POST('/v1/leagues/{leagueId}/trades/{tradeId}/votes', {
+        params: { path: { leagueId: OFFICE, tradeId: review.id } },
+        body: { vote: 'withdraw' },
+      }),
+    ).data;
+    expect(withdrawnVeto.review).toMatchObject({ vetoVotes: 0, myVote: null });
     const approved = unwrap(
       await api.POST('/v1/leagues/{leagueId}/trades/{tradeId}/review', {
         params: { path: { leagueId: OFFICE, tradeId: review.id } },

@@ -28,27 +28,44 @@ beforeEach(() => data.resetMockLeagues());
 const inReview = () => office().listTrades('in_review')[0]!;
 
 describe('TradeCard review', () => {
-  it('labels member votes "Veto" and "Uphold", never "Vote …" or "Allow"', async () => {
+  it('offers a veto, then "Withdraw veto" once I have vetoed', async () => {
     const trade = inReview();
     const onAction = jest.fn();
-    await render(inApp(<TradeCard trade={trade} now={Date.now()} onAction={onAction} />));
+    const { rerender } = await render(
+      inApp(<TradeCard trade={trade} now={Date.now()} onAction={onAction} />),
+    );
     const veto = screen.getByTestId('trade-vote-veto');
-    const uphold = screen.getByTestId('trade-vote-uphold');
     expect(veto).toHaveTextContent('Veto', { exact: true });
-    expect(uphold).toHaveTextContent('Uphold', { exact: true });
+    expect(screen.queryByTestId('trade-vote-withdraw')).toBeNull();
+    // The vote is a veto only: no uphold button, nothing reads "vote veto" or "allow".
+    expect(screen.queryByTestId('trade-vote-uphold')).toBeNull();
     expect(screen.queryByText(/vote veto|vote uphold|allow/i)).toBeNull();
-    expect(screen.getByTestId('trade-review')).toHaveTextContent(/1 uphold/);
-    await fireEvent.press(uphold);
-    expect(onAction).toHaveBeenCalledWith(trade, { kind: 'vote', vote: 'allow' });
+    expect(screen.getByTestId('trade-veto-tally')).toHaveTextContent(/0 of 3 veto votes/);
+    await fireEvent.press(veto);
+    expect(onAction).toHaveBeenCalledWith(trade, { kind: 'vote', vote: 'veto' });
+
+    const vetoed = {
+      ...trade,
+      review: { ...trade.review!, vetoVotes: 1, myVote: 'veto' as const },
+    };
+    await rerender(inApp(<TradeCard trade={vetoed} now={Date.now()} onAction={onAction} />));
+    expect(screen.queryByTestId('trade-vote-veto')).toBeNull();
+    const withdraw = screen.getByTestId('trade-vote-withdraw');
+    expect(withdraw).toHaveTextContent('Withdraw veto', { exact: true });
+    expect(screen.getByTestId('trade-veto-tally')).toHaveTextContent(
+      /1 of 3 veto votes · you vetoed/,
+    );
+    await fireEvent.press(withdraw);
+    expect(onAction).toHaveBeenLastCalledWith(vetoed, { kind: 'vote', vote: 'withdraw' });
   });
 
-  it('marks my vote without changing the label', async () => {
+  it('shows the time left and takes no vote once the review window has closed', async () => {
     const trade = inReview();
-    const voted = { ...trade, review: { ...trade.review!, myVote: 'allow' as const } };
-    await render(inApp(<TradeCard trade={voted} now={Date.now()} onAction={jest.fn()} />));
-    expect(screen.getByTestId('trade-vote-uphold')).toHaveTextContent('Uphold', { exact: true });
-    expect(screen.getByLabelText('Uphold, your vote')).toBeDisabled();
-    expect(screen.getByTestId('trade-review')).toHaveTextContent(/you voted uphold/);
+    const now = Date.parse(trade.review!.endsAt!) + 60_000;
+    await render(inApp(<TradeCard trade={trade} now={now} onAction={jest.fn()} />));
+    expect(screen.queryByTestId('trade-vote-veto')).toBeNull();
+    expect(screen.queryByTestId('trade-vote-withdraw')).toBeNull();
+    expect(screen.getByTestId('trade-review')).toHaveTextContent(/Review ends/);
   });
 
   it('sets the commissioner actions apart, labelled "Veto" and "Uphold"', async () => {
@@ -71,14 +88,22 @@ describe('TradeCard review', () => {
     const member = { ...trade, viewerActions: ['vote'] as Schemas['TradeAction'][] };
     await render(inApp(<TradeCard trade={member} now={Date.now()} onAction={jest.fn()} />));
     expect(screen.queryByTestId('commissioner-actions')).toBeNull();
-    expect(screen.getByTestId('trade-vote-uphold')).toBeOnTheScreen();
+    expect(screen.getByTestId('trade-vote-veto')).toBeOnTheScreen();
   });
 
-  it('confirms with "Uphold" copy', () => {
+  it("confirms a veto, its withdrawal and the commissioner's decision", () => {
     const trade = inReview();
-    expect(confirmCopy(trade, { kind: 'vote', vote: 'allow' })).toMatchObject({
-      title: 'Vote to uphold?',
-      confirm: 'Uphold',
+    expect(confirmCopy(trade, { kind: 'vote', vote: 'veto' })).toMatchObject({
+      title: 'Veto this trade?',
+      confirm: 'Veto',
+      destructive: true,
+    });
+    expect(confirmCopy(trade, { kind: 'vote', vote: 'veto' }).message).toMatch(
+      /counts toward 3 needed.*withdraw it until the review ends/,
+    );
+    expect(confirmCopy(trade, { kind: 'vote', vote: 'withdraw' })).toMatchObject({
+      title: 'Withdraw your veto?',
+      confirm: 'Withdraw veto',
     });
     expect(confirmCopy(trade, { kind: 'review', decision: 'approve' })).toMatchObject({
       title: 'Uphold this trade now?',

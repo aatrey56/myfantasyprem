@@ -42,6 +42,10 @@ export const queryKeys = {
   invite: (code: string) => ['invite', code] as const,
   invites: (leagueId: string) => ['league', leagueId, 'invites'] as const,
   members: (leagueId: string) => ['league', leagueId, 'members'] as const,
+  /** The commissioner's log and, under it, the Status banner's summary. */
+  commissionerMoves: (leagueId: string) => ['league', leagueId, 'commissioner-moves'] as const,
+  commissionerMovesSummary: (leagueId: string) =>
+    ['league', leagueId, 'commissioner-moves', 'summary'] as const,
   draft: (leagueId: string) => ['league', leagueId, 'draft'] as const,
   draftQueue: (leagueId: string) => ['league', leagueId, 'draft', 'queue'] as const,
   lineup: (leagueId: string, teamId: string, gw: number | undefined) =>

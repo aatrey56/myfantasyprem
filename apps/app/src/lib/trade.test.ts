@@ -6,9 +6,14 @@ import {
   positionSummary,
   sidesFor,
   splitTrades,
+  nearestVetoThreshold,
   togglePlayer,
   tradeBucket,
   tradeStatusLabel,
+  vetoControl,
+  vetoesNeeded,
+  vetoTally,
+  vetoThresholdText,
   voteLabel,
 } from './trade';
 
@@ -137,7 +142,68 @@ describe('voteLabel', () => {
   it('reads the wire value allow as Uphold', () => {
     expect(voteLabel('veto')).toBe('Veto');
     expect(voteLabel('allow')).toBe('Uphold');
+    expect(voteLabel('withdraw')).toBe('Withdraw veto');
     expect(voteLabel('abstain')).toBe('abstain');
+  });
+});
+
+describe('vetoControl', () => {
+  const now = Date.parse('2026-10-13T12:00:00Z');
+  const base = (myVote: Schemas['TradeVote'] | null, endsAt = '2026-10-14T12:00:00Z') => ({
+    status: 'in_review' as const,
+    viewerActions: ['vote'] as Schemas['TradeAction'][],
+    review: {
+      mode: 'league_vote',
+      endsAt,
+      vetoVotes: 0,
+      allowVotes: 0,
+      votesNeeded: 4,
+      myVote,
+      decidedBy: null,
+    } satisfies Schemas['TradeReviewState'],
+  });
+
+  it('offers a veto, then its withdrawal once I have vetoed', () => {
+    expect(vetoControl(base(null), now)).toBe('veto');
+    expect(vetoControl(base('veto'), now)).toBe('withdraw');
+    // An older client's "uphold" ballot can still be turned into a veto.
+    expect(vetoControl(base('allow'), now)).toBe('veto');
+  });
+
+  it('offers nothing to someone who may not vote, after the window, or on a decided trade', () => {
+    expect(vetoControl({ ...base(null), viewerActions: [] }, now)).toBeNull();
+    expect(vetoControl(base(null, '2026-10-13T12:00:00Z'), now)).toBeNull();
+    expect(vetoControl(base('veto', '2026-10-13T11:59:00Z'), now)).toBeNull();
+    expect(vetoControl({ ...base(null), status: 'vetoed' }, now)).toBeNull();
+    expect(vetoControl({ ...base(null), review: null }, now)).toBeNull();
+  });
+});
+
+describe('veto votes', () => {
+  it('counts votes against what blocks the trade', () => {
+    expect(vetoTally({ vetoVotes: 1, votesNeeded: 4 })).toBe('1 of 4 veto votes');
+    expect(vetoTally({ vetoVotes: 0, votesNeeded: 1 })).toBe('0 of 1 veto vote');
+    expect(vetoTally({ vetoVotes: 2, votesNeeded: null })).toBe('2 of ? veto votes');
+  });
+
+  it('rounds the managers outside a trade up, as the server does', () => {
+    // A third of 10 managers outside the trade is 4 (3.33 rounded up); of 9 it is 3, even after a float32.
+    expect(vetoesNeeded(1 / 3, 12)).toBe(4);
+    expect(vetoesNeeded(1 / 3, 11)).toBe(3);
+    expect(vetoesNeeded(Math.fround(1 / 3), 11)).toBe(3);
+    expect(vetoesNeeded(0.5, 12)).toBe(5);
+    expect(vetoesNeeded(0.25, 10)).toBe(2);
+    // At least one veto, even with nobody outside the trade to cast it.
+    expect(vetoesNeeded(1 / 3, 2)).toBe(1);
+  });
+
+  it('picks the preset the server value is nearest to', () => {
+    expect(nearestVetoThreshold(0.3333333432674408)).toBe(1 / 3);
+    expect(nearestVetoThreshold(0.5)).toBe(0.5);
+    expect(nearestVetoThreshold(0.6)).toBe(2 / 3);
+    expect(vetoThresholdText(1 / 3, 12)).toBe(
+      '4 of the 10 managers outside a trade must veto it to block it.',
+    );
   });
 });
 
