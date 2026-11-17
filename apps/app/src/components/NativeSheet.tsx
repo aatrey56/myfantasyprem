@@ -29,6 +29,7 @@ import {
   Keyboard,
   StyleSheet,
   View,
+  type ScrollView,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
@@ -39,7 +40,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from './AppText';
 import { IconButton } from './Button';
 import { X } from './icons';
-import { SheetCloseContext } from './sheet-context';
+import { scrollNodeIntoView, SheetCloseContext, SheetScrollContext } from './sheet-context';
 import { SheetTextInputContext } from './sheet-input';
 import { PANEL_LAYOUT_TIMEOUT, pullCloses, snapHeights, type SnapPoint } from './sheet-snap';
 import { useReducedMotion } from './Skeleton';
@@ -275,6 +276,11 @@ export function NativeSheet({
 
   const [footerHeight, setFooterHeight] = useState(0);
   const bottomPad = footer ? footerHeight : insets.bottom;
+  const scroller = useRef<ScrollView>(null);
+  const scrollIntoView = useCallback(
+    (node: View | null) => scrollNodeIntoView(scroller.current, node),
+    [],
+  );
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -355,6 +361,7 @@ export function NativeSheet({
   const content = visible ? children : kept;
   const body = scroll ? (
     <BottomSheetScrollView
+      ref={scroller as never}
       testID={testID ? `${testID}-scroll` : undefined}
       contentContainerStyle={[{ padding: spacing.lg, gap: spacing.md }, contentStyle]}
       keyboardShouldPersistTaps="handled"
@@ -406,25 +413,30 @@ export function NativeSheet({
     >
       <ContextBridge value={screen}>
         <SheetCloseContext.Provider value={close}>
-          <SheetTextInputContext.Provider value={renderSheetInput}>
-            <View
-              testID={testID}
-              // Not aria-modal: on iOS that hides the grabber and header ✕
-              // (gorhom draws them beside the content) from VoiceOver.
-              role="dialog"
-              aria-label={title}
-              collapsable={false}
-              style={fixed ? { flex: 1 } : undefined}
-            >
-              {body}
+          <SheetScrollContext.Provider value={scrollIntoView}>
+            <SheetTextInputContext.Provider value={renderSheetInput}>
               <View
-                pointerEvents="box-none"
-                style={[StyleSheet.absoluteFill, { bottom: footer ? footerHeight : insets.bottom }]}
+                testID={testID}
+                // Not aria-modal: on iOS that hides the grabber and header ✕
+                // (gorhom draws them beside the content) from VoiceOver.
+                role="dialog"
+                aria-label={title}
+                collapsable={false}
+                style={fixed ? { flex: 1 } : undefined}
               >
-                {overlay}
+                {body}
+                <View
+                  pointerEvents="box-none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { bottom: footer ? footerHeight : insets.bottom },
+                  ]}
+                >
+                  {overlay}
+                </View>
               </View>
-            </View>
-          </SheetTextInputContext.Provider>
+            </SheetTextInputContext.Provider>
+          </SheetScrollContext.Provider>
         </SheetCloseContext.Provider>
       </ContextBridge>
     </BottomSheetModal>

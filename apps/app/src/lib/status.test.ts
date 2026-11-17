@@ -5,9 +5,13 @@ import {
   clampOffset,
   defaultAwardsGameweek,
   fixtureCell,
+  gameweekEnd,
+  lastGameweekEnd,
   gameweekSummary,
   injuryBadge,
+  latestInjuries,
   leagueTable,
+  MATCH_LENGTH_MS,
   myFixtures,
   ordinal,
   potwCardWidth,
@@ -356,5 +360,128 @@ describe('awards helpers', () => {
       ['MID'],
       ['FWD'],
     ]);
+  });
+});
+
+describe('gameweekEnd', () => {
+  it('is a match after the latest kickoff, ignoring postponed fixtures', () => {
+    const last = '2026-10-12T20:00:00.000Z';
+    expect(gameweekEnd(['2026-10-10T14:00:00.000Z', last, null, '2026-10-11T14:00:00.000Z'])).toBe(
+      Date.parse(last) + MATCH_LENGTH_MS,
+    );
+  });
+
+  it('is null without a kickoff', () => {
+    expect(gameweekEnd([])).toBeNull();
+    expect(gameweekEnd([null])).toBeNull();
+  });
+});
+
+describe('lastGameweekEnd', () => {
+  const week = (finished: boolean, deadlineAt: string, kickoffs: (string | null)[]) => ({
+    finished,
+    deadlineAt,
+    kickoffs: () => kickoffs,
+  });
+  const last = '2026-10-12T20:00:00.000Z';
+
+  it('is the end of the last finished gameweek, not a later unfinished one', () => {
+    expect(
+      lastGameweekEnd([
+        week(true, '2026-10-02T10:00:00.000Z', ['2026-10-03T14:00:00.000Z']),
+        week(true, '2026-10-09T10:00:00.000Z', ['2026-10-10T14:00:00.000Z', last]),
+        week(false, '2026-10-16T10:00:00.000Z', ['2026-10-17T14:00:00.000Z']),
+      ]),
+    ).toBe(Date.parse(last) + MATCH_LENGTH_MS);
+  });
+
+  it('falls back to its deadline when no fixture has a kickoff time', () => {
+    expect(
+      lastGameweekEnd([
+        week(true, '2026-10-02T10:00:00.000Z', ['2026-10-03T14:00:00.000Z']),
+        week(true, '2026-10-09T10:00:00.000Z', [null, null]),
+      ]),
+    ).toBe(Date.parse('2026-10-09T10:00:00.000Z'));
+  });
+
+  it('is null before any gameweek has finished', () => {
+    expect(lastGameweekEnd([week(false, '2026-10-02T10:00:00.000Z', [last])])).toBeNull();
+    expect(lastGameweekEnd([])).toBeNull();
+  });
+});
+
+describe('latestInjuries', () => {
+  const END = Date.parse('2026-10-12T21:00:00.000Z');
+  const at = (hours: number | null) =>
+    hours === null ? null : new Date(END + hours * 3_600_000).toISOString();
+  const row = (
+    id: string,
+    over: {
+      name?: string;
+      availability?: Schemas['PlayerAvailability'];
+      newsAt: number | null;
+      owned?: boolean;
+      minutes?: number;
+    },
+  ) => ({
+    player: {
+      id,
+      displayName: over.name ?? id,
+      availability: over.availability ?? 'injured',
+      newsAt: at(over.newsAt),
+    },
+    owner: over.owned ? THEM : null,
+    minutes: over.minutes ?? 0,
+  });
+  const ids = (rows: { player: { id: string } }[]) => rows.map((r) => r.player.id);
+
+  it('keeps only news added after the gameweek ended; no time counts as old', () => {
+    const rows = [
+      row('old', { newsAt: -1 }),
+      row('boundary', { newsAt: 0 }),
+      row('none', { newsAt: null }),
+      row('new', { newsAt: 1 }),
+    ];
+    expect(ids(latestInjuries(rows, END))).toEqual(['new']);
+  });
+
+  it('puts owned players first, then unowned, each by minutes', () => {
+    const rows = [
+      row('free-lots', { newsAt: 1, minutes: 900 }),
+      row('own-few', { newsAt: 1, minutes: 100, owned: true }),
+      row('own-many', { newsAt: 48, minutes: 700, owned: true }),
+      row('free-few', { newsAt: 2, minutes: 50 }),
+    ];
+    expect(ids(latestInjuries(rows, END))).toEqual([
+      'own-many',
+      'own-few',
+      'free-lots',
+      'free-few',
+    ]);
+  });
+
+  it('breaks minute ties with out before doubtful, then name, then id', () => {
+    const rows = [
+      row('5', { name: 'Zed', newsAt: 1, minutes: 10 }),
+      row('4', { name: 'bell', newsAt: 1, minutes: 90, availability: 'doubtful' }),
+      row('3', { name: 'Cole', newsAt: 1, minutes: 90, availability: 'doubtful' }),
+      row('2', { name: 'Adams', newsAt: 1, minutes: 90, availability: 'suspended' }),
+      row('1', { name: 'Adams', newsAt: 1, minutes: 90, availability: 'suspended' }),
+    ];
+    expect(ids(latestInjuries(rows, END))).toEqual(['1', '2', '4', '3', '5']);
+  });
+
+  it('keeps every player with a news time before a gameweek has finished', () => {
+    const rows = [row('a', { newsAt: -24 * 365 }), row('b', { newsAt: null })];
+    expect(ids(latestInjuries(rows, null))).toEqual(['a']);
+  });
+
+  it('does not modify its input and returns nothing when nobody qualifies', () => {
+    const rows = [row('a', { newsAt: -1 }), row('b', { newsAt: 5 })];
+    const copy = [...rows];
+    expect(latestInjuries(rows, END)).toHaveLength(1);
+    expect(rows).toEqual(copy);
+    expect(latestInjuries([row('a', { newsAt: -1 })], END)).toEqual([]);
+    expect(latestInjuries([], END)).toEqual([]);
   });
 });

@@ -76,6 +76,7 @@ export type Scenario =
   | 'transactions-locked'
   | 'players-slow'
   | 'long-team-names'
+  | 'long-owner-names'
   | 'shared-owners';
 
 /** Applies a scenario from the first request on (set before the page loads). */

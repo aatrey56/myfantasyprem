@@ -67,6 +67,8 @@ function UnderlineTabs<T extends string>({
             testID={s.testID}
             accessibilityRole={kind === 'tabs' ? 'tab' : 'radio'}
             accessibilityState={kind === 'tabs' ? { selected } : { checked: selected }}
+            // React Native Web drops `checked` from the state: a radio needs it on the web.
+            aria-checked={kind === 'tabs' ? undefined : selected}
             onPress={() => onChange(s.value)}
             style={(state: PressState) => [
               {
@@ -168,6 +170,8 @@ function PillSegments<T extends string>({
             testID={s.testID}
             accessibilityRole={kind === 'tabs' ? 'tab' : 'radio'}
             accessibilityState={kind === 'tabs' ? { selected } : { checked: selected }}
+            // React Native Web drops `checked` from the state: a radio needs it on the web.
+            aria-checked={kind === 'tabs' ? undefined : selected}
             onPress={() => onChange(s.value)}
             style={(state: PressState) => [
               {

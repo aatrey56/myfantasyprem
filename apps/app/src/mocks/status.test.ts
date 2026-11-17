@@ -1,7 +1,9 @@
 import { leagues, LEAGUE_ID, PLAYERS, CURRENT_GW, pointsFor } from './data';
+import { gameweekFixtures, seasonTotals } from './world';
 import type { InSeasonLeague } from './league';
 import { awardStatsFor, gameweekAwards, leagueStatus, playersOfTheWeek } from './status';
 import { compareForAward, formationOf, TOTW_LIMITS } from '@/lib/awards';
+import { gameweekEnd } from '@/lib/status';
 
 const sunday = () => leagues.get(LEAGUE_ID) as InSeasonLeague;
 const candidate = (gw: number) => (p: (typeof PLAYERS)[number]) => ({
@@ -49,13 +51,23 @@ describe('mock gameweek awards', () => {
 describe('mock league status', () => {
   const s = leagueStatus(sunday());
 
-  it('lists every flagged player in the game, out before doubtful', () => {
-    const flagged = PLAYERS.filter((p) => p.availability !== 'available').map((p) => p.id);
-    expect(s.injuries.map((i) => i.player.id).sort()).toEqual([...flagged].sort());
-    const firstDoubt = s.injuries.findIndex((i) => i.player.availability === 'doubtful');
-    expect(s.injuries.slice(firstDoubt).every((i) => i.player.availability === 'doubtful')).toBe(
-      true,
-    );
+  it('lists the latest injuries: news since the last gameweek ended, owned first', () => {
+    const end = gameweekEnd(gameweekFixtures(CURRENT_GW - 1).map((f) => f.kickoffAt))!;
+    const flagged = PLAYERS.filter((p) => p.availability !== 'available');
+    const recent = flagged.filter((p) => Date.parse(p.newsAt as string) > end).map((p) => p.id);
+    // A stale flag from before it is left out.
+    expect(recent.length).toBeLessThan(flagged.length);
+    expect(s.injuries.map((i) => i.player.id).sort()).toEqual([...recent].sort());
+    expect(s.injuries.length).toBeGreaterThanOrEqual(5);
+    expect(s.injuries.length).toBeLessThanOrEqual(20);
+    // Owned players, then free ones, each by season minutes.
+    const minutes = s.injuries.map((i) => seasonTotals(i.player.id).minutes);
+    const split = s.injuries.findIndex((i) => i.owner === null);
+    expect(split).toBeGreaterThan(0);
+    expect(s.injuries.slice(split).every((i) => i.owner === null)).toBe(true);
+    for (const part of [minutes.slice(0, split), minutes.slice(split)]) {
+      expect(part).toEqual([...part].sort((a, b) => b - a));
+    }
     expect(s.injuries.some((i) => i.player.availability === 'suspended')).toBe(true);
     for (const i of s.injuries.filter((x) => x.player.availability === 'doubtful')) {
       expect([25, 50, 75]).toContain(i.chanceOfPlaying);

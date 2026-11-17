@@ -14,6 +14,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -47,7 +48,12 @@ import {
   snapOffset,
   type SnapPoint,
 } from './sheet-snap';
-import { SheetCloseContext, useSheetClose } from './sheet-context';
+import {
+  scrollNodeIntoView,
+  SheetCloseContext,
+  SheetScrollContext,
+  useSheetClose,
+} from './sheet-context';
 import { NativeSheet } from './NativeSheet';
 import { useReducedMotion } from './Skeleton';
 import { useLayout } from '@/hooks/useLayout';
@@ -621,6 +627,11 @@ function ModalSheet({
   // tall, or its layout lost) is an invisible layer that takes every touch.
   // Close it rather than leave the app looking frozen.
   const laidOut = useRef(false);
+  const scroller = useRef<ScrollView>(null);
+  const scrollIntoView = useCallback(
+    (node: View | null) => scrollNodeIntoView(scroller.current, node),
+    [],
+  );
   const panelRef = useRef<View>(null);
   const onPanelLayout = (e: LayoutChangeEvent) => {
     if (e.nativeEvent.layout.height > 0) laidOut.current = true;
@@ -660,6 +671,7 @@ function ModalSheet({
   const body = scroll ? (
     <GestureDetector gesture={motion.gestures.scroller}>
       <Animated.ScrollView
+        ref={scroller}
         testID={testID ? `${testID}-scroll` : undefined}
         style={{ flexGrow: 0, flexShrink: 1 }}
         contentContainerStyle={contentPadding}
@@ -732,141 +744,143 @@ function ModalSheet({
       statusBarTranslucent
     >
       <SheetCloseContext.Provider value={close}>
-        {/* A Modal is its own native root: gestures need a root inside it. */}
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <View
-            testID={testID ? `${testID}-root` : undefined}
-            // Sliding away: nothing in it takes a touch.
-            pointerEvents={motion.isClosing ? 'none' : 'auto'}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: isWide ? spacing.lg : 0,
-            }}
-          >
-            <Animated.View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.scrim },
-                motion.backdropStyle,
-              ]}
+        <SheetScrollContext.Provider value={scrollIntoView}>
+          {/* A Modal is its own native root: gestures need a root inside it. */}
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View
+              testID={testID ? `${testID}-root` : undefined}
+              // Sliding away: nothing in it takes a touch.
+              pointerEvents={motion.isClosing ? 'none' : 'auto'}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: isWide ? spacing.lg : 0,
+              }}
             >
-              <Pressable
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-                onPress={close}
-                testID="sheet-backdrop"
-                style={StyleSheet.absoluteFill}
-                // The panel's close button is the keyboard path; skip the backdrop.
-                {...({ tabIndex: -1 } as object)}
-              />
-            </Animated.View>
-            <Animated.View
-              testID={testID}
-              role="dialog"
-              aria-modal
-              aria-label={title}
-              ref={panelRef}
-              onLayout={onPanelLayout}
-              style={[
-                isWide
-                  ? {
-                      width: wideWidth,
-                      maxWidth: '100%',
-                      // Centred in the part of the window the keyboard leaves
-                      // visible: the bottom margin lifts it by the keyboard height
-                      // and the cap keeps it inside, scrolling within.
-                      marginBottom: keyboard,
-                      maxHeight: keyboard
-                        ? Math.min(height * 0.85, height - keyboard - insets.top - spacing.lg * 2)
-                        : height * 0.85,
-                      backgroundColor: colors.surfaceRaised,
-                      borderRadius: radii.sheet,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      overflow: 'hidden',
-                    }
-                  : {
-                      position: 'absolute',
-                      left: 0,
-                      right: 0,
-                      // Above the iOS keyboard, so a focused input stays in view.
-                      bottom: keyboard,
-                      ...(motion.fixedHeight
-                        ? { height: motion.fixedHeight, maxHeight: room + TOP_GAP }
-                        : { maxHeight: Math.min(height * 0.9, room + TOP_GAP) }),
-                      alignSelf: 'center',
-                      width: '100%',
-                      maxWidth: 640,
-                      marginHorizontal: 'auto',
-                      backgroundColor: colors.surfaceRaised,
-                      borderTopLeftRadius: radii.sheet,
-                      borderTopRightRadius: radii.sheet,
-                      borderWidth: 1,
-                      borderBottomWidth: 0,
-                      borderColor: colors.border,
-                      overflow: 'hidden',
-                    },
-                motion.panelStyle,
-              ]}
-            >
-              <View
-                ref={dialogRef}
-                testID={testID ? `${testID}-body` : undefined}
-                style={{
-                  flexGrow: motion.fixedHeight && !isWide ? 1 : 0,
-                  flexShrink: 1,
-                  minHeight: 0,
-                  paddingBottom: motion.hidden,
-                }}
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: colors.scrim },
+                  motion.backdropStyle,
+                ]}
               >
-                {isWide ? (
-                  header
-                ) : (
-                  <GestureDetector gesture={motion.gestures.handle}>
-                    {/* The grabber and header: a drag here moves the sheet (finger or mouse). */}
-                    <View
-                      testID="sheet-handle"
-                      collapsable={false}
-                      style={{
-                        ...(Platform.OS === 'web'
-                          ? ({ userSelect: 'none', cursor: 'grab' } as object)
-                          : {}),
-                      }}
-                    >
+                <Pressable
+                  accessibilityLabel="Close"
+                  accessibilityRole="button"
+                  onPress={close}
+                  testID="sheet-backdrop"
+                  style={StyleSheet.absoluteFill}
+                  // The panel's close button is the keyboard path; skip the backdrop.
+                  {...({ tabIndex: -1 } as object)}
+                />
+              </Animated.View>
+              <Animated.View
+                testID={testID}
+                role="dialog"
+                aria-modal
+                aria-label={title}
+                ref={panelRef}
+                onLayout={onPanelLayout}
+                style={[
+                  isWide
+                    ? {
+                        width: wideWidth,
+                        maxWidth: '100%',
+                        // Centred in the part of the window the keyboard leaves
+                        // visible: the bottom margin lifts it by the keyboard height
+                        // and the cap keeps it inside, scrolling within.
+                        marginBottom: keyboard,
+                        maxHeight: keyboard
+                          ? Math.min(height * 0.85, height - keyboard - insets.top - spacing.lg * 2)
+                          : height * 0.85,
+                        backgroundColor: colors.surfaceRaised,
+                        borderRadius: radii.sheet,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        overflow: 'hidden',
+                      }
+                    : {
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        // Above the iOS keyboard, so a focused input stays in view.
+                        bottom: keyboard,
+                        ...(motion.fixedHeight
+                          ? { height: motion.fixedHeight, maxHeight: room + TOP_GAP }
+                          : { maxHeight: Math.min(height * 0.9, room + TOP_GAP) }),
+                        alignSelf: 'center',
+                        width: '100%',
+                        maxWidth: 640,
+                        marginHorizontal: 'auto',
+                        backgroundColor: colors.surfaceRaised,
+                        borderTopLeftRadius: radii.sheet,
+                        borderTopRightRadius: radii.sheet,
+                        borderWidth: 1,
+                        borderBottomWidth: 0,
+                        borderColor: colors.border,
+                        overflow: 'hidden',
+                      },
+                  motion.panelStyle,
+                ]}
+              >
+                <View
+                  ref={dialogRef}
+                  testID={testID ? `${testID}-body` : undefined}
+                  style={{
+                    flexGrow: motion.fixedHeight && !isWide ? 1 : 0,
+                    flexShrink: 1,
+                    minHeight: 0,
+                    paddingBottom: motion.hidden,
+                  }}
+                >
+                  {isWide ? (
+                    header
+                  ) : (
+                    <GestureDetector gesture={motion.gestures.handle}>
+                      {/* The grabber and header: a drag here moves the sheet (finger or mouse). */}
                       <View
-                        testID="sheet-grabber"
-                        aria-hidden
+                        testID="sheet-handle"
+                        collapsable={false}
                         style={{
-                          alignSelf: 'stretch',
-                          alignItems: 'center',
-                          paddingTop: spacing.sm,
+                          ...(Platform.OS === 'web'
+                            ? ({ userSelect: 'none', cursor: 'grab' } as object)
+                            : {}),
                         }}
                       >
                         <View
+                          testID="sheet-grabber"
+                          aria-hidden
                           style={{
-                            width: 36,
-                            height: 4,
-                            borderRadius: 2,
-                            backgroundColor: colors.border,
+                            alignSelf: 'stretch',
+                            alignItems: 'center',
+                            paddingTop: spacing.sm,
                           }}
-                        />
+                        >
+                          <View
+                            style={{
+                              width: 36,
+                              height: 4,
+                              borderRadius: 2,
+                              backgroundColor: colors.border,
+                            }}
+                          />
+                        </View>
+                        {header}
                       </View>
-                      {header}
-                    </View>
-                  </GestureDetector>
-                )}
-                {isWide ? (
-                  content
-                ) : (
-                  <GestureDetector gesture={motion.gestures.content}>{content}</GestureDetector>
-                )}
-                {foot}
-              </View>
-            </Animated.View>
-          </View>
-        </GestureHandlerRootView>
+                    </GestureDetector>
+                  )}
+                  {isWide ? (
+                    content
+                  ) : (
+                    <GestureDetector gesture={motion.gestures.content}>{content}</GestureDetector>
+                  )}
+                  {foot}
+                </View>
+              </Animated.View>
+            </View>
+          </GestureHandlerRootView>
+        </SheetScrollContext.Provider>
       </SheetCloseContext.Provider>
     </Modal>
   );

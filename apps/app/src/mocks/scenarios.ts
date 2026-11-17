@@ -101,6 +101,22 @@ export const scenarios = {
       return ok({ ...leagueStatus(league as InSeasonLeague), rankChange: 7 }, 'live');
     }),
   ],
+  // The Status injuries list with long team names (not mine) for its owner chips.
+  'long-owner-names': [
+    http.get<{ leagueId: string }>('*/v1/leagues/:leagueId/status', ({ params }) => {
+      const league = leagues.get(params.leagueId);
+      if (!league || !isInSeason(league)) return problem(404, 'Not found', 'League not found.');
+      const status = leagueStatus(league as InSeasonLeague);
+      const names = ['Riverside Rovers', "Maximilian's Marauders FC"];
+      let n = 0;
+      status.injuries = status.injuries.map((row) =>
+        row.owner && row.owner.id !== league.myTeam.id
+          ? { ...row, owner: { ...row.owner, name: names[n++ % names.length]! } }
+          : row,
+      );
+      return ok(status, 'live');
+    }),
+  ],
   'league-500': [
     http.get(LEAGUE_HOME, () =>
       problem(500, 'Internal server error', 'Something went wrong on our side.', 'internal'),

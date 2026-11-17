@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/statuspage"
@@ -55,10 +56,14 @@ func (s *Server) GetLeagueStatus(ctx context.Context, r GetLeagueStatusRequestOb
 	var available []statuspage.Available
 	var flagged []statuspage.Flagged
 	for id, pl := range v.w.Players {
+		_, owned := own[id]
 		if availability(pl.Availability) != PlayerAvailabilityAvailable {
-			flagged = append(flagged, statuspage.Flagged{ID: id, Name: pl.DisplayName, Availability: string(availability(pl.Availability))})
+			flagged = append(flagged, statuspage.Flagged{
+				ID: id, Name: pl.DisplayName, Availability: string(availability(pl.Availability)),
+				NewsAt: pl.NewsAt, Owned: owned, Minutes: totals[id].minutes,
+			})
 		}
-		if _, owned := own[id]; owned {
+		if owned {
 			continue
 		}
 		t := totals[id]
@@ -84,8 +89,7 @@ func (s *Server) GetLeagueStatus(ctx context.Context, r GetLeagueStatusRequestOb
 		}
 		page.TopAvailable = append(page.TopAvailable, row)
 	}
-	statuspage.SortInjuries(flagged)
-	for _, f := range flagged {
+	for _, f := range statuspage.LatestInjuries(flagged, lastGameweekEnd(v.w)) {
 		pl := v.w.Players[f.ID]
 		row := StatusFlaggedPlayer{
 			Player:          playerRef(v.w, f.ID),
@@ -103,6 +107,28 @@ func (s *Server) GetLeagueStatus(ctx context.Context, r GetLeagueStatusRequestOb
 		return nil, err
 	}
 	return GetLeagueStatus200JSONResponse{Data: page, Meta: meta}, nil
+}
+
+// lastGameweekEnd is when the last completed gameweek ended (its last
+// kickoff plus a match; its deadline if no fixture has a time); the zero
+// time before any has completed.
+func lastGameweekEnd(w *league.World) time.Time {
+	for gw := 38; gw >= 1; gw-- {
+		if !w.Completed(gw) {
+			continue
+		}
+		var kickoffs []time.Time
+		for _, f := range w.Fixtures {
+			if f.Gameweek == gw && f.KickoffAt != nil {
+				kickoffs = append(kickoffs, *f.KickoffAt)
+			}
+		}
+		if end, ok := statuspage.GameweekEnd(kickoffs); ok {
+			return end
+		}
+		return w.Gameweeks[gw].DeadlineAt
+	}
+	return time.Time{}
 }
 
 // attentionInput is the caller's starters for gameweek next, the trade

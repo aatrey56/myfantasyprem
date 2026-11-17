@@ -2,9 +2,21 @@ import { expect, test, type Locator, type Page } from './fixtures';
 
 import { LEAGUE, signIn, startWithScenario } from './helpers';
 
-// Owner chips (FixtureScreen, InjuriesCard) name the manager, "You" on my
-// own team; Account → "Show owners as" switches them to team names. The
-// League tab's matchup cards wrap long team names to two lines.
+/**
+ * Account, once the profile card has loaded: it sits above Settings, so a
+ * click on "Show owners as" before then can land on a pill that moves.
+ */
+async function openAccount(page: Page) {
+  await page.goto('/account');
+  await expect(page.getByTestId('account-name').first()).toBeVisible();
+}
+
+// OwnerChip.tsx's OWNER_CHIP_MAX_WIDTH.
+const OWNER_CHIP_MAX_WIDTH = 96;
+
+// Owner chips (FixtureScreen, InjuriesCard) name the team, "You" on my own
+// team; Account → "Show owners as" switches them to the manager's name or
+// first name. The League tab's matchup cards wrap long team names to two lines.
 // 'shared-owners': each player of mine is also on a second team of mine and
 // on Sam Rivers' and Dana Cole's teams, so other owners are always there.
 
@@ -56,7 +68,7 @@ for (const vp of [
   test.describe(`owner chips (${vp.name})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test('first names by default, one You, clear of the points', async ({ page }) => {
+    test('team names by default, one You, clear of the points', async ({ page }) => {
       await startWithScenario(page, 'shared-owners');
       const detail = await openFixtureWithMine(page);
       const row = mineRow(detail);
@@ -64,14 +76,14 @@ for (const vp of [
       await expect(row.getByTestId('owner-badge-mine')).toHaveCount(1);
       await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
       const other = row.getByTestId('owner-badge');
-      await expect(other.first()).toHaveText('Sam');
+      await expect(other.first()).toHaveText('Riverside Rovers');
       if (vp.width < 768) {
         // Two chips, then the third owner as +1, hidden from screen readers.
         await expect(other).toHaveCount(1);
         await expect(row.getByTestId('owner-badges-more')).toHaveText('+1');
         await expect(row.getByTestId('owner-badges-more')).toHaveAttribute('aria-hidden', 'true');
       } else {
-        await expect(other).toHaveText(['Sam', 'Dana']);
+        await expect(other).toHaveText(['Riverside Rovers', 'Cole Miners FC']);
         await expect(row.getByTestId('owner-badges-more')).toHaveCount(0);
       }
       // The row's label names every owner.
@@ -82,60 +94,128 @@ for (const vp of [
       await expectChipsClearOfPoints(page);
     });
 
-    test('Show owners as: Team name, kept after a reload', async ({ page }) => {
+    test('Show owners as: Team, Manager or First name, kept after a reload', async ({ page }) => {
       await startWithScenario(page, 'shared-owners');
-      await page.goto('/account');
+      await openAccount(page);
       const setting = visible(page, 'owner-label-setting');
       await expect(setting).toContainText('Show owners as');
-      await setting.getByTestId('owner-label-team-name').click();
-      // Kept on the device: a fresh load (openFixtureWithMine navigates) still shows team names.
+      const picks = {
+        team: setting.getByTestId('owner-label-team-name'),
+        manager: setting.getByTestId('owner-label-manager-name'),
+        first: setting.getByTestId('owner-label-first-name'),
+      };
+      await expect(picks.team).toHaveText('Team');
+      await expect(picks.manager).toHaveText('Manager');
+      await expect(picks.first).toHaveText('First name');
+      // Team name is the pick for a device that never chose.
+      await expect(picks.team).toHaveAttribute('aria-checked', 'true');
+      await expect(picks.manager).toHaveAttribute('aria-checked', 'false');
+      await expect(picks.first).toHaveAttribute('aria-checked', 'false');
+
+      // Every pick shows at once on the fixture's chips, clear of the points.
+      const modes = [
+        { pick: picks.manager, names: ['Sam Rivers', 'Dana Cole'] },
+        { pick: picks.first, names: ['Sam', 'Dana'] },
+        { pick: picks.team, names: ['Riverside Rovers', 'Cole Miners FC'] },
+      ];
+      for (const mode of modes) {
+        await openAccount(page);
+        await mode.pick.click();
+        await expect(mode.pick).toHaveAttribute('aria-checked', 'true');
+        const detail = await openFixtureWithMine(page);
+        const row = mineRow(detail);
+        await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
+        const other = row.getByTestId('owner-badge');
+        await expect(other.first()).toHaveText(mode.names[0]!);
+        if (vp.width >= 768) await expect(other).toHaveText(mode.names);
+        // Whatever the label, the chip reads out the team and the league.
+        await expect(other.first()).toHaveAttribute(
+          'aria-label',
+          'Riverside Rovers in Office League',
+        );
+        for (const chip of await other.all()) {
+          expect((await chip.boundingBox())!.width).toBeLessThanOrEqual(OWNER_CHIP_MAX_WIDTH + 0.5);
+        }
+        await expectChipsClearOfPoints(page);
+      }
+
+      // Kept on the device: a fresh load still shows the manager's name.
+      await openAccount(page);
+      await picks.manager.click();
+      await expect(picks.manager).toHaveAttribute('aria-checked', 'true');
       await page.reload();
       await expect(visible(page, 'owner-label-setting')).toBeVisible();
-
       const detail = await openFixtureWithMine(page);
-      const row = mineRow(detail);
-      await expect(row.getByTestId('owner-badge-mine')).toHaveText('You');
-      const other = row.getByTestId('owner-badge');
-      await expect(other.first()).toHaveText('Riverside Rovers');
-      await expect(other.first()).toHaveAttribute(
-        'aria-label',
-        'Riverside Rovers in Office League',
-      );
-      await expectChipsClearOfPoints(page);
+      await expect(mineRow(detail).getByTestId('owner-badge').first()).toHaveText('Sam Rivers');
+    });
+
+    test('a device that chose first names before keeps them', async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('mfp.ownerLabel', JSON.stringify('first_name'));
+      });
+      await startWithScenario(page, 'shared-owners');
+      const detail = await openFixtureWithMine(page);
+      await expect(mineRow(detail).getByTestId('owner-badge').first()).toHaveText('Sam');
     });
   });
 }
 
-for (const width of [320, 375]) {
-  test.describe(`injuries card (phone ${width})`, () => {
-    test.use({ viewport: { width, height: 812 } });
+// The injuries card stacks its rows when it is narrow (a phone, or the side
+// column of a desktop): the name has a line to itself, the owner chip sits
+// under it at the right. Long team names are cut to the chip's maximum.
+for (const width of [320, 375, 390, 1280]) {
+  for (const label of ['first_name', 'team_name'] as const) {
+    test.describe(`injuries card (${width}, owners as ${label})`, () => {
+      test.use({ viewport: { width, height: 900 } });
 
-    test("the owner column keeps the player's name readable and the rows aligned", async ({
-      page,
-    }) => {
-      await page.goto(LEAGUE);
-      const card = visible(page, 'status-injuries');
-      await expect(card).toBeVisible();
-      const rows = card.locator('[data-testid^="injury-plr_"]');
-      expect(await rows.count()).toBeGreaterThan(1);
-      await expect(card.getByTestId(/^injury-owner-plr_/).first()).toBeVisible();
-      const slots: { left: number; right: number }[] = [];
-      for (const row of await rows.all()) {
-        const name = (await row.getByTestId(/^injury-name-/).boundingBox())!;
-        expect(name.width).toBeGreaterThan(60);
-        const slot = (await row.getByTestId(/^injury-owner-slot-/).boundingBox())!;
-        slots.push({ left: Math.round(slot.x), right: Math.round(slot.x + slot.width) });
-        const chip = row.getByTestId(/^injury-owner-plr_/);
-        if ((await chip.count()) > 0) {
-          const c = (await chip.boundingBox())!;
-          expect(c.x).toBeGreaterThanOrEqual(slot.x - 0.5);
-          expect(c.x + c.width).toBeLessThanOrEqual(slot.x + slot.width + 0.5);
+      test("the owner column keeps the player's name readable and the rows aligned", async ({
+        page,
+      }) => {
+        await startWithScenario(page, 'long-owner-names');
+        await page.addInitScript(
+          (m) => localStorage.setItem('mfp.ownerLabel', JSON.stringify(m)),
+          label,
+        );
+        await page.goto(LEAGUE);
+        const card = visible(page, 'status-injuries');
+        await expect(card).toBeVisible();
+        const rows = card.locator('[data-testid^="injury-plr_"]');
+        expect(await rows.count()).toBeGreaterThan(1);
+        await expect(card.getByTestId(/^injury-owner-plr_/).first()).toBeVisible();
+        if (label === 'team_name') {
+          await expect(card.getByTestId(/^injury-owner-plr_/).first()).toHaveText(
+            /^Riverside Rovers$/,
+          );
         }
-      }
-      // Every row's owner column (chip or –) in the same place.
-      expect(new Set(slots.map((s) => `${s.left}-${s.right}`)).size).toBe(1);
+        const slots: { left: number; right: number }[] = [];
+        let chips = 0;
+        for (const row of await rows.all()) {
+          const name = row.getByTestId(/^injury-name-/);
+          // The whole name, not cut to an ellipsis: it has the line to itself.
+          expect((await name.boundingBox())!.width).toBeGreaterThan(100);
+          expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+          const detail = row.getByTestId(/^injury-detail-/);
+          expect(await detail.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+          const slot = (await row.getByTestId(/^injury-owner-slot-/).boundingBox())!;
+          slots.push({ left: Math.round(slot.x), right: Math.round(slot.x + slot.width) });
+          const chip = row.getByTestId(/^injury-owner-plr_/);
+          if ((await chip.count()) > 0) {
+            chips++;
+            const c = (await chip.boundingBox())!;
+            expect(c.x).toBeGreaterThanOrEqual(slot.x - 0.5);
+            expect(c.x + c.width).toBeLessThanOrEqual(slot.x + slot.width + 0.5);
+            // A team name gets the chip's full width, not a stub.
+            if (label === 'team_name' && !(await chip.getByText('You').count())) {
+              expect(c.width).toBeGreaterThan(80);
+            }
+          }
+        }
+        expect(chips).toBeGreaterThan(1);
+        // Every row's owner column (chip or Free agent) in the same place.
+        expect(new Set(slots.map((s) => `${s.left}-${s.right}`)).size).toBe(1);
+      });
     });
-  });
+  }
 }
 
 test.describe('matchup cards (phone 375)', () => {

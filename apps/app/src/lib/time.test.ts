@@ -6,8 +6,11 @@ import {
   formatDay,
   formatDateTime,
   formatKickoff,
+  formatKickoffDate,
   formatMonthYear,
   formatRelative,
+  formatShortDate,
+  formatWeekday,
 } from './time';
 
 const MIN = 60_000;
@@ -80,6 +83,38 @@ describe('formatKickoff', () => {
     expect(formatKickoff(at('2026-10-24T14:00:00Z'), NOW, LONDON)).toBe('Sat 24 Oct, 15:00');
     // A UK Saturday 15:00 kickoff is early Sunday in New Zealand.
     expect(formatKickoff(at('2026-10-17T14:00:00Z'), NOW, 'Pacific/Auckland')).toBe('Sun 03:00');
+  });
+});
+
+describe('formatKickoffDate', () => {
+  it('is "Sat 22 Nov, 12:30": weekday, day first, then the clock', () => {
+    expect(formatKickoffDate(at('2026-11-22T12:30:00Z'), NOW, LONDON)).toBe('Sun 22 Nov, 12:30');
+    expect(formatKickoffDate(at('2026-10-17T14:00:00Z'), NOW, LONDON)).toBe('Sat 17 Oct, 15:00');
+    // The day follows the zone: a UK Saturday kickoff is early Sunday in New Zealand.
+    expect(formatKickoffDate(at('2026-10-17T14:00:00Z'), NOW, 'Pacific/Auckland')).toBe(
+      'Sun 18 Oct, 03:00',
+    );
+  });
+
+  it('adds the year beyond six months', () => {
+    expect(formatKickoffDate(at('2027-05-23T15:00:00Z'), NOW, LONDON)).toBe(
+      'Sun 23 May 2027, 16:00',
+    );
+  });
+});
+
+describe('formatShortDate and formatWeekday: a match date in a narrow cell', () => {
+  it('reads "27 Oct" and "Tue" in the zone it is shown in', () => {
+    const t = at('2026-10-27T19:45:00Z');
+    expect(formatShortDate(t, LONDON)).toBe('27 Oct');
+    expect(formatWeekday(t, LONDON)).toBe('Tue');
+    // Late evening in London is the next morning in New Zealand.
+    expect(formatShortDate(at('2026-10-31T23:30:00Z'), 'Pacific/Auckland')).toBe('1 Nov');
+    expect(formatWeekday(at('2026-10-31T23:30:00Z'), 'Pacific/Auckland')).toBe('Sun');
+  });
+
+  it('has no year and no leading zero', () => {
+    expect(formatShortDate(at('2027-01-05T12:00:00Z'), LONDON)).toBe('5 Jan');
   });
 });
 

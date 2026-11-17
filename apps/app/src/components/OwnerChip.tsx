@@ -9,7 +9,7 @@ import { useTheme } from '@/theme';
 export const OWNER_CHIP_MAX_WIDTH = 96;
 
 /**
- * Who owns a player: the manager's first name (or team name, per "Show
+ * Who owns a player: the team name, manager name or first name (per "Show
  * owners as" in Account) on the team's avatar colour; `You` in solid
  * accent on my own team. One line, never wider than OWNER_CHIP_MAX_WIDTH.
  */
