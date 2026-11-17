@@ -22,6 +22,20 @@ export function TextField({ label, error, hint, testID, onFocus, onBlur, ...rest
   // Inside a native sheet: its own input, so the sheet rises above the keyboard.
   const renderInput = useSheetTextInput();
   const id = useId();
+  // A multiline input is a <textarea> on web and a text view on iOS: neither
+  // centres its text vertically, so give it an explicit line height and equal
+  // top/bottom padding that centres one line in the minimum height.
+  const lineHeight = Math.round(fontSizes.md * 1.35);
+  const multilinePadding = rest.multiline
+    ? {
+        lineHeight,
+        paddingVertical: Math.max(spacing.sm, (layout.touch - 2 - lineHeight) / 2),
+        textAlignVertical: 'top' as const,
+        // Web: one row that grows with the text (browsers without
+        // field-sizing keep one scrolling row, still centred).
+        ...({ fieldSizing: 'content' } as object),
+      }
+    : null;
   return (
     <View style={{ gap: spacing.xs }}>
       <AppText variant="meta" weight="semibold" nativeID={`${id}-label`}>
@@ -29,6 +43,7 @@ export function TextField({ label, error, hint, testID, onFocus, onBlur, ...rest
       </AppText>
       {renderInput({
         maxFontSizeMultiplier: INPUT_MAX_FONT_SCALE,
+        ...(rest.multiline ? { numberOfLines: 1 } : null),
         ...rest,
         testID: testID,
         accessibilityLabel: label,
@@ -55,6 +70,7 @@ export function TextField({ label, error, hint, testID, onFocus, onBlur, ...rest
           backgroundColor: colors.background,
           color: colors.text,
           fontSize: fontSizes.md,
+          ...multilinePadding,
           // The border colour is the focus indicator; drop the browser outline.
           ...({ outlineStyle: 'none' } as object),
         },
