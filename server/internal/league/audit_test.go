@@ -93,8 +93,11 @@ func TestCommissionerMovesAreLogged(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := m.RevokeInvite(ctx, usrA, l.ID, inv.ID); err != nil {
-			t.Fatal(err)
+		// Revoking it again changes nothing and logs nothing.
+		for range 2 {
+			if err := m.RevokeInvite(ctx, usrA, l.ID, inv.ID); err != nil {
+				t.Fatal(err)
+			}
 		}
 		team, _ := (&League{Teams: moves0(t, m, l.ID)}).TeamOf(usrC)
 		if _, err := m.RemoveMember(ctx, usrA, l.ID, usrC); err != nil {

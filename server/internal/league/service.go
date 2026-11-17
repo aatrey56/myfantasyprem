@@ -967,7 +967,8 @@ func (m *Service) ListInvites(ctx context.Context, actor, leagueID string) ([]In
 	return out, nil
 }
 
-// RevokeInvite (commissioner only).
+// RevokeInvite (commissioner only). Revoking a revoked invite changes
+// nothing and is no commissioner move.
 func (m *Service) RevokeInvite(ctx context.Context, actor, leagueID, inviteID string) error {
 	_, err := m.mutate(ctx, leagueID, func(tx Tx, l *League) error {
 		if err := commissioner(l, actor); err != nil {
@@ -975,6 +976,9 @@ func (m *Service) RevokeInvite(ctx context.Context, actor, leagueID, inviteID st
 		}
 		for i := range l.Invites {
 			if l.Invites[i].ID == inviteID {
+				if l.Invites[i].Revoked {
+					return nil
+				}
 				l.Invites[i].Revoked = true
 				var teams []string
 				if t := l.Invites[i].TeamID; t != "" {
