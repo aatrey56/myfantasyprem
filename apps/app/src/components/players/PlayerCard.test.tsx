@@ -1,11 +1,12 @@
 import type { Schemas } from '@myfantasyprem/api-client';
-import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import {
   CareerTable,
   CardsGlyphs,
   currentGameweekOf,
+  firstKickoff,
   Fixtures,
   GameLog,
   GameweekStrip,
@@ -15,6 +16,7 @@ import {
   StatStrip,
   StatusBanner,
 } from './PlayerCard';
+import { SheetScrollContext } from '../sheet-context';
 import { cardsText, type Cards } from '@/lib/gamelog';
 import { NO_STATS } from '@/mocks/data';
 import { darkColors, tint } from '@/theme/tokens';
@@ -227,6 +229,142 @@ describe('GameLog', () => {
   });
 });
 
+describe('GameLog dates', () => {
+  const fx = (n: number, kickoffAt: string | null, status: Schemas['FixtureStatus'] = 'finished') =>
+    ({
+      fixtureId: `fx_${n}`,
+      kickoffAt,
+      status,
+      isHome: true,
+      opponent: { code: 'ars', name: 'Arsenal' },
+      homeScore: 1,
+      awayScore: 0,
+    }) as unknown as Schemas['PlayerFixture'];
+  const week = (gameweek: number, fixtures: Schemas['PlayerFixture'][]) =>
+    ({
+      gameweek,
+      points: 6,
+      minutes: 90,
+      fixtures,
+      stats: Object.fromEntries(Object.keys(NO_STATS).map((k) => [k, 0])),
+    }) as unknown as Schemas['PlayerGameweek'];
+  const log = (
+    gameweeks: Schemas['PlayerGameweek'][],
+    focus?: { gameweek: number; id: number },
+    upcoming: Schemas['UpcomingFixture'][] = [],
+  ) => (
+    <GameLog
+      d={{ player: { position: 'MID' } as Schemas['PlayerDetail']['player'], gameweeks, upcoming }}
+      focus={focus}
+    />
+  );
+
+  it('puts a DATE column right after OPP, in the pinned block, and a date in each row', async () => {
+    await render(
+      log([week(2, [fx(2, '2026-11-03T12:00:00Z')]), week(1, [fx(1, '2026-10-27T12:00:00Z')])]),
+    );
+    const head = screen.getByTestId('log-date-head', { includeHiddenElements: true });
+    expect(within(head).getByText('Date')).toBeTruthy();
+    expect(within(screen.getByTestId('log-date-1')).getByText('Oct 27')).toBeTruthy();
+    expect(within(screen.getByTestId('log-date-2')).getByText('Nov 3')).toBeTruthy();
+    // Centred under its centred header, and the same width.
+    expect(StyleSheet.flatten(screen.getByTestId('log-date-1').props.style)).toMatchObject({
+      alignItems: 'center',
+    });
+    expect(StyleSheet.flatten(head.props.style).width).toBe(
+      StyleSheet.flatten(screen.getByTestId('log-date-1').props.style).width,
+    );
+    expect(screen.getByTestId('log-row-1').props.accessibilityLabel).toMatch(/, Oct 27$/);
+  });
+
+  it('lists both dates in a double gameweek, one line per opponent, and a dash for a TBC game', async () => {
+    await render(
+      log([
+        week(2, [fx(3, '2026-11-03T12:00:00Z'), fx(4, '2026-11-06T12:00:00Z')]),
+        week(1, [fx(1, null)]),
+      ]),
+    );
+    const double = screen.getByTestId('log-date-2');
+    expect(
+      within(double)
+        .getAllByText(/^[A-Z][a-z]{2} \d+$/)
+        .map((n) => n.props.children),
+    ).toEqual(['Nov 3', 'Nov 6']);
+    expect(within(screen.getByTestId('log-date-1')).getByText('–')).toBeTruthy();
+  });
+
+  it('dates the gameweeks still to come, and leaves a blank one empty', async () => {
+    const next = {
+      fixtureId: 'fx_9',
+      gameweek: 3,
+      opponent: { code: 'che', name: 'Chelsea' },
+      isHome: false,
+      kickoffAt: '2026-11-10T12:00:00Z',
+    } as Schemas['UpcomingFixture'];
+    await render(log([week(1, [fx(1, '2026-10-27T12:00:00Z')])], undefined, [next]));
+    expect(within(screen.getByTestId('log-date-3')).getByText('Nov 10')).toBeTruthy();
+    expect(within(screen.getByTestId('log-blank-2')).queryByText(/^[A-Z][a-z]{2} \d+$/)).toBeNull();
+  });
+
+  describe('pointing at a gameweek', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+    const weeks = [
+      week(3, [fx(3, '2026-11-10T12:00:00Z')]),
+      week(2, [fx(2, '2026-11-03T12:00:00Z')]),
+    ];
+    const lit = (gw: number) => screen.getByTestId(`log-row-${gw}`).props['aria-current'];
+
+    it('highlights the row, scrolls it into view, then lets the highlight go', async () => {
+      const scrollIntoView = jest.fn();
+      await render(
+        <SheetScrollContext.Provider value={scrollIntoView}>
+          {log(weeks, { gameweek: 2, id: 1 })}
+        </SheetScrollContext.Provider>,
+      );
+      expect(lit(2)).toBe('true');
+      expect(lit(3)).toBeUndefined();
+      expect(StyleSheet.flatten(screen.getByTestId('log-row-2').props.style).backgroundColor).toBe(
+        tint(darkColors.accent, darkColors.surface),
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView.mock.calls[0][0]).toBeTruthy();
+      expect(lit(2)).toBe('true');
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(lit(2)).toBeUndefined();
+    });
+
+    it('does nothing without a request, and points again on a repeated one', async () => {
+      const scrollIntoView = jest.fn();
+      const tree = (focus?: { gameweek: number; id: number }) => (
+        <SheetScrollContext.Provider value={scrollIntoView}>
+          {log(weeks, focus)}
+        </SheetScrollContext.Provider>
+      );
+      const { rerender } = await render(tree());
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      await rerender(tree({ gameweek: 3, id: 1 }));
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      await rerender(tree({ gameweek: 3, id: 2 }));
+      expect(lit(3)).toBe('true');
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
 describe('StatusBanner', () => {
   it('shows doubtful in amber with the chance from the news', async () => {
     await render(
@@ -265,6 +403,28 @@ describe('NextFixture', () => {
     expect(within(next).getByText('IRO')).toBeTruthy();
     expect(within(next).getByText('DAL')).toBeTruthy();
     expect(within(next).queryByText('Dalton Athletic')).toBeNull();
+  });
+
+  it('reads the kickoff with its date, not just the weekday', async () => {
+    const d = {
+      player: { position: 'DEF', club: { code: 'iro', name: 'Ironbridge' } },
+      upcoming: [
+        {
+          fixtureId: 'fx_1',
+          gameweek: 8,
+          opponent: { code: 'dal', name: 'Dalton Athletic' },
+          isHome: true,
+          kickoffAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+        },
+      ],
+    } as unknown as Parameters<typeof NextFixture>[0]['d'];
+    await render(<NextFixture d={d} />);
+    // Two days out: the old text was `Sat 12:30`; now `Sat Nov 22, 12:30`.
+    expect(
+      within(screen.getByTestId('card-next')).getByText(
+        /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$/,
+      ),
+    ).toBeTruthy();
   });
 });
 
@@ -306,6 +466,21 @@ describe('GameweekStrip', () => {
       stats: Object.fromEntries(Object.keys(NO_STATS).map((k) => [k, 0])),
     }) as unknown as Schemas['PlayerGameweek'];
 
+  const dated = (gameweek: number, kickoffs: (string | null)[]) =>
+    ({
+      gameweek,
+      points: 2,
+      minutes: 90,
+      fixtures: kickoffs.map((kickoffAt, i) => ({
+        fixtureId: `fx_${gameweek}_${i}`,
+        status: 'finished',
+        isHome: true,
+        kickoffAt,
+        opponent: { code: 'ars', name: 'Arsenal' },
+      })),
+      stats: Object.fromEntries(Object.keys(NO_STATS).map((k) => [k, 0])),
+    }) as unknown as Schemas['PlayerGameweek'];
+
   it('shows every gameweek from the first to the current one, never a future one', async () => {
     const gameweeks = [1, 2, 3, 4, 5, 6, 7].map((n) => week(n)).concat(week(8, 'scheduled'));
     await render(<GameweekStrip d={{ gameweeks }} current={7} />);
@@ -317,6 +492,67 @@ describe('GameweekStrip', () => {
     await render(<GameweekStrip d={{ gameweeks: [week(1), week(2, 'scheduled')] }} />);
     expect(screen.getByTestId('gw-card-1')).toBeTruthy();
     expect(screen.queryByTestId('gw-card-2')).toBeNull();
+  });
+
+  it('names the day (top right) and the date (bottom right) of the gameweek, level with its points', async () => {
+    const gameweeks = [dated(1, ['2026-10-27T12:00:00Z'])];
+    await render(<GameweekStrip d={{ gameweeks }} current={1} />);
+    const card = screen.getByTestId('gw-card-1');
+    expect(within(card).getByTestId('gw-card-1-day').props.children).toBe('Tue');
+    expect(within(card).getByTestId('gw-card-1-date').props.children).toBe('Oct 27');
+    expect(card.props.accessibilityLabel).toBe('Gameweek 1: v ARS, 2 points, Tue Oct 27');
+  });
+
+  it('dates a double gameweek by its first fixture, whatever the order', async () => {
+    const gameweeks = [dated(1, ['2026-11-03T12:00:00Z', '2026-10-31T12:00:00Z'])];
+    await render(<GameweekStrip d={{ gameweeks }} current={1} />);
+    expect(screen.getByTestId('gw-card-1-date').props.children).toBe('Oct 31');
+    expect(screen.getByTestId('gw-card-1-day').props.children).toBe('Sat');
+  });
+
+  it('has no day or date for a blank gameweek or a game without a time', async () => {
+    const blank = { gameweek: 2, points: 0, minutes: 0, fixtures: [], stats: NO_STATS };
+    await render(
+      <GameweekStrip
+        d={{ gameweeks: [dated(1, [null]), blank as unknown as Schemas['PlayerGameweek']] }}
+        current={2}
+      />,
+    );
+    for (const gw of [1, 2]) {
+      expect(screen.queryByTestId(`gw-card-${gw}-day`)).toBeNull();
+      expect(screen.queryByTestId(`gw-card-${gw}-date`)).toBeNull();
+    }
+  });
+
+  it('is a button that opens its gameweek in the game log', async () => {
+    const open = jest.fn();
+    await render(
+      <GameweekStrip
+        d={{ gameweeks: [week(1), week(2), week(3)] }}
+        current={3}
+        onOpenGameweek={open}
+      />,
+    );
+    const card = screen.getByTestId('gw-card-2');
+    expect(card.props.accessibilityRole).toBe('button');
+    expect(card.props.accessibilityLabel).toMatch(/^Gameweek 2: v ARS, 2 points/);
+    await fireEvent.press(card);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(2);
+    await fireEvent.press(screen.getByTestId('gw-card-3'));
+    expect(open).toHaveBeenLastCalledWith(3);
+  });
+
+  it('finds the first kickoff of a gameweek, ignoring games without a time', () => {
+    expect(firstKickoff([])).toBeNull();
+    expect(firstKickoff([{ kickoffAt: null }])).toBeNull();
+    expect(
+      firstKickoff([
+        { kickoffAt: '2026-11-03T12:00:00Z' },
+        { kickoffAt: '2026-10-31T12:00:00Z' },
+        { kickoffAt: null },
+      ]),
+    ).toBe(Date.parse('2026-10-31T12:00:00Z'));
   });
 
   it('takes the current gameweek as the latest whose deadline has passed', () => {

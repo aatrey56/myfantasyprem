@@ -1,6 +1,6 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 import { useRouter } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Platform, Pressable, ScrollView, View } from 'react-native';
 
 import { AppText } from '../AppText';
@@ -15,6 +15,7 @@ import { QueryStatus } from '../QueryStatus';
 import { SectionHeader } from '../SectionHeader';
 import { SegmentedControl } from '../SegmentedControl';
 import { Sheet, useSheetClose } from '../Sheet';
+import { useSheetScrollIntoView } from '../sheet-context';
 import { Skeleton } from '../Skeleton';
 import { useToast } from '../Toast';
 import { BlockPanel, BlockToggle, newsTime, NewsLine, TagPicker } from './CardExtras';
@@ -61,7 +62,13 @@ import {
 } from '@/lib/gamelog';
 import { initialsOf } from '@/lib/identity';
 import { seasonStatTotals, statLabel } from '@/lib/matchup';
-import { formatDateTime, formatKickoff } from '@/lib/time';
+import {
+  formatDateTime,
+  formatKickoff,
+  formatKickoffDate,
+  formatShortDate,
+  formatWeekday,
+} from '@/lib/time';
 import { dropCandidates, waiversDueLabel } from '@/lib/waivers';
 import { positionColorKey, tint, useTheme } from '@/theme';
 
@@ -195,6 +202,17 @@ export function PlayerCard({ leagueId, playerId, startWithDrop, onDone, onClose 
   const [tab, setTab] = useState<Tab>('overview');
   const [dropping, setDropping] = useState(Boolean(startWithDrop));
   const [replacing, setReplacing] = useState(false);
+  // A gameweek card on the Summary opens the game log at that gameweek; `id` re-points a repeat tap.
+  const [focus, setFocus] = useState<LogFocus | undefined>();
+  const openGameweek = (gameweek: number) => {
+    setFocus((f) => ({ gameweek, id: (f?.id ?? 0) + 1 }));
+    setTab('log');
+  };
+  // Picking a tab by hand drops the request, so the log opens plain later.
+  const changeTab = (next: Tab) => {
+    setFocus(undefined);
+    setTab(next);
+  };
   // Loading, an error and the drop and replace steps have no hero: the close goes above them.
   const shown = query.data ? playerAction(query.data.data, myTeamId) : null;
   const heroless =
@@ -263,20 +281,24 @@ export function PlayerCard({ leagueId, playerId, startWithDrop, onDone, onClose 
             <SegmentedControl
               accessibilityLabel="Player sections"
               value={tab}
-              onChange={setTab}
+              onChange={changeTab}
               segments={[
                 { value: 'overview', label: 'Summary', testID: 'card-tab-overview' },
                 { value: 'log', label: 'Game log', testID: 'card-tab-log' },
                 { value: 'fixtures', label: 'Fixtures', testID: 'card-tab-fixtures' },
               ]}
             />
-            <SwipePager pages={TABS} value={tab} onChange={setTab} testID="card-pager">
+            <SwipePager pages={TABS} value={tab} onChange={changeTab} testID="card-pager">
               {tab === 'overview' ? (
-                <Summary d={data} current={currentGameweekOf(home.data?.data.currentGameweek)} />
+                <Summary
+                  d={data}
+                  current={currentGameweekOf(home.data?.data.currentGameweek)}
+                  onOpenGameweek={openGameweek}
+                />
               ) : tab === 'fixtures' ? (
                 <Fixtures d={data} />
               ) : (
-                <GameLog d={data} />
+                <GameLog d={data} focus={focus} />
               )}
             </SwipePager>
           </View>
@@ -715,13 +737,21 @@ function WatchButton({ leagueId, player }: { leagueId: string; player: Detail['p
 }
 
 /** Summary: stat strip, next fixture, gameweek cards, then season totals by points line. */
-function Summary({ d, current }: { d: Detail; current?: number }) {
+function Summary({
+  d,
+  current,
+  onOpenGameweek,
+}: {
+  d: Detail;
+  current?: number;
+  onOpenGameweek?: (gameweek: number) => void;
+}) {
   const { spacing } = useTheme();
   return (
     <View style={{ gap: spacing.xl }}>
       <StatStrip d={d} />
       <NextFixture d={d} />
-      <GameweekStrip d={d} current={current} />
+      <GameweekStrip d={d} current={current} onOpenGameweek={onOpenGameweek} />
       <View style={{ gap: spacing.sm }}>
         <Caps>Season</Caps>
         <SeasonStats d={d} />
@@ -857,7 +887,7 @@ export function NextFixture({ d }: { d: Pick<Detail, 'upcoming' | 'player'> }) {
           </AppText>
         </View>
         {fx.map((f) => {
-          const when = kickoffText(f);
+          const when = kickoffText(f, true);
           return (
             <View
               key={f.fixtureId}
@@ -869,7 +899,13 @@ export function NextFixture({ d }: { d: Pick<Detail, 'upcoming' | 'player'> }) {
               ]
                 .filter(Boolean)
                 .join(', ')}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                columnGap: spacing.sm,
+                rowGap: spacing.xs,
+              }}
             >
               <ClubShirt code={d.player.club.code} size={22} />
               <AppText weight="semibold">{club}</AppText>
@@ -879,8 +915,15 @@ export function NextFixture({ d }: { d: Pick<Detail, 'upcoming' | 'player'> }) {
                   beside the rank chip and the kickoff. */}
               <AppText weight="semibold">{f.opponent.code.toUpperCase()}</AppText>
               <FixtureRank position={d.player.position} opponent={f.opponent.code} />
-              <View style={{ flex: 1 }} />
-              <AppText variant="meta" muted numeric>
+              {/* Right-aligned beside the teams; a phone has no room for the dated
+                  kickoff there, so it drops to its own line whole. */}
+              <AppText
+                variant="meta"
+                muted
+                numeric
+                testID={`card-next-kickoff-${f.fixtureId}`}
+                style={{ marginLeft: 'auto', textAlign: 'right' }}
+              >
                 {when}
               </AppText>
             </View>
@@ -903,11 +946,28 @@ const byKickoff = (a: Upcoming, b: Upcoming) =>
   (a.kickoffAt ? Date.parse(a.kickoffAt) : Infinity) -
   (b.kickoffAt ? Date.parse(b.kickoffAt) : Infinity);
 
-/** The kickoff, `Moved` for a postponed fixture, `TBC` with no time yet. */
-export function kickoffText(f: Pick<Upcoming, 'kickoffAt' | 'status'>): string {
+/**
+ * The kickoff, `Moved` for a postponed fixture, `TBC` with no time yet. With
+ * `dated`, the date too (`Sat Nov 22, 12:30`), however near the day is.
+ */
+export function kickoffText(f: Pick<Upcoming, 'kickoffAt' | 'status'>, dated = false): string {
   if (f.status === 'postponed') return 'Moved';
-  return f.kickoffAt ? formatKickoff(Date.parse(f.kickoffAt)) : 'TBC';
+  if (!f.kickoffAt) return 'TBC';
+  const at = Date.parse(f.kickoffAt);
+  return dated ? formatKickoffDate(at) : formatKickoff(at);
 }
+
+/** The earliest kickoff among a gameweek's fixtures; null when none has a time (blank, TBC). */
+export function firstKickoff(fixtures: readonly { kickoffAt?: string | null }[]): number | null {
+  const times = fixtures
+    .map((f) => (f.kickoffAt ? Date.parse(f.kickoffAt) : NaN))
+    .filter((t) => Number.isFinite(t));
+  return times.length ? Math.min(...times) : null;
+}
+
+/** A fixture's date in the game log's DATE column (`Oct 27`), a dash with no time yet. */
+const logDate = (f: { kickoffAt?: string | null }) =>
+  f.kickoffAt ? formatShortDate(Date.parse(f.kickoffAt)) : MISSING;
 
 const difficultyA11yOf = (rank: number | null) => (rank === null ? '' : difficultyA11y(rank));
 
@@ -932,13 +992,28 @@ export function currentGameweekOf(
   return Date.parse(gw.deadlineAt) <= now ? gw.number : gw.number - 1;
 }
 
+/** A By-gameweek card's width: room for `Pts 14` beside `Oct 27`. */
+const GW_CARD_W = 116;
+
 /**
  * A horizontal strip of gameweek cards, one per gameweek from the first up
  * to and including the current one (fixture by result, points), newest
  * last and scrolled to it; never a future gameweek. Without a current
- * gameweek, up to the last one with a game under way or played.
+ * gameweek, up to the last one with a game under way or played. A card
+ * names the day of its first fixture (top right) and the date (bottom
+ * right); a blank gameweek has neither. A tap opens that gameweek's row in
+ * the game log.
  */
-export function GameweekStrip({ d, current }: { d: Pick<Detail, 'gameweeks'>; current?: number }) {
+export function GameweekStrip({
+  d,
+  current,
+  onOpenGameweek,
+}: {
+  d: Pick<Detail, 'gameweeks'>;
+  current?: number;
+  /** A tap on a card: show that gameweek in the game log. */
+  onOpenGameweek?: (gameweek: number) => void;
+}) {
   const { colors, spacing, radii } = useTheme();
   const toneOf = useFixtureColor();
   const scroller = useRef<ScrollView>(null);
@@ -975,27 +1050,50 @@ export function GameweekStrip({ d, current }: { d: Pick<Detail, 'gameweeks'>; cu
                   }))
                 : [];
           const points = r.kind === 'played' ? String(r.gw.points) : MISSING;
+          const kickoff = firstKickoff(
+            r.kind === 'played' ? r.gw.fixtures : r.kind === 'future' ? r.fixtures : [],
+          );
           return (
-            <View
+            <Pressable
               key={r.gameweek}
               testID={`gw-card-${r.gameweek}`}
-              accessible
+              accessibilityRole="button"
               accessibilityLabel={`Gameweek ${r.gameweek}: ${
                 fixtures.length ? fixtures.map((f) => f.label).join(', ') : 'no fixture'
-              }${r.kind === 'played' ? `, ${points} points` : ''}`}
-              style={{
-                width: 104,
-                padding: spacing.sm,
-                gap: spacing.xs,
-                borderRadius: radii.md,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.surface,
-              }}
+              }${r.kind === 'played' ? `, ${points} points` : ''}${
+                kickoff === null ? '' : `, ${formatWeekday(kickoff)} ${formatShortDate(kickoff)}`
+              }`}
+              accessibilityHint="Opens this gameweek in the game log"
+              onPress={() => onOpenGameweek?.(r.gameweek)}
+              style={(s: PressState) => [
+                {
+                  width: GW_CARD_W,
+                  padding: spacing.sm,
+                  gap: spacing.xs,
+                  borderRadius: radii.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                },
+                ...pressFeedback(colors, s, { hoverFill: true }),
+              ]}
             >
-              <AppText weight="bold" style={{ fontSize: 12, lineHeight: 16 }}>
-                {`GW ${r.gameweek}`}
-              </AppText>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <AppText weight="bold" style={{ fontSize: 12, lineHeight: 16 }}>
+                  {`GW ${r.gameweek}`}
+                </AppText>
+                {kickoff === null ? null : (
+                  <AppText variant="meta" muted testID={`gw-card-${r.gameweek}-day`}>
+                    {formatWeekday(kickoff)}
+                  </AppText>
+                )}
+              </View>
               <View style={{ minHeight: 18 }}>
                 {fixtures.length ? (
                   fixtures.map((f) => (
@@ -1019,17 +1117,24 @@ export function GameweekStrip({ d, current }: { d: Pick<Detail, 'gameweeks'>; cu
                   borderTopColor: colors.border,
                 }}
               >
-                <Caps>Pts</Caps>
-                <AppText
-                  numeric
-                  weight="semibold"
-                  color={r.kind === 'played' ? colors.text : colors.textMuted}
-                  style={{ fontSize: 18, lineHeight: 24 }}
-                >
-                  {points}
-                </AppText>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs }}>
+                  <Caps>Pts</Caps>
+                  <AppText
+                    numeric
+                    weight="semibold"
+                    color={r.kind === 'played' ? colors.text : colors.textMuted}
+                    style={{ fontSize: 18, lineHeight: 24 }}
+                  >
+                    {points}
+                  </AppText>
+                </View>
+                {kickoff === null ? null : (
+                  <AppText variant="meta" muted numeric testID={`gw-card-${r.gameweek}-date`}>
+                    {formatShortDate(kickoff)}
+                  </AppText>
+                )}
               </View>
-            </View>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -1093,7 +1198,8 @@ function StatValue({ cell, align = 'right' }: { cell: StatCell; align?: 'right' 
 }
 
 const GW_W = 40;
-const OPP_W = 72;
+const OPP_W = 56;
+const DATE_W = 48;
 const TILE_H = 28;
 const TILE_GAP = 4;
 const GROUP_GAP = 12;
@@ -1101,6 +1207,43 @@ const GROUP_GAP = 12;
 const tileWidth = (c: HeatColumn) => (c.format || c.label.length > 3 ? 46 : 38);
 const groupWidth = (g: HeatGroup) =>
   g.columns.reduce((w, c) => w + tileWidth(c), 0) + TILE_GAP * (g.columns.length - 1);
+
+/** A row's match dates, spoken: `, Oct 27` (and `, Oct 27 and Nov 3` in a double). */
+function dateA11y(fixtures: readonly { kickoffAt?: string | null }[]): string {
+  const dates = fixtures.filter((f) => f.kickoffAt).map(logDate);
+  return dates.length ? `, ${dates.join(' and ')}` : '';
+}
+
+/**
+ * The DATE column of one row: a centred line per fixture, level with that
+ * fixture's opponent (two lines in a double gameweek); nothing in a blank one.
+ */
+function DateCell({
+  fixtures,
+  muted,
+  testID,
+}: {
+  fixtures: readonly { fixtureId: string; kickoffAt?: string | null }[];
+  muted?: boolean;
+  testID: string;
+}) {
+  return (
+    <View testID={testID} style={{ width: DATE_W, alignItems: 'center' }}>
+      {fixtures.map((f) => (
+        <AppText
+          key={f.fixtureId}
+          variant="meta"
+          numeric
+          numberOfLines={1}
+          muted={muted}
+          subtle={!muted && !f.kickoffAt}
+        >
+          {logDate(f)}
+        </AppText>
+      ))}
+    </View>
+  );
+}
 
 /** One heat-map cell: a small rounded tile tinted by quality. */
 function HeatTile({
@@ -1143,15 +1286,51 @@ function HeatTile({
 
 type GameLogData = Pick<Detail, 'gameweeks' | 'player'> & { upcoming?: Detail['upcoming'] };
 
+/** A request to point at a gameweek's row; a new `id` repeats it. */
+export interface LogFocus {
+  gameweek: number;
+  id: number;
+}
+
+/** How long a pointed-at row stays highlighted. */
+const HIGHLIGHT_MS = 1800;
+/** Lets the tab and the table lay out before the row is scrolled to. */
+const SCROLL_DELAY_MS = 60;
+
 /**
  * The game log as a heat map: one row per gameweek, oldest first, then the
  * next few still to play (dashes on dark tiles); blank gameweeks greyed.
- * GW and opponent stay pinned on the left while the stat groups scroll
- * sideways. Rows start collapsed; a tap on a played row opens every stat
- * (and what scored for the position) beneath it, one row at a time.
+ * GW, opponent and match date (`Oct 27`, in the device's time zone) stay
+ * pinned on the left while the stat groups scroll sideways. Rows start collapsed; a tap on a played row opens every stat
+ * (and what scored for the position) beneath it, one row at a time. With
+ * a `focus`, the sheet scrolls to that gameweek's row and the row is
+ * highlighted for a moment.
  */
-export function GameLog({ d }: { d: GameLogData }) {
+export function GameLog({ d, focus }: { d: GameLogData; focus?: LogFocus }) {
   const { colors, spacing, radii } = useTheme();
+  const scrollIntoView = useSheetScrollIntoView();
+  const rowNodes = useRef(new Map<number, View>());
+  // The request being pointed at stays lit until its highlight has run its course.
+  const [faded, setFaded] = useState<number | null>(null);
+  const lit = focus && faded !== focus.id ? focus.gameweek : null;
+  useEffect(() => {
+    if (!focus) return;
+    const scroll = setTimeout(
+      () => scrollIntoView?.(rowNodes.current.get(focus.gameweek) ?? null),
+      SCROLL_DELAY_MS,
+    );
+    const fade = setTimeout(() => setFaded(focus.id), HIGHLIGHT_MS);
+    return () => {
+      clearTimeout(scroll);
+      clearTimeout(fade);
+    };
+    // A repeated request has a new id; the scroller's identity never matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.id]);
+  const rowRef = (gameweek: number) => (node: View | null) => {
+    if (node) rowNodes.current.set(gameweek, node);
+    else rowNodes.current.delete(gameweek);
+  };
   const [open, setOpen] = useState<number | null>(null);
   const [viewport, setViewport] = useState(0);
   const [scrollX] = useState(() => new Animated.Value(0));
@@ -1194,7 +1373,10 @@ export function GameLog({ d }: { d: GameLogData }) {
           <View style={{ flexDirection: 'row' }} aria-hidden>
             <Animated.View
               testID="log-pinned-head"
-              style={[pinned, { width: GW_W + OPP_W + pad + GROUP_GAP, alignSelf: 'stretch' }]}
+              style={[
+                pinned,
+                { width: GW_W + OPP_W + DATE_W + pad + GROUP_GAP, alignSelf: 'stretch' },
+              ]}
             />
             {groups.map((g) => (
               <View
@@ -1220,6 +1402,13 @@ export function GameLog({ d }: { d: GameLogData }) {
             <Animated.View style={pinned}>
               <HeadCell label="GW" width={GW_W} />
               <HeadCell label="OPP" title="Opponent" width={OPP_W} />
+              <HeadCell
+                label="Date"
+                title="Match date"
+                width={DATE_W}
+                center
+                testID="log-date-head"
+              />
             </Animated.View>
             {groups.map((g) => (
               <View
@@ -1251,9 +1440,18 @@ export function GameLog({ d }: { d: GameLogData }) {
                 onToggle={() => setOpen(open === r.gameweek ? null : r.gameweek)}
                 detailWidth={viewport ? viewport - pad * 2 : undefined}
                 scrollX={scrollX}
+                highlight={lit === r.gameweek}
+                rowRef={rowRef(r.gameweek)}
               />
             ) : (
-              <UnplayedRow key={r.gameweek} row={r} groups={groups} pinned={pinned} />
+              <UnplayedRow
+                key={r.gameweek}
+                row={r}
+                groups={groups}
+                pinned={pinned}
+                highlight={lit === r.gameweek}
+                rowRef={rowRef(r.gameweek)}
+              />
             ),
           )}
         </View>
@@ -1320,6 +1518,8 @@ function PlayedRow({
   onToggle,
   detailWidth,
   scrollX,
+  highlight,
+  rowRef,
 }: {
   g: Detail['gameweeks'][number];
   position: string;
@@ -1329,25 +1529,33 @@ function PlayedRow({
   onToggle: () => void;
   detailWidth: number | undefined;
   scrollX: Animated.Value;
+  highlight: boolean;
+  rowRef: (node: View | null) => void;
 }) {
   const { colors, spacing, radii } = useTheme();
   const toneOf = useFixtureColor();
+  const lit = tint(colors.accent, colors.surface);
   const chips = eventChips(position, g.stats);
   return (
     <View>
       <Pressable
+        ref={rowRef}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         aria-expanded={open}
-        accessibilityLabel={`Gameweek ${g.gameweek}, ${opponentLabel(g.fixtures)}, ${g.points} points`}
+        aria-current={highlight ? 'true' : undefined}
+        accessibilityLabel={`Gameweek ${g.gameweek}, ${opponentLabel(g.fixtures)}, ${g.points} points${dateA11y(g.fixtures)}`}
         onPress={onToggle}
         testID={`log-row-${g.gameweek}`}
         style={(s: PressState) => [
           { flexDirection: 'row', alignItems: 'center', borderRadius: radii.sm },
           ...pressFeedback(colors, s, { hoverFill: true }),
+          highlight ? { backgroundColor: lit } : null,
         ]}
       >
-        <Animated.View style={[pinned, { alignSelf: 'stretch' }]}>
+        <Animated.View
+          style={[pinned, { alignSelf: 'stretch' }, highlight ? { backgroundColor: lit } : null]}
+        >
           <View
             style={{ width: GW_W, flexDirection: 'row', alignItems: 'center', gap: spacing.xxs }}
           >
@@ -1371,6 +1579,7 @@ function PlayedRow({
               </AppText>
             ))}
           </View>
+          <DateCell fixtures={g.fixtures} testID={`log-date-${g.gameweek}`} />
         </Animated.View>
         {groups.map((gr) => (
           <View key={gr.id} style={{ flexDirection: 'row', gap: TILE_GAP, marginLeft: GROUP_GAP }}>
@@ -1457,24 +1666,38 @@ function UnplayedRow({
   row,
   groups,
   pinned,
+  highlight,
+  rowRef,
 }: {
   row: Exclude<LogRow, { kind: 'played' }>;
   groups: HeatGroup[];
   pinned: Pinned;
+  highlight: boolean;
+  rowRef: (node: View | null) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, radii } = useTheme();
+  const lit = tint(colors.accent, colors.surface);
   const fixtures: FutureFixture[] = row.kind === 'future' ? row.fixtures : [];
   const blank = row.kind === 'blank';
   return (
     <View
+      ref={rowRef}
       testID={blank ? `log-blank-${row.gameweek}` : `log-next-${row.gameweek}`}
       accessible
+      aria-current={highlight ? 'true' : undefined}
       accessibilityLabel={`Gameweek ${row.gameweek}, ${
-        blank ? 'no fixture' : `${fixtures.map((f) => fixtureA11y(f)).join(', ')}, not played yet`
+        blank
+          ? 'no fixture'
+          : `${fixtures.map((f) => fixtureA11y(f)).join(', ')}, not played yet${dateA11y(fixtures)}`
       }`}
-      style={{ flexDirection: 'row', alignItems: 'center' }}
+      style={[
+        { flexDirection: 'row', alignItems: 'center', borderRadius: radii.sm },
+        highlight ? { backgroundColor: lit } : null,
+      ]}
     >
-      <Animated.View style={[pinned, { alignSelf: 'stretch' }]}>
+      <Animated.View
+        style={[pinned, { alignSelf: 'stretch' }, highlight ? { backgroundColor: lit } : null]}
+      >
         <View style={{ width: GW_W }}>
           <AppText variant="meta" numeric color={blank ? colors.textSubtle : colors.textMuted}>
             {String(row.gameweek)}
@@ -1493,6 +1716,7 @@ function UnplayedRow({
             ))
           )}
         </View>
+        <DateCell fixtures={fixtures} muted testID={`log-date-${row.gameweek}`} />
       </Animated.View>
       {groups.map((gr) => (
         <View key={gr.id} style={{ flexDirection: 'row', gap: TILE_GAP, marginLeft: GROUP_GAP }}>
