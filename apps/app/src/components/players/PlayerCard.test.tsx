@@ -265,8 +265,8 @@ describe('GameLog dates', () => {
     );
     const head = screen.getByTestId('log-date-head', { includeHiddenElements: true });
     expect(within(head).getByText('Date')).toBeTruthy();
-    expect(within(screen.getByTestId('log-date-1')).getByText('Oct 27')).toBeTruthy();
-    expect(within(screen.getByTestId('log-date-2')).getByText('Nov 3')).toBeTruthy();
+    expect(within(screen.getByTestId('log-date-1')).getByText('27 Oct')).toBeTruthy();
+    expect(within(screen.getByTestId('log-date-2')).getByText('3 Nov')).toBeTruthy();
     // Centred under its centred header, and the same width.
     expect(StyleSheet.flatten(screen.getByTestId('log-date-1').props.style)).toMatchObject({
       alignItems: 'center',
@@ -274,7 +274,7 @@ describe('GameLog dates', () => {
     expect(StyleSheet.flatten(head.props.style).width).toBe(
       StyleSheet.flatten(screen.getByTestId('log-date-1').props.style).width,
     );
-    expect(screen.getByTestId('log-row-1').props.accessibilityLabel).toMatch(/, Oct 27$/);
+    expect(screen.getByTestId('log-row-1').props.accessibilityLabel).toMatch(/, 27 Oct$/);
   });
 
   it('lists both dates in a double gameweek, one line per opponent, and a dash for a TBC game', async () => {
@@ -287,9 +287,9 @@ describe('GameLog dates', () => {
     const double = screen.getByTestId('log-date-2');
     expect(
       within(double)
-        .getAllByText(/^[A-Z][a-z]{2} \d+$/)
+        .getAllByText(/^\d+ [A-Z][a-z]{2}$/)
         .map((n) => n.props.children),
-    ).toEqual(['Nov 3', 'Nov 6']);
+    ).toEqual(['3 Nov', '6 Nov']);
     expect(within(screen.getByTestId('log-date-1')).getByText('–')).toBeTruthy();
   });
 
@@ -302,8 +302,8 @@ describe('GameLog dates', () => {
       kickoffAt: '2026-11-10T12:00:00Z',
     } as Schemas['UpcomingFixture'];
     await render(log([week(1, [fx(1, '2026-10-27T12:00:00Z')])], undefined, [next]));
-    expect(within(screen.getByTestId('log-date-3')).getByText('Nov 10')).toBeTruthy();
-    expect(within(screen.getByTestId('log-blank-2')).queryByText(/^[A-Z][a-z]{2} \d+$/)).toBeNull();
+    expect(within(screen.getByTestId('log-date-3')).getByText('10 Nov')).toBeTruthy();
+    expect(within(screen.getByTestId('log-blank-2')).queryByText(/^\d+ [A-Z][a-z]{2}$/)).toBeNull();
   });
 
   describe('pointing at a gameweek', () => {
@@ -419,10 +419,10 @@ describe('NextFixture', () => {
       ],
     } as unknown as Parameters<typeof NextFixture>[0]['d'];
     await render(<NextFixture d={d} />);
-    // Two days out: the old text was `Sat 12:30`; now `Sat Nov 22, 12:30`.
+    // Two days out: the old text was `Sat 12:30`; now `Sat 22 Nov, 12:30`.
     expect(
       within(screen.getByTestId('card-next')).getByText(
-        /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$/,
+        /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, \d\d:\d\d$/,
       ),
     ).toBeTruthy();
   });
@@ -499,14 +499,14 @@ describe('GameweekStrip', () => {
     await render(<GameweekStrip d={{ gameweeks }} current={1} />);
     const card = screen.getByTestId('gw-card-1');
     expect(within(card).getByTestId('gw-card-1-day').props.children).toBe('Tue');
-    expect(within(card).getByTestId('gw-card-1-date').props.children).toBe('Oct 27');
-    expect(card.props.accessibilityLabel).toBe('Gameweek 1: v ARS, 2 points, Tue Oct 27');
+    expect(within(card).getByTestId('gw-card-1-date').props.children).toBe('27 Oct');
+    expect(card.props.accessibilityLabel).toBe('Gameweek 1: v ARS, 2 points, Tue 27 Oct');
   });
 
   it('dates a double gameweek by its first fixture, whatever the order', async () => {
     const gameweeks = [dated(1, ['2026-11-03T12:00:00Z', '2026-10-31T12:00:00Z'])];
     await render(<GameweekStrip d={{ gameweeks }} current={1} />);
-    expect(screen.getByTestId('gw-card-1-date').props.children).toBe('Oct 31');
+    expect(screen.getByTestId('gw-card-1-date').props.children).toBe('31 Oct');
     expect(screen.getByTestId('gw-card-1-day').props.children).toBe('Sat');
   });
 

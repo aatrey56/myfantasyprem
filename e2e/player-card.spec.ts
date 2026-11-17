@@ -27,7 +27,7 @@ async function openFreeAgent(page: Page) {
 const settled = (card: Locator) =>
   expect.poll(async () => (await card.boundingBox())!.y).toBeLessThan(20);
 
-const DATE = /^[A-Z][a-z]{2} \d{1,2}$/;
+const DATE = /^\d{1,2} [A-Z][a-z]{2}$/;
 const WEEKDAY = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/;
 
 /** The Summary's By gameweek cards (not the day and date inside each). */
@@ -62,19 +62,19 @@ async function expectDateColumn(card: Locator) {
     const c = await box(cell);
     expect(Math.abs(c.x + c.width / 2 - (h.x + h.width / 2))).toBeLessThanOrEqual(1);
     for (const t of (await cell.locator('div').allTextContents()).filter(Boolean)) {
-      expect(t).toMatch(/^([A-Z][a-z]{2} \d{1,2}|–)+$/);
+      expect(t).toMatch(/^(\d{1,2} [A-Z][a-z]{2}|–)+$/);
     }
   }
 }
 
-/** Each next-fixture kickoff reads `Sat Nov 22, 12:30` whole, on one line inside the card. */
+/** Each next-fixture kickoff reads `Sat 22 Nov, 12:30` whole, on one line inside the card. */
 async function expectDatedKickoff(next: Locator) {
   const card = (await next.boundingBox())!;
   const kickoffs = next.locator('[data-testid^="card-next-kickoff-"]');
   await expect(kickoffs.first()).toBeVisible();
   for (const k of await kickoffs.all()) {
     await expect(k).toHaveText(
-      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$|^(Moved|TBC)$/,
+      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}, \d\d:\d\d$|^(Moved|TBC)$/,
     );
     const b = (await k.boundingBox())!;
     expect(b.height).toBeLessThan(24);
@@ -152,7 +152,7 @@ test.describe('player card (desktop)', () => {
     page,
   }) => {
     const card = await openFreeAgent(page);
-    // Summary: the next fixture has its date (`Sat Nov 22, 12:30`), not just the weekday.
+    // Summary: the next fixture has its date (`Sat 22 Nov, 12:30`), not just the weekday.
     const next = card.getByTestId('card-next');
     if ((await next.count()) > 0) {
       await expectDatedKickoff(next);

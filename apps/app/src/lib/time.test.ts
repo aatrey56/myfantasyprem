@@ -87,34 +87,34 @@ describe('formatKickoff', () => {
 });
 
 describe('formatKickoffDate', () => {
-  it('is "Sat Nov 22, 12:30": weekday, month first, then the clock', () => {
-    expect(formatKickoffDate(at('2026-11-22T12:30:00Z'), NOW, LONDON)).toBe('Sun Nov 22, 12:30');
-    expect(formatKickoffDate(at('2026-10-17T14:00:00Z'), NOW, LONDON)).toBe('Sat Oct 17, 15:00');
+  it('is "Sat 22 Nov, 12:30": weekday, day first, then the clock', () => {
+    expect(formatKickoffDate(at('2026-11-22T12:30:00Z'), NOW, LONDON)).toBe('Sun 22 Nov, 12:30');
+    expect(formatKickoffDate(at('2026-10-17T14:00:00Z'), NOW, LONDON)).toBe('Sat 17 Oct, 15:00');
     // The day follows the zone: a UK Saturday kickoff is early Sunday in New Zealand.
     expect(formatKickoffDate(at('2026-10-17T14:00:00Z'), NOW, 'Pacific/Auckland')).toBe(
-      'Sun Oct 18, 03:00',
+      'Sun 18 Oct, 03:00',
     );
   });
 
   it('adds the year beyond six months', () => {
     expect(formatKickoffDate(at('2027-05-23T15:00:00Z'), NOW, LONDON)).toBe(
-      'Sun May 23 2027, 16:00',
+      'Sun 23 May 2027, 16:00',
     );
   });
 });
 
 describe('formatShortDate and formatWeekday: a match date in a narrow cell', () => {
-  it('reads "Oct 27" and "Tue" in the zone it is shown in', () => {
+  it('reads "27 Oct" and "Tue" in the zone it is shown in', () => {
     const t = at('2026-10-27T19:45:00Z');
-    expect(formatShortDate(t, LONDON)).toBe('Oct 27');
+    expect(formatShortDate(t, LONDON)).toBe('27 Oct');
     expect(formatWeekday(t, LONDON)).toBe('Tue');
     // Late evening in London is the next morning in New Zealand.
-    expect(formatShortDate(at('2026-10-31T23:30:00Z'), 'Pacific/Auckland')).toBe('Nov 1');
+    expect(formatShortDate(at('2026-10-31T23:30:00Z'), 'Pacific/Auckland')).toBe('1 Nov');
     expect(formatWeekday(at('2026-10-31T23:30:00Z'), 'Pacific/Auckland')).toBe('Sun');
   });
 
   it('has no year and no leading zero', () => {
-    expect(formatShortDate(at('2027-01-05T12:00:00Z'), LONDON)).toBe('Jan 5');
+    expect(formatShortDate(at('2027-01-05T12:00:00Z'), LONDON)).toBe('5 Jan');
   });
 });
 

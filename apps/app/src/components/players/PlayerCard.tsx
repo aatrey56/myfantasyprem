@@ -948,7 +948,7 @@ const byKickoff = (a: Upcoming, b: Upcoming) =>
 
 /**
  * The kickoff, `Moved` for a postponed fixture, `TBC` with no time yet. With
- * `dated`, the date too (`Sat Nov 22, 12:30`), however near the day is.
+ * `dated`, the date too (`Sat 22 Nov, 12:30`), however near the day is.
  */
 export function kickoffText(f: Pick<Upcoming, 'kickoffAt' | 'status'>, dated = false): string {
   if (f.status === 'postponed') return 'Moved';
@@ -965,7 +965,7 @@ export function firstKickoff(fixtures: readonly { kickoffAt?: string | null }[])
   return times.length ? Math.min(...times) : null;
 }
 
-/** A fixture's date in the game log's DATE column (`Oct 27`), a dash with no time yet. */
+/** A fixture's date in the game log's DATE column (`27 Oct`), a dash with no time yet. */
 const logDate = (f: { kickoffAt?: string | null }) =>
   f.kickoffAt ? formatShortDate(Date.parse(f.kickoffAt)) : MISSING;
 
@@ -992,7 +992,7 @@ export function currentGameweekOf(
   return Date.parse(gw.deadlineAt) <= now ? gw.number : gw.number - 1;
 }
 
-/** A By-gameweek card's width: room for `Pts 14` beside `Oct 27`. */
+/** A By-gameweek card's width: room for `Pts 14` beside `27 Oct`. */
 const GW_CARD_W = 116;
 
 /**
@@ -1209,7 +1209,7 @@ const tileWidth = (c: HeatColumn) => (c.format || c.label.length > 3 ? 46 : 38);
 const groupWidth = (g: HeatGroup) =>
   g.columns.reduce((w, c) => w + tileWidth(c), 0) + TILE_GAP * (g.columns.length - 1);
 
-/** A row's match dates, spoken: `, Oct 27` (and `, Oct 27 and Nov 3` in a double). */
+/** A row's match dates, spoken: `, 27 Oct` (and `, 27 Oct and 3 Nov` in a double). */
 function dateA11y(fixtures: readonly { kickoffAt?: string | null }[]): string {
   const dates = fixtures.filter((f) => f.kickoffAt).map(logDate);
   return dates.length ? `, ${dates.join(' and ')}` : '';
@@ -1301,7 +1301,7 @@ const SCROLL_DELAY_MS = 60;
 /**
  * The game log as a heat map: one row per gameweek, oldest first, then the
  * next few still to play (dashes on dark tiles); blank gameweeks greyed.
- * GW, opponent and match date (`Oct 27`, in the device's time zone) stay
+ * GW, opponent and match date (`27 Oct`, in the device's time zone) stay
  * pinned on the left while the stat groups scroll sideways. Rows start collapsed; a tap on a played row opens every stat
  * (and what scored for the position) beneath it, one row at a time. With
  * a `focus`, the sheet scrolls to that gameweek's row and the row is
