@@ -1011,25 +1011,25 @@ func (e TeamScoreKind) Valid() bool {
 
 // Defines values for TradeAction.
 const (
-	Accept   TradeAction = "accept"
-	Decline  TradeAction = "decline"
-	Review   TradeAction = "review"
-	Vote     TradeAction = "vote"
-	Withdraw TradeAction = "withdraw"
+	TradeActionAccept   TradeAction = "accept"
+	TradeActionDecline  TradeAction = "decline"
+	TradeActionReview   TradeAction = "review"
+	TradeActionVote     TradeAction = "vote"
+	TradeActionWithdraw TradeAction = "withdraw"
 )
 
 // Valid indicates whether the value is a known member of the TradeAction enum.
 func (e TradeAction) Valid() bool {
 	switch e {
-	case Accept:
+	case TradeActionAccept:
 		return true
-	case Decline:
+	case TradeActionDecline:
 		return true
-	case Review:
+	case TradeActionReview:
 		return true
-	case Vote:
+	case TradeActionVote:
 		return true
-	case Withdraw:
+	case TradeActionWithdraw:
 		return true
 	default:
 		return false
@@ -1155,8 +1155,9 @@ func (e TradeTransactionKind) Valid() bool {
 
 // Defines values for TradeVote.
 const (
-	TradeVoteAllow TradeVote = "allow"
-	TradeVoteVeto  TradeVote = "veto"
+	TradeVoteAllow    TradeVote = "allow"
+	TradeVoteVeto     TradeVote = "veto"
+	TradeVoteWithdraw TradeVote = "withdraw"
 )
 
 // Valid indicates whether the value is a known member of the TradeVote enum.
@@ -1165,6 +1166,8 @@ func (e TradeVote) Valid() bool {
 	case TradeVoteAllow:
 		return true
 	case TradeVoteVeto:
+		return true
+	case TradeVoteWithdraw:
 		return true
 	default:
 		return false
@@ -1760,6 +1763,87 @@ type ClubRef struct {
 	// Code Short club code.
 	Code string `json:"code"`
 	Name string `json:"name"`
+}
+
+// CommissionerMove defines model for CommissionerMove.
+type CommissionerMove struct {
+	// Action Open enum. settings_changed, league_renamed, draft_updated,
+	// draft_started, draft_paused, draft_resumed, draft_pick_for_team,
+	// member_removed, commissioner_transferred, invite_created,
+	// invite_revoked, seat_link_issued, signin_link_issued, trade_vetoed,
+	// trade_approved (the commissioner's early approval), league_resynced.
+	//
+	//
+	// Examples: trade_vetoed
+	Action CommissionerMoveAction `json:"action"`
+
+	// Actor The commissioner who did it; null once their account is deleted.
+	Actor     *UserRef  `json:"actor"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Details What changed, when that is a few values; null otherwise.
+	Details *CommissionerMoveDetails `json:"details"`
+
+	// Id Opaque commissioner move id. `cmv_` and a lowercase ULID.
+	//
+	// Examples: cmv_01k7m2xq800000000000000401
+	Id CommissionerMoveId `json:"id"`
+
+	// Summary A sentence a manager can read, written when it happened.
+	Summary string `json:"summary"`
+
+	// Teams The teams it affected that are still in the league.
+	Teams []TeamRef `json:"teams"`
+
+	// Unseen Whether the caller has not seen it yet (never for their own moves).
+	Unseen bool `json:"unseen"`
+}
+
+// CommissionerMoveAction Open enum. settings_changed, league_renamed, draft_updated,
+// draft_started, draft_paused, draft_resumed, draft_pick_for_team,
+// member_removed, commissioner_transferred, invite_created,
+// invite_revoked, seat_link_issued, signin_link_issued, trade_vetoed,
+// trade_approved (the commissioner's early approval), league_resynced.
+//
+// Examples: trade_vetoed
+type CommissionerMoveAction = string
+
+// CommissionerMoveDetails defines model for CommissionerMoveDetails.
+type CommissionerMoveDetails struct {
+	After  *map[string]interface{} `json:"after,omitempty"`
+	Before *map[string]interface{} `json:"before,omitempty"`
+}
+
+// CommissionerMoveId Opaque commissioner move id. `cmv_` and a lowercase ULID.
+//
+// Examples: cmv_01k7m2xq800000000000000401
+type CommissionerMoveId = string
+
+// CommissionerMoveListResponse defines model for CommissionerMoveListResponse.
+type CommissionerMoveListResponse struct {
+	Data []CommissionerMove `json:"data"`
+	Meta PageMeta           `json:"meta"`
+}
+
+// CommissionerMovesSeenRequest defines model for CommissionerMovesSeenRequest.
+type CommissionerMovesSeenRequest struct {
+	// ThroughId Opaque commissioner move id. `cmv_` and a lowercase ULID.
+	//
+	// Examples: cmv_01k7m2xq800000000000000401
+	ThroughId *CommissionerMoveId `json:"throughId,omitempty"`
+}
+
+// CommissionerMovesSummary defines model for CommissionerMovesSummary.
+type CommissionerMovesSummary struct {
+	// Latest The newest unseen move, null when there is none.
+	Latest      *CommissionerMove `json:"latest"`
+	UnseenCount int               `json:"unseenCount"`
+}
+
+// CommissionerMovesSummaryResponse defines model for CommissionerMovesSummaryResponse.
+type CommissionerMovesSummaryResponse struct {
+	Data CommissionerMovesSummary `json:"data"`
+	Meta Meta                     `json:"meta"`
 }
 
 // CommissionerTransfer defines model for CommissionerTransfer.
@@ -2764,7 +2848,9 @@ type LeagueSettingsInput struct {
 		// `commissioner`: the commissioner approves or vetoes during the
 		// review window (approved automatically when it closes).
 		// `league_vote`: the other managers can vote to veto during the
-		// window; it processes when the window closes unless vetoed.
+		// window; it processes when the window closes unless vetoed. The
+		// default for a new league (24 hours, a third of the managers not in
+		// the trade, rounded up; docs/adr/0017).
 		Review        *TradeReview `json:"review,omitempty"`
 		ReviewHours   *int         `json:"reviewHours,omitempty"`
 		VetoThreshold *float32     `json:"vetoThreshold,omitempty"`
@@ -3309,13 +3395,14 @@ type Notification struct {
 
 	// Type Open enum. Personal: trade_offered, trade_accepted, trade_declined,
 	// trade_reviewed (vetoed or approved by review), trade_processed,
-	// waivers_due (1 hour before the league's waiver deadline),
+	// trade_failed (an accepted trade could not execute), waivers_due (1 hour before the league's waiver deadline),
 	// free_agency_closing (1 hour before free agency closes),
 	// waiver_result, player_goal, player_assist, player_own_goal,
 	// player_red_card, player_defensive_contribution (once per match, when
 	// the threshold gives the points), player_clean_sheet (at full time,
 	// or when the player goes off after 60 minutes with it intact),
-	// player_news. League: league_trade_processed, opponent_goal,
+	// player_news. League: league_trade_in_review (a trade is open to a
+	// veto vote), league_trade_vetoed, league_trade_processed, opponent_goal,
 	// opponent_assist, opponent_own_goal, opponent_red_card,
 	// opponent_defensive_contribution, opponent_clean_sheet,
 	// opponent_news. Extras: lineup_invalid (1 hour before lock with an
@@ -3390,13 +3477,14 @@ type NotificationSetting struct {
 
 	// Type Open enum. Personal: trade_offered, trade_accepted, trade_declined,
 	// trade_reviewed (vetoed or approved by review), trade_processed,
-	// waivers_due (1 hour before the league's waiver deadline),
+	// trade_failed (an accepted trade could not execute), waivers_due (1 hour before the league's waiver deadline),
 	// free_agency_closing (1 hour before free agency closes),
 	// waiver_result, player_goal, player_assist, player_own_goal,
 	// player_red_card, player_defensive_contribution (once per match, when
 	// the threshold gives the points), player_clean_sheet (at full time,
 	// or when the player goes off after 60 minutes with it intact),
-	// player_news. League: league_trade_processed, opponent_goal,
+	// player_news. League: league_trade_in_review (a trade is open to a
+	// veto vote), league_trade_vetoed, league_trade_processed, opponent_goal,
 	// opponent_assist, opponent_own_goal, opponent_red_card,
 	// opponent_defensive_contribution, opponent_clean_sheet,
 	// opponent_news. Extras: lineup_invalid (1 hour before lock with an
@@ -3411,13 +3499,14 @@ type NotificationSetting struct {
 
 // NotificationType Open enum. Personal: trade_offered, trade_accepted, trade_declined,
 // trade_reviewed (vetoed or approved by review), trade_processed,
-// waivers_due (1 hour before the league's waiver deadline),
+// trade_failed (an accepted trade could not execute), waivers_due (1 hour before the league's waiver deadline),
 // free_agency_closing (1 hour before free agency closes),
 // waiver_result, player_goal, player_assist, player_own_goal,
 // player_red_card, player_defensive_contribution (once per match, when
 // the threshold gives the points), player_clean_sheet (at full time,
 // or when the player goes off after 60 minutes with it intact),
-// player_news. League: league_trade_processed, opponent_goal,
+// player_news. League: league_trade_in_review (a trade is open to a
+// veto vote), league_trade_vetoed, league_trade_processed, opponent_goal,
 // opponent_assist, opponent_own_goal, opponent_red_card,
 // opponent_defensive_contribution, opponent_clean_sheet,
 // opponent_news. Extras: lineup_invalid (1 hour before lock with an
@@ -3440,13 +3529,14 @@ type NotificationTypeInfo struct {
 
 	// Type Open enum. Personal: trade_offered, trade_accepted, trade_declined,
 	// trade_reviewed (vetoed or approved by review), trade_processed,
-	// waivers_due (1 hour before the league's waiver deadline),
+	// trade_failed (an accepted trade could not execute), waivers_due (1 hour before the league's waiver deadline),
 	// free_agency_closing (1 hour before free agency closes),
 	// waiver_result, player_goal, player_assist, player_own_goal,
 	// player_red_card, player_defensive_contribution (once per match, when
 	// the threshold gives the points), player_clean_sheet (at full time,
 	// or when the player goes off after 60 minutes with it intact),
-	// player_news. League: league_trade_processed, opponent_goal,
+	// player_news. League: league_trade_in_review (a trade is open to a
+	// veto vote), league_trade_vetoed, league_trade_processed, opponent_goal,
 	// opponent_assist, opponent_own_goal, opponent_red_card,
 	// opponent_defensive_contribution, opponent_clean_sheet,
 	// opponent_news. Extras: lineup_invalid (1 hour before lock with an
@@ -4890,7 +4980,9 @@ type TradeResponse struct {
 // `commissioner`: the commissioner approves or vetoes during the
 // review window (approved automatically when it closes).
 // `league_vote`: the other managers can vote to veto during the
-// window; it processes when the window closes unless vetoed.
+// window; it processes when the window closes unless vetoed. The
+// default for a new league (24 hours, a third of the managers not in
+// the trade, rounded up; docs/adr/0017).
 type TradeReview string
 
 // TradeReviewRequest defines model for TradeReviewRequest.
@@ -4919,7 +5011,9 @@ type TradeReviewState struct {
 	// `commissioner`: the commissioner approves or vetoes during the
 	// review window (approved automatically when it closes).
 	// `league_vote`: the other managers can vote to veto during the
-	// window; it processes when the window closes unless vetoed.
+	// window; it processes when the window closes unless vetoed. The
+	// default for a new league (24 hours, a third of the managers not in
+	// the trade, rounded up; docs/adr/0017).
 	Mode      TradeReview `json:"mode"`
 	MyVote    *TradeVote  `json:"myVote"`
 	VetoVotes int         `json:"vetoVotes"`
@@ -4937,14 +5031,17 @@ type TradeSettings struct {
 	// `commissioner`: the commissioner approves or vetoes during the
 	// review window (approved automatically when it closes).
 	// `league_vote`: the other managers can vote to veto during the
-	// window; it processes when the window closes unless vetoed.
+	// window; it processes when the window closes unless vetoed. The
+	// default for a new league (24 hours, a third of the managers not in
+	// the trade, rounded up; docs/adr/0017).
 	Review TradeReview `json:"review"`
 
 	// ReviewHours Length of the review (veto) window; 0 when `review` is none.
 	ReviewHours int `json:"reviewHours"`
 
 	// VetoThreshold `league_vote` only: the share of managers not in the trade whose
-	// veto votes block it (0.5 = half, rounded up).
+	// veto votes block it (0.5 = half, rounded up; the default is a
+	// third, so 4 of 10).
 	VetoThreshold float32 `json:"vetoThreshold"`
 }
 
@@ -5002,12 +5099,18 @@ type TradeTransaction struct {
 // TradeTransactionKind defines model for TradeTransaction.Kind.
 type TradeTransactionKind string
 
-// TradeVote Open enum.
+// TradeVote Open enum. `veto` and `allow` are ballots (`allow` is kept for
+// clients that vote to uphold; only vetoes count toward
+// `review.votesNeeded`). `withdraw` takes the caller's ballot back and
+// is never returned as `review.myVote`.
 type TradeVote string
 
 // TradeVoteRequest defines model for TradeVoteRequest.
 type TradeVoteRequest struct {
-	// Vote Open enum.
+	// Vote Open enum. `veto` and `allow` are ballots (`allow` is kept for
+	// clients that vote to uphold; only vetoes count toward
+	// `review.votesNeeded`). `withdraw` takes the caller's ballot back and
+	// is never returned as `review.myVote`.
 	Vote TradeVote `json:"vote"`
 }
 
@@ -5517,6 +5620,21 @@ type TransferCommissionerParams struct {
 	IdempotencyKey *IdempotencyKeyParam `json:"Idempotency-Key,omitempty"`
 }
 
+// ListCommissionerMovesParams defines parameters for ListCommissionerMoves.
+type ListCommissionerMovesParams struct {
+	// Cursor Opaque cursor from `meta.nextCursor` of the previous page.
+	Cursor *CursorParam `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// MarkCommissionerMovesSeenParams defines parameters for MarkCommissionerMovesSeen.
+type MarkCommissionerMovesSeenParams struct {
+	// IdempotencyKey Optional. A client-generated unique key (a UUID is fine) that makes
+	// a retry of this POST safe: the same key and body within 24 hours
+	// replay the first response.
+	IdempotencyKey *IdempotencyKeyParam `json:"Idempotency-Key,omitempty"`
+}
+
 // PauseDraftParams defines parameters for PauseDraft.
 type PauseDraftParams struct {
 	// IdempotencyKey Optional. A client-generated unique key (a UUID is fine) that makes
@@ -5820,6 +5938,9 @@ type UpdateLeagueJSONRequestBody = LeagueUpdate
 
 // TransferCommissionerJSONRequestBody defines body for TransferCommissioner for application/json ContentType.
 type TransferCommissionerJSONRequestBody = CommissionerTransfer
+
+// MarkCommissionerMovesSeenJSONRequestBody defines body for MarkCommissionerMovesSeen for application/json ContentType.
+type MarkCommissionerMovesSeenJSONRequestBody = CommissionerMovesSeenRequest
 
 // UpdateDraftJSONRequestBody defines body for UpdateDraft for application/json ContentType.
 type UpdateDraftJSONRequestBody = DraftUpdate
@@ -6805,6 +6926,15 @@ type ServerInterface interface {
 	// TransferCommissioner Hand the commissioner role to another member (commissioner)
 	// (POST /v1/leagues/{leagueId}/commissioner)
 	TransferCommissioner(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, params TransferCommissionerParams)
+	// ListCommissionerMoves The commissioner's moves
+	// (GET /v1/leagues/{leagueId}/commissioner-moves)
+	ListCommissionerMoves(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, params ListCommissionerMovesParams)
+	// MarkCommissionerMovesSeen Mark commissioner moves as seen
+	// (POST /v1/leagues/{leagueId}/commissioner-moves/seen)
+	MarkCommissionerMovesSeen(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, params MarkCommissionerMovesSeenParams)
+	// GetCommissionerMovesSummary Commissioner moves the caller has not seen
+	// (GET /v1/leagues/{leagueId}/commissioner-moves/summary)
+	GetCommissionerMovesSummary(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam)
 	// GetDraft Draft room
 	// (GET /v1/leagues/{leagueId}/draft)
 	GetDraft(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam)
@@ -6955,7 +7085,7 @@ type ServerInterface interface {
 	// ReviewTrade Approve or veto (commissioner)
 	// (POST /v1/leagues/{leagueId}/trades/{tradeId}/review)
 	ReviewTrade(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, tradeId TradeIdParam, params ReviewTradeParams)
-	// VoteOnTrade Vote to veto or allow (league vote)
+	// VoteOnTrade Vote to veto, or withdraw the veto (league vote)
 	// (POST /v1/leagues/{leagueId}/trades/{tradeId}/votes)
 	VoteOnTrade(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, tradeId TradeIdParam, params VoteOnTradeParams)
 	// WithdrawTrade Withdraw a trade (offering team)
@@ -7782,6 +7912,137 @@ func (siw *ServerInterfaceWrapper) TransferCommissioner(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TransferCommissioner(w, r, leagueId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCommissionerMoves operation middleware
+func (siw *ServerInterfaceWrapper) ListCommissionerMoves(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "leagueId" -------------
+	var leagueId LeagueIdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "leagueId", r.PathValue("leagueId"), &leagueId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "leagueId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCommissionerMovesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCommissionerMoves(w, r, leagueId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkCommissionerMovesSeen operation middleware
+func (siw *ServerInterfaceWrapper) MarkCommissionerMovesSeen(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "leagueId" -------------
+	var leagueId LeagueIdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "leagueId", r.PathValue("leagueId"), &leagueId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "leagueId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params MarkCommissionerMovesSeenParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKeyParam
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkCommissionerMovesSeen(w, r, leagueId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCommissionerMovesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetCommissionerMovesSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "leagueId" -------------
+	var leagueId LeagueIdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "leagueId", r.PathValue("leagueId"), &leagueId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "leagueId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCommissionerMovesSummary(w, r, leagueId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10787,6 +11048,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/leagues/{leagueId}/members", wrapper.ListMembers)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/leagues/{leagueId}/members/{userId}", wrapper.RemoveMember)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/leagues/{leagueId}/commissioner", wrapper.TransferCommissioner)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/leagues/{leagueId}/commissioner-moves", wrapper.ListCommissionerMoves)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/leagues/{leagueId}/commissioner-moves/summary", wrapper.GetCommissionerMovesSummary)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/leagues/{leagueId}/commissioner-moves/seen", wrapper.MarkCommissionerMovesSeen)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/leagues/{leagueId}/leave", wrapper.LeaveLeague)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/leagues/{leagueId}/invites", wrapper.ListInvites)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/leagues/{leagueId}/invites", wrapper.CreateInvite)
@@ -14559,6 +14823,431 @@ type TransferCommissionerdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response TransferCommissionerdefaultApplicationProblemPlusJSONResponse) VisitTransferCommissionerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMovesRequestObject struct {
+	LeagueId LeagueIdParam `json:"leagueId"`
+	Params   ListCommissionerMovesParams
+}
+
+type ListCommissionerMovesResponseObject interface {
+	VisitListCommissionerMovesResponse(w http.ResponseWriter) error
+}
+
+type ListCommissionerMoves200JSONResponse CommissionerMoveListResponse
+
+func (response ListCommissionerMoves200JSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves400ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves401ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves403ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves404ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves500ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMoves503ApplicationProblemPlusJSONResponse struct {
+	UnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ListCommissionerMoves503ApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCommissionerMovesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListCommissionerMovesdefaultApplicationProblemPlusJSONResponse) VisitListCommissionerMovesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeenRequestObject struct {
+	LeagueId LeagueIdParam `json:"leagueId"`
+	Params   MarkCommissionerMovesSeenParams
+	Body     *MarkCommissionerMovesSeenJSONRequestBody
+}
+
+type MarkCommissionerMovesSeenResponseObject interface {
+	VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error
+}
+
+type MarkCommissionerMovesSeen200JSONResponse CommissionerMovesSummaryResponse
+
+func (response MarkCommissionerMovesSeen200JSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen400ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen401ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen403ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen404ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen429ApplicationProblemPlusJSONResponse struct {
+	TooManyRequestsApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen429ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen500ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeen503ApplicationProblemPlusJSONResponse struct {
+	UnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response MarkCommissionerMovesSeen503ApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkCommissionerMovesSeendefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response MarkCommissionerMovesSeendefaultApplicationProblemPlusJSONResponse) VisitMarkCommissionerMovesSeenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummaryRequestObject struct {
+	LeagueId LeagueIdParam `json:"leagueId"`
+}
+
+type GetCommissionerMovesSummaryResponseObject interface {
+	VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetCommissionerMovesSummary200JSONResponse CommissionerMovesSummaryResponse
+
+func (response GetCommissionerMovesSummary200JSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary400ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary401ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary403ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary404ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary500ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummary503ApplicationProblemPlusJSONResponse struct {
+	UnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response GetCommissionerMovesSummary503ApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCommissionerMovesSummarydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetCommissionerMovesSummarydefaultApplicationProblemPlusJSONResponse) VisitGetCommissionerMovesSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -25805,6 +26494,15 @@ type StrictServerInterface interface {
 	// TransferCommissioner Hand the commissioner role to another member (commissioner)
 	// (POST /v1/leagues/{leagueId}/commissioner)
 	TransferCommissioner(ctx context.Context, request TransferCommissionerRequestObject) (TransferCommissionerResponseObject, error)
+	// ListCommissionerMoves The commissioner's moves
+	// (GET /v1/leagues/{leagueId}/commissioner-moves)
+	ListCommissionerMoves(ctx context.Context, request ListCommissionerMovesRequestObject) (ListCommissionerMovesResponseObject, error)
+	// MarkCommissionerMovesSeen Mark commissioner moves as seen
+	// (POST /v1/leagues/{leagueId}/commissioner-moves/seen)
+	MarkCommissionerMovesSeen(ctx context.Context, request MarkCommissionerMovesSeenRequestObject) (MarkCommissionerMovesSeenResponseObject, error)
+	// GetCommissionerMovesSummary Commissioner moves the caller has not seen
+	// (GET /v1/leagues/{leagueId}/commissioner-moves/summary)
+	GetCommissionerMovesSummary(ctx context.Context, request GetCommissionerMovesSummaryRequestObject) (GetCommissionerMovesSummaryResponseObject, error)
 	// GetDraft Draft room
 	// (GET /v1/leagues/{leagueId}/draft)
 	GetDraft(ctx context.Context, request GetDraftRequestObject) (GetDraftResponseObject, error)
@@ -25955,7 +26653,7 @@ type StrictServerInterface interface {
 	// ReviewTrade Approve or veto (commissioner)
 	// (POST /v1/leagues/{leagueId}/trades/{tradeId}/review)
 	ReviewTrade(ctx context.Context, request ReviewTradeRequestObject) (ReviewTradeResponseObject, error)
-	// VoteOnTrade Vote to veto or allow (league vote)
+	// VoteOnTrade Vote to veto, or withdraw the veto (league vote)
 	// (POST /v1/leagues/{leagueId}/trades/{tradeId}/votes)
 	VoteOnTrade(ctx context.Context, request VoteOnTradeRequestObject) (VoteOnTradeResponseObject, error)
 	// WithdrawTrade Withdraw a trade (offering team)
@@ -26902,6 +27600,96 @@ func (sh *strictHandler) TransferCommissioner(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransferCommissionerResponseObject); ok {
 		if err := validResponse.VisitTransferCommissionerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCommissionerMoves operation middleware
+func (sh *strictHandler) ListCommissionerMoves(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, params ListCommissionerMovesParams) {
+	var request ListCommissionerMovesRequestObject
+
+	request.LeagueId = leagueId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCommissionerMoves(ctx, request.(ListCommissionerMovesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCommissionerMoves")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCommissionerMovesResponseObject); ok {
+		if err := validResponse.VisitListCommissionerMovesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkCommissionerMovesSeen operation middleware
+func (sh *strictHandler) MarkCommissionerMovesSeen(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam, params MarkCommissionerMovesSeenParams) {
+	var request MarkCommissionerMovesSeenRequestObject
+
+	request.LeagueId = leagueId
+	request.Params = params
+
+	var body MarkCommissionerMovesSeenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkCommissionerMovesSeen(ctx, request.(MarkCommissionerMovesSeenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkCommissionerMovesSeen")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkCommissionerMovesSeenResponseObject); ok {
+		if err := validResponse.VisitMarkCommissionerMovesSeenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCommissionerMovesSummary operation middleware
+func (sh *strictHandler) GetCommissionerMovesSummary(w http.ResponseWriter, r *http.Request, leagueId LeagueIdParam) {
+	var request GetCommissionerMovesSummaryRequestObject
+
+	request.LeagueId = leagueId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCommissionerMovesSummary(ctx, request.(GetCommissionerMovesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCommissionerMovesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCommissionerMovesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetCommissionerMovesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -209,16 +209,20 @@ type Trade struct {
 	OfferingTeamID  string
 	ReceivingTeamID string
 	// Offered move from the offering team, Requested from the receiving one.
-	Offered        []string
-	Requested      []string
-	Status         string
-	Message        string
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
-	RespondedAt    *time.Time
-	ReviewEndsAt   *time.Time
-	ProcessedAt    *time.Time
-	ReviewMode     string // set when accepted into review
+	Offered      []string
+	Requested    []string
+	Status       string
+	Message      string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	RespondedAt  *time.Time
+	ReviewEndsAt *time.Time
+	ProcessedAt  *time.Time
+	ReviewMode   string // set when accepted into review
+	// VetoThreshold is the league's veto threshold when the trade went into
+	// a league vote: its vetoes count against this one, not the league's
+	// current one. nil for other reviews (and votes from before it was kept).
+	VetoThreshold  *float64
 	DecidedBy      string // the commissioner's user id, when one decided
 	DecisionReason string
 	FailureReason  string
@@ -414,6 +418,7 @@ func (t Trade) Clone() Trade { return t.clone() }
 func (t Trade) clone() Trade {
 	t.Offered, t.Requested = slices.Clone(t.Offered), slices.Clone(t.Requested)
 	t.RespondedAt, t.ReviewEndsAt, t.ProcessedAt = clonePtr(t.RespondedAt), clonePtr(t.ReviewEndsAt), clonePtr(t.ProcessedAt)
+	t.VetoThreshold = clonePtr(t.VetoThreshold)
 	t.Votes = maps.Clone(t.Votes)
 	return t
 }

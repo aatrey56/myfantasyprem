@@ -195,7 +195,7 @@ func loadTrades(ctx context.Context, db store.DB, where string, args ...any) ([]
 	rows, err := db.Query(ctx,
 		`SELECT id, offering_team_id, receiving_team_id, status, coalesce(message, ''), created_at, expires_at,
 		        responded_at, review_ends_at, processed_at, coalesce(review_mode, ''), coalesce(decided_by, ''),
-		        coalesce(decision_reason, ''), coalesce(failure_reason, ''), coalesce(effective_gw, 0)
+		        coalesce(decision_reason, ''), coalesce(failure_reason, ''), coalesce(effective_gw, 0), veto_threshold
 		 FROM trades WHERE `+where+` ORDER BY created_at DESC, id DESC`, args...)
 	if err != nil {
 		return nil, err
@@ -207,13 +207,14 @@ func loadTrades(ctx context.Context, db store.DB, where string, args ...any) ([]
 	)
 	if _, err := pgx.ForEachRow(rows, []any{&t.ID, &t.OfferingTeamID, &t.ReceivingTeamID, &t.Status, &t.Message,
 		&t.CreatedAt, &expires, &t.RespondedAt, &t.ReviewEndsAt, &t.ProcessedAt, &t.ReviewMode, &t.DecidedBy,
-		&t.DecisionReason, &t.FailureReason, &t.EffectiveGW}, func() error {
+		&t.DecisionReason, &t.FailureReason, &t.EffectiveGW, &t.VetoThreshold}, func() error {
 		x := t
 		x.CreatedAt = t.CreatedAt.UTC()
 		if expires != nil {
 			x.ExpiresAt = expires.UTC()
 		}
 		x.RespondedAt, x.ReviewEndsAt, x.ProcessedAt = utcPtr(t.RespondedAt), utcPtr(t.ReviewEndsAt), utcPtr(t.ProcessedAt)
+		x.VetoThreshold = clonePtr(t.VetoThreshold)
 		x.Votes = map[string]string{}
 		out = append(out, x)
 		return nil
@@ -277,6 +278,16 @@ func (p *Postgres) Claims(ctx context.Context, leagueID, teamID string) ([]Claim
 
 func (p *Postgres) Trades(ctx context.Context, leagueID string) ([]Trade, error) {
 	return read(ctx, p, func(db store.DB) ([]Trade, error) { return loadTrades(ctx, db, `league_id = $1`, leagueID) })
+}
+
+func (p *Postgres) Trade(ctx context.Context, leagueID, tradeID string) (*Trade, error) {
+	ts, err := read(ctx, p, func(db store.DB) ([]Trade, error) {
+		return loadTrades(ctx, db, `league_id = $1 AND id = $2`, leagueID, tradeID)
+	})
+	if err != nil || len(ts) == 0 {
+		return nil, err
+	}
+	return &ts[0], nil
 }
 
 func (p *Postgres) Transactions(ctx context.Context, leagueID string) ([]Txn, error) {
@@ -687,16 +698,17 @@ func (t pgTx) saveTrades(ctx context.Context, leagueID string, before, after []T
 		if _, err := t.tx.Exec(ctx,
 			`INSERT INTO trades (id, league_id, offering_team_id, receiving_team_id, status, message, created_at, expires_at,
 			                     responded_at, review_ends_at, processed_at, review_mode, decided_by, decision_reason,
-			                     failure_reason, effective_gw)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			                     failure_reason, effective_gw, veto_threshold)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, responded_at = EXCLUDED.responded_at,
 			   review_ends_at = EXCLUDED.review_ends_at, processed_at = EXCLUDED.processed_at,
 			   review_mode = EXCLUDED.review_mode, decided_by = EXCLUDED.decided_by,
 			   decision_reason = EXCLUDED.decision_reason, failure_reason = EXCLUDED.failure_reason,
-			   effective_gw = EXCLUDED.effective_gw, expires_at = EXCLUDED.expires_at`,
+			   effective_gw = EXCLUDED.effective_gw, expires_at = EXCLUDED.expires_at,
+			   veto_threshold = EXCLUDED.veto_threshold`,
 			tr.ID, leagueID, tr.OfferingTeamID, tr.ReceivingTeamID, tr.Status, nullable(tr.Message), tr.CreatedAt, tr.ExpiresAt,
 			tr.RespondedAt, tr.ReviewEndsAt, tr.ProcessedAt, nullable(tr.ReviewMode), nullable(tr.DecidedBy),
-			nullable(tr.DecisionReason), nullable(tr.FailureReason), nullInt(tr.EffectiveGW)); err != nil {
+			nullable(tr.DecisionReason), nullable(tr.FailureReason), nullInt(tr.EffectiveGW), tr.VetoThreshold); err != nil {
 			return err
 		}
 		if !existed {
@@ -711,6 +723,15 @@ func (t pgTx) saveTrades(ctx context.Context, leagueID string, before, after []T
 					tr.ID, p, tr.ReceivingTeamID, i); err != nil {
 					return err
 				}
+			}
+		}
+		for team := range old.Votes {
+			if _, still := tr.Votes[team]; still {
+				continue
+			}
+			// A withdrawn ballot.
+			if _, err := t.tx.Exec(ctx, `DELETE FROM trade_votes WHERE trade_id = $1 AND team_id = $2`, tr.ID, team); err != nil {
+				return err
 			}
 		}
 		for team, vote := range tr.Votes {

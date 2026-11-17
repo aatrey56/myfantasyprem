@@ -13,6 +13,7 @@
 import type { Schemas } from '@myfantasyprem/api-client';
 import { previousSeasonsFor } from './seasons';
 
+import { createMovesLog } from './commissioner-moves';
 import { conflict, forbidden, invalid, MockError, notFound } from './errors';
 import { chanceOfPlaying } from './status';
 import {
@@ -107,7 +108,7 @@ export function leagueSettings(opts: {
     trades: {
       review: opts.review,
       reviewHours: opts.review === 'none' ? 0 : 24,
-      vetoThreshold: 0.5,
+      vetoThreshold: 1 / 3,
       deadlineGameweek: 30,
     },
     startGameweek: opts.startGameweek ?? 1,
@@ -1234,11 +1235,54 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
     return txn;
   }
 
+  // ------------------------------------------------- commissioner moves
+
+  const commissionerRef = (): Schemas['UserRef'] => ({
+    id: commissionerUserId,
+    displayName:
+      commissionerUserId === DEMO_USER_ID
+        ? DEMO_USER_NAME
+        : (TEAMS.find((t) => userOfTeam.get(t.id) === commissionerUserId)?.managerName ??
+          'Former manager'),
+  });
+  /** What the signed-in user sees: the commissioner's moves, newest first (docs/adr/0017). */
+  const moves = createMovesLog(DEMO_USER_ID, off + 7_000);
+  {
+    const [a, b] = TEAMS.filter((t) => t.id !== myTeam.id && t.id !== commissionerTeam.id) as [
+      TeamRef,
+      TeamRef,
+    ];
+    const by = commissionerRef();
+    moves.add({
+      action: 'settings_changed',
+      summary: 'Changed the veto threshold to 33% of managers.',
+      actor: by,
+      details: { before: { vetoThreshold: 0.5 }, after: { vetoThreshold: 1 / 3 } },
+      createdAt: new Date(NOW - 52 * HOUR).toISOString(),
+    });
+    moves.add({
+      action: 'trade_vetoed',
+      summary: `Vetoed the trade between ${a.name} and ${b.name}.`,
+      actor: by,
+      teams: [a, b],
+      details: { before: { status: 'in_review' }, after: { status: 'vetoed' } },
+      createdAt: new Date(NOW - 20 * HOUR).toISOString(),
+    });
+    moves.add({
+      action: 'settings_changed',
+      summary: 'Changed the trade review period to 48 hours.',
+      actor: by,
+      details: { before: { reviewHours: 24 }, after: { reviewHours: 48 } },
+      createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+    });
+  }
+
   // -------------------------------------------------------------- trades
 
   const reviewHours = cfg.review === 'none' ? 0 : 24;
   const otherManagers = TEAMS.length - 2;
-  const votesNeeded = Math.ceil(otherManagers * 0.5);
+  // A third of the managers not in the trade, rounded up (docs/adr/0017).
+  const votesNeeded = Math.max(1, Math.ceil(otherManagers / 3));
   let tradeSeq = 0;
   interface TradeState {
     trade: Omit<Trade, 'viewerActions'>;
@@ -1322,10 +1366,7 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
     });
     seedTrade(myTeam, b, 'offered', 'FWD', 6);
     if (cfg.review !== 'none') {
-      seedTrade(c, d, 'in_review', 'DEF', 10, {}, [
-        [TEAMS.indexOf(e), 'veto'],
-        [TEAMS.indexOf(b), 'allow'],
-      ]);
+      seedTrade(c, d, 'in_review', 'DEF', 10);
     }
     seedTrade(d, e, 'processed', 'MID', 60);
     seedTrade(myTeam, c, 'declined', 'DEF', 80);
@@ -1337,7 +1378,7 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
           mode: cfg.review,
           endsAt: new Date(NOW - 110 * HOUR).toISOString(),
           vetoVotes: votesNeeded,
-          allowVotes: 1,
+          allowVotes: 0,
           votesNeeded: cfg.review === 'league_vote' ? votesNeeded : null,
           myVote: 'veto',
           decidedBy: null,
@@ -1588,7 +1629,8 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
     }
     if (s.trade.status !== 'in_review')
       throw conflict('trade-not-in-review', 'Not in review', 'Voting has closed.');
-    s.votes.set(myTeam.id, vote);
+    if (vote === 'withdraw') s.votes.delete(myTeam.id);
+    else s.votes.set(myTeam.id, vote);
     s.trade.review = reviewState(s);
     if (s.trade.review.vetoVotes >= votesNeeded) s.trade.status = 'vetoed';
     return tradeView(s);
@@ -1608,6 +1650,14 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
     };
     if (decision === 'veto') s.trade.status = 'vetoed';
     else execute(s);
+    moves.add({
+      action: decision === 'veto' ? 'trade_vetoed' : 'trade_approved',
+      summary: `${decision === 'veto' ? 'Vetoed' : 'Approved'} the trade between ${s.trade.offeringTeam.name} and ${s.trade.receivingTeam.name}.`,
+      actor: commissionerRef(),
+      teams: [s.trade.offeringTeam, s.trade.receivingTeam],
+      details: { before: { status: 'in_review' }, after: { status: s.trade.status } },
+      createdAt: new Date().toISOString(),
+    });
     return tradeView(s);
   }
 
@@ -1683,6 +1733,15 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
   function rename(name: string) {
     if (!isCommissioner())
       throw forbidden('not-commissioner', 'Only the commissioner can rename the league.');
+    if (name !== cfg.name) {
+      moves.add({
+        action: 'league_renamed',
+        summary: `Renamed the league from “${cfg.name}” to “${name}”.`,
+        actor: commissionerRef(),
+        details: { before: { name: cfg.name }, after: { name } },
+        createdAt: new Date().toISOString(),
+      });
+    }
     cfg.name = name;
   }
 
@@ -1691,6 +1750,14 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
       throw forbidden('not-commissioner', 'Only the commissioner can do that.');
     if (userId === commissionerUserId) return;
     if (![...userOfTeam.values()].includes(userId)) throw notFound('Member');
+    const team = TEAMS.find((t) => userOfTeam.get(t.id) === userId);
+    moves.add({
+      action: 'commissioner_transferred',
+      summary: `Handed the commissioner role to the manager of “${team?.name ?? 'a team'}”.`,
+      actor: commissionerRef(),
+      teams: team ? [team] : [],
+      createdAt: new Date().toISOString(),
+    });
     commissionerUserId = userId;
   }
 
@@ -1755,6 +1822,8 @@ export function createInSeasonLeague(cfg: InSeasonConfig) {
     withdrawTrade,
     voteOnTrade,
     reviewTrade,
+    moves,
+    commissionerRef,
     settleTrades,
     cancelOpen,
     adoptClosed,

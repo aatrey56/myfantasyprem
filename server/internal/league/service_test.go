@@ -79,7 +79,7 @@ func TestCreateDefaults(t *testing.T) {
 			t.Errorf("league = %+v", l)
 		}
 		s := l.Settings
-		if s.TeamCount != 10 || s.TradeReview != ReviewNone || s.ReviewHours != 0 || s.PickTimerSeconds != 60 || s.EndGameweek != 38 {
+		if s.TeamCount != 10 || s.TradeReview != ReviewLeagueVote || s.ReviewHours != 24 || s.VetoThreshold != 1.0/3 || s.PickTimerSeconds != 60 || s.EndGameweek != 38 {
 			t.Errorf("settings = %+v", s)
 		}
 		l2, _ := m.Create(ctx, usrA, "Vote League", 8, "Heroes", SettingsInput{TradeReview: ptr(ReviewLeagueVote)})

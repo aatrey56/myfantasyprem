@@ -138,12 +138,33 @@ func (s *Service) request(ctx context.Context, actor, leagueID, kind string, job
 	if !ok {
 		return nil, errSyncPending
 	}
-	s.log().InfoContext(ctx, "fpl "+kind+" requested", "league", leagueID, "by", actor)
-	if s.Sched != nil {
-		if err := s.Sched.ScheduleTx(ctx, nil, job(now), now); err != nil {
-			return nil, errors.Join(err, s.finish(ctx, leagueID, err))
+	// The job and, for a re-sync, its commissioner move (it resets the
+	// league to FPL's state) commit together, in the league's transaction:
+	// the job first, as the memory store keeps an entry it already wrote.
+	// The pending mark is the mirror store's; a failure here clears it.
+	err = s.Leagues.Tx(ctx, func(tx league.Tx) error {
+		l, err := tx.Load(ctx, leagueID)
+		if err != nil {
+			return err
 		}
+		if l == nil {
+			return league.ErrLeagueNotFound
+		}
+		if s.Sched != nil {
+			if err := tx.ScheduleOn(ctx, s.Sched, job(now), now); err != nil {
+				return err
+			}
+		}
+		if kind != PendingResync {
+			return nil
+		}
+		return league.Record(ctx, tx, l, actor, now, league.AuditLeagueResynced,
+			"Requested a re-sync of the league from FPL Draft.", nil, nil, nil)
+	})
+	if err != nil {
+		return nil, errors.Join(err, s.finish(ctx, leagueID, err))
 	}
+	s.log().InfoContext(ctx, "fpl "+kind+" requested", "league", leagueID, "by", actor)
 	if s.Notify != nil {
 		s.Notify.Notify(ctx, league.Change{LeagueID: leagueID, Kind: league.ChangeLeague})
 	}

@@ -10,6 +10,8 @@ import (
 // Repo stores leagues (the League aggregate) and their game state. Memory
 // and Postgres implement it; the same test suite runs against both.
 type Repo interface {
+	AuditRepo
+
 	// Tx runs fn atomically. Leagues loaded through tx are locked until fn
 	// returns (SELECT ... FOR UPDATE in Postgres, one mutex in memory), so
 	// every change to a league is a load, a change in Go and a save.
@@ -47,6 +49,9 @@ type Repo interface {
 	Claims(ctx context.Context, leagueID, teamID string) ([]Claim, error)
 	// Trades returns every trade of a league, open or closed, newest first.
 	Trades(ctx context.Context, leagueID string) ([]Trade, error)
+	// Trade returns one trade of a league, open or closed, or nil. State
+	// holds only open trades; this is how a closed one is read.
+	Trade(ctx context.Context, leagueID, tradeID string) (*Trade, error)
 	// Transactions returns the league's activity feed, newest first.
 	Transactions(ctx context.Context, leagueID string) ([]Txn, error)
 	// History is State with every claim and trade, decided and closed
@@ -83,6 +88,20 @@ type Tx interface {
 	// Postgres. Without a Scheduler (SetScheduler) it does nothing and the
 	// periodic tick picks the work up instead.
 	Schedule(ctx context.Context, args JobArgs, at time.Time) error
+	// ScheduleOn is Schedule with another scheduler (a service's own, which
+	// on Postgres inserts its jobs in this transaction too).
+	ScheduleOn(ctx context.Context, s Scheduler, args JobArgs, at time.Time) error
+	// AddAudit records a commissioner move in this transaction (ADR 0017):
+	// it commits, or rolls back, with the action. Call it after the action's
+	// last check, so the memory store (no rollback) keeps no entry for a
+	// refused action. It takes the league's lock (when the action has not)
+	// so entries are numbered in commit order. It sets e.Seq.
+	AddAudit(ctx context.Context, e *AuditEntry) error
+	// StartAuditSeen moves userID's seen-up-to marker to the league's newest
+	// entry (never back), for a manager who just took a seat: the moves
+	// before they arrived are not theirs to see. Call it with the league
+	// loaded, so no entry can commit in between.
+	StartAuditSeen(ctx context.Context, leagueID, userID string) error
 }
 
 // Game is a league's game state: who owns whom in which gameweeks, the

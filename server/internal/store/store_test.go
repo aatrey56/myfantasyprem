@@ -161,8 +161,8 @@ func TestMigrationRecordsLeagueFirstGameweek(t *testing.T) {
 		team := fmt.Sprintf("tm_01k7m2xq8s000000000000000%d", n)
 		mustExec(`INSERT INTO leagues (id, name, season, status) VALUES ($1, 'L', '2026-27', 'in_season')`, id)
 		mustExec(`INSERT INTO teams (id, league_id, name, joined_at) VALUES ($1, $2, 'T', now())`, team, id)
-		// (waiverOrder set, so migration 13 adds no version of its own.)
-		mustExec(`INSERT INTO league_settings (league_id, version, settings) VALUES ($1, 1, '{"teamCount": 4, "startGameweek": 1, "endGameweek": 38, "waiverOrder": "rolling"}')`, id)
+		// (waiverOrder and tradeReview set, so migrations 13 and 24 add no version of their own.)
+		mustExec(`INSERT INTO league_settings (league_id, version, settings) VALUES ($1, 1, '{"teamCount": 4, "startGameweek": 1, "endGameweek": 38, "waiverOrder": "rolling", "tradeReview": "commissioner"}')`, id)
 		for gw := first; gw <= first+1; gw++ {
 			mustExec(`INSERT INTO matchups (id, league_id, gameweek, home_team_id) VALUES ($1, $2, $3, $4)`,
 				fmt.Sprintf("mu_01k7m2xq8s00000000000000%d%d", n, gw%10), id, gw, team)
@@ -214,9 +214,10 @@ func TestMigrationSetsWaiverOrder(t *testing.T) {
 		source, settings string
 		want             want
 	}{
-		"lg_01k7m2xq8rfv3c9a4t6wbn5hd1": {"native", `{"teamCount": 4}`, want{"rolling", 2}},
-		"lg_01k7m2xq8rfv3c9a4t6wbn5hd2": {"fpl_import", `{"teamCount": 12}`, want{"reverse_standings", 2}},
-		"lg_01k7m2xq8rfv3c9a4t6wbn5hd3": {"native", `{"teamCount": 4, "waiverOrder": "reverse_standings"}`, want{"reverse_standings", 1}},
+		// (tradeReview set, so migration 24 adds no version of its own.)
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd1": {"native", `{"teamCount": 4, "tradeReview": "commissioner"}`, want{"rolling", 2}},
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd2": {"fpl_import", `{"teamCount": 12, "tradeReview": "commissioner"}`, want{"reverse_standings", 2}},
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd3": {"native", `{"teamCount": 4, "waiverOrder": "reverse_standings", "tradeReview": "commissioner"}`, want{"reverse_standings", 1}},
 	}
 	for id, l := range leagues {
 		mustExec(`INSERT INTO leagues (id, name, season, status, source) VALUES ($1, 'L', '2026-27', 'in_season', $2)`, id, l.source)
@@ -236,3 +237,96 @@ func TestMigrationSetsWaiverOrder(t *testing.T) {
 		}
 	}
 }
+
+// Migration 24 switches leagues still on the old default (no trade review)
+// to a league vote of 24 hours and a third of the managers, in a new
+// settings version; leagues that chose commissioner review or a vote
+// (imported FPL leagues review by commissioner) are left alone, and trades
+// already open stay as they are.
+func TestMigrationSwitchesDefaultTradeReview(t *testing.T) {
+	pool, url := storetest.NewWithURL(t)
+	ctx := context.Background()
+	if err := store.MigrateDown(ctx, url, 23); err != nil {
+		t.Fatal(err)
+	}
+	mustExec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	mustExec(`INSERT INTO seasons (id) VALUES ('2026-27')`)
+	type want struct {
+		review   string
+		hours    int
+		versions int
+	}
+	leagues := map[string]struct {
+		settings string
+		want     want
+	}{
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd1": {`{"teamCount": 4, "tradeReview": "none", "reviewHours": 0, "vetoThreshold": 0.5}`, want{"league_vote", 24, 2}},
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd2": {`{"teamCount": 4}`, want{"league_vote", 24, 2}},
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd3": {`{"teamCount": 12, "tradeReview": "commissioner", "reviewHours": 24, "vetoThreshold": 0.5}`, want{"commissioner", 24, 1}},
+		"lg_01k7m2xq8rfv3c9a4t6wbn5hd4": {`{"teamCount": 8, "tradeReview": "league_vote", "reviewHours": 48, "vetoThreshold": 0.25}`, want{"league_vote", 48, 1}},
+	}
+	for id, l := range leagues {
+		mustExec(`INSERT INTO leagues (id, name, season, status) VALUES ($1, 'L', '2026-27', 'in_season')`, id)
+		mustExec(`INSERT INTO league_settings (league_id, version, settings) VALUES ($1, 1, $2)`, id, l.settings)
+	}
+	// Trades in the vote league: one in a vote, one in commissioner review,
+	// one already processed.
+	const voteLeague = "lg_01k7m2xq8rfv3c9a4t6wbn5hd4"
+	mustExec(`INSERT INTO teams (id, league_id, name, joined_at) VALUES
+	    ('tm_01k7m2xq8rfv3c9a4t6wbn5ht1', $1, 'A', now()), ('tm_01k7m2xq8rfv3c9a4t6wbn5ht2', $1, 'B', now())`, voteLeague)
+	trades := map[string]struct {
+		status, mode string
+		frozen       *float64
+	}{
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht1": {"in_review", "league_vote", ptr(0.25)},
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht2": {"in_review", "commissioner", nil},
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht3": {"processed", "league_vote", nil},
+	}
+	for id, tr := range trades {
+		mustExec(`INSERT INTO trades (id, league_id, offering_team_id, receiving_team_id, status, created_at, review_mode)
+		    VALUES ($1, $2, 'tm_01k7m2xq8rfv3c9a4t6wbn5ht1', 'tm_01k7m2xq8rfv3c9a4t6wbn5ht2', $3, now(), $4)`, id, voteLeague, tr.status, tr.mode)
+	}
+	if err := store.Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	// A trade already in a vote keeps the league's threshold from then on.
+	for id, tr := range trades {
+		var got *float64
+		if err := pool.QueryRow(ctx, `SELECT veto_threshold FROM trades WHERE id = $1`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if (got == nil) != (tr.frozen == nil) || got != nil && *got != *tr.frozen {
+			t.Errorf("%s %s trade: veto threshold %v, want %v", tr.status, tr.mode, got, tr.frozen)
+		}
+	}
+	for id, l := range leagues {
+		var (
+			got       want
+			threshold float64
+		)
+		if err := pool.QueryRow(ctx, `SELECT settings ->> 'tradeReview', (settings ->> 'reviewHours')::int, (settings ->> 'vetoThreshold')::float8,
+		      (SELECT count(*) FROM league_settings WHERE league_id = $1)
+		    FROM league_settings WHERE league_id = $1 ORDER BY version DESC LIMIT 1`, id).Scan(&got.review, &got.hours, &threshold, &got.versions); err != nil {
+			t.Fatal(err)
+		}
+		if got != l.want {
+			t.Errorf("%s: %+v, want %+v", l.settings, got, l.want)
+		}
+		if l.want.review == "league_vote" && l.want.versions == 2 && (threshold < 0.3333 || threshold > 0.3334) {
+			t.Errorf("%s: veto threshold %v, want a third", l.settings, threshold)
+		}
+	}
+	// Other settings of a switched league survive the new version.
+	var teams int
+	if err := pool.QueryRow(ctx, `SELECT (settings ->> 'teamCount')::int FROM league_settings
+	    WHERE league_id = 'lg_01k7m2xq8rfv3c9a4t6wbn5hd1' ORDER BY version DESC LIMIT 1`).Scan(&teams); err != nil || teams != 4 {
+		t.Errorf("teamCount after migration = %d, %v", teams, err)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

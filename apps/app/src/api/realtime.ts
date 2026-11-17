@@ -33,7 +33,12 @@ export function invalidationsFor(leagueId: string, type: string): QueryKey[] {
   switch (type) {
     case 'draft.updated':
     case 'draft.pick_made':
-      return [queryKeys.draft(leagueId), [...league, 'players']];
+      // A commissioner's draft move (pick for a team, pause, order) is logged too.
+      return [
+        queryKeys.draft(leagueId),
+        [...league, 'players'],
+        queryKeys.commissionerMoves(leagueId),
+      ];
     case 'matchups.updated':
     case 'score.corrected':
       // The poller moved live points: the SCORES fixtures and box scores
@@ -50,6 +55,7 @@ export function invalidationsFor(leagueId: string, type: string): QueryKey[] {
       // news moves with them (every team's news, by prefix).
       return [
         queryKeys.trades(leagueId),
+        queryKeys.commissionerMoves(leagueId), // a commissioner veto or approval is logged
         queryKeys.transactions(leagueId).slice(0, 3),
         tradeBlockKey(leagueId),
         [...league, 'news'],

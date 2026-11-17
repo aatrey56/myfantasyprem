@@ -12,6 +12,7 @@ import { PreseasonPanel } from '@/components/PreseasonPanel';
 import { QueryStatus } from '@/components/QueryStatus';
 import { Screen } from '@/components/Screen';
 import { Skeleton } from '@/components/Skeleton';
+import { CommissionerMovesBanner } from '@/components/status/CommissionerMovesBanner';
 import {
   AttentionStrip,
   DeadlineCards,
@@ -125,6 +126,7 @@ function StatusBody({ leagueId, home, page }: { leagueId: string; home: Home; pa
           <AppText weight="semibold">{phase}</AppText>
         </Card>
       ) : null}
+      <CommissionerMovesBanner leagueId={leagueId} />
       <AttentionStrip items={page.attention} leagueId={leagueId} />
       <GameweekSummaryCard summary={gameweekSummary(home, page.rankChange)} />
       {gameweeks.data ? (

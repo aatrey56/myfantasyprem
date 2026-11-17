@@ -5,10 +5,16 @@ import {
   pendingOnFPL,
   positionSummary,
   sidesFor,
+  presetVetoThreshold,
   splitTrades,
   togglePlayer,
   tradeBucket,
   tradeStatusLabel,
+  vetoControl,
+  vetoesNeeded,
+  vetoTally,
+  vetoThresholdPercent,
+  vetoThresholdText,
   voteLabel,
 } from './trade';
 
@@ -137,7 +143,83 @@ describe('voteLabel', () => {
   it('reads the wire value allow as Uphold', () => {
     expect(voteLabel('veto')).toBe('Veto');
     expect(voteLabel('allow')).toBe('Uphold');
+    expect(voteLabel('withdraw')).toBe('Withdraw veto');
     expect(voteLabel('abstain')).toBe('abstain');
+  });
+});
+
+describe('vetoControl', () => {
+  const now = Date.parse('2026-10-13T12:00:00Z');
+  const base = (myVote: Schemas['TradeVote'] | null, endsAt = '2026-10-14T12:00:00Z') => ({
+    status: 'in_review' as const,
+    viewerActions: ['vote'] as Schemas['TradeAction'][],
+    review: {
+      mode: 'league_vote',
+      endsAt,
+      vetoVotes: 0,
+      allowVotes: 0,
+      votesNeeded: 4,
+      myVote,
+      decidedBy: null,
+    } satisfies Schemas['TradeReviewState'],
+  });
+
+  it('offers a veto, then its withdrawal once I have vetoed', () => {
+    expect(vetoControl(base(null), now)).toBe('veto');
+    expect(vetoControl(base('veto'), now)).toBe('withdraw');
+    // An older client's "uphold" ballot can still be turned into a veto.
+    expect(vetoControl(base('allow'), now)).toBe('veto');
+  });
+
+  it('offers nothing to someone who may not vote, after the window, or on a decided trade', () => {
+    expect(vetoControl({ ...base(null), viewerActions: [] }, now)).toBeNull();
+    expect(vetoControl(base(null, '2026-10-13T12:00:00Z'), now)).toBeNull();
+    expect(vetoControl(base('veto', '2026-10-13T11:59:00Z'), now)).toBeNull();
+    expect(vetoControl({ ...base(null), status: 'vetoed' }, now)).toBeNull();
+    expect(vetoControl({ ...base(null), review: null }, now)).toBeNull();
+  });
+});
+
+describe('veto votes', () => {
+  it('counts votes against what blocks the trade', () => {
+    expect(vetoTally({ vetoVotes: 1, votesNeeded: 4 })).toBe('1 of 4 veto votes');
+    expect(vetoTally({ vetoVotes: 0, votesNeeded: 1 })).toBe('0 of 1 veto vote');
+    expect(vetoTally({ vetoVotes: 2, votesNeeded: null })).toBe('2 of ? veto votes');
+  });
+
+  it('rounds the managers outside a trade up, as the server does', () => {
+    // A third of 10 managers outside the trade is 4 (3.33 rounded up); of 9 it is 3, even after a float32.
+    expect(vetoesNeeded(1 / 3, 12)).toBe(4);
+    expect(vetoesNeeded(1 / 3, 11)).toBe(3);
+    expect(vetoesNeeded(Math.fround(1 / 3), 11)).toBe(3);
+    expect(vetoesNeeded(0.5, 12)).toBe(5);
+    expect(vetoesNeeded(0.25, 10)).toBe(2);
+    // At least one veto, even with nobody outside the trade to cast it.
+    expect(vetoesNeeded(1 / 3, 2)).toBe(1);
+  });
+
+  it('recognises a preset through a float32, and keeps a custom threshold as it is', () => {
+    expect(presetVetoThreshold(0.3333333432674408)).toBe(1 / 3);
+    expect(presetVetoThreshold(Math.fround(2 / 3))).toBe(2 / 3);
+    expect(presetVetoThreshold(0.5)).toBe(0.5);
+    expect(presetVetoThreshold(0.6)).toBeNull();
+    expect(presetVetoThreshold(0.4000000059604645)).toBeNull();
+    expect(vetoThresholdPercent(0.4000000059604645)).toBe('40%');
+    expect(vetoThresholdPercent(0.375)).toBe('37.5%');
+  });
+
+  it('counts the managers the server counts: the league now, or a full league before it exists', () => {
+    expect(vetoThresholdText(1 / 3, 12)).toBe(
+      'In a full league of 12, 4 of the 10 managers outside a trade must veto it to block it.',
+    );
+    // 12 seats, 9 with a manager: the server counts the 7 outside a trade.
+    expect(vetoThresholdText(1 / 3, 12, 9)).toBe(
+      'With 9 managers, 3 of the 7 outside a trade must veto it to block it.',
+    );
+    // A custom 60% of 10 is 6; snapped to the nearest preset (two thirds) it would read 7.
+    expect(vetoThresholdText(0.6, 12, 12)).toBe(
+      'With 12 managers, 6 of the 10 outside a trade must veto it to block it.',
+    );
   });
 });
 

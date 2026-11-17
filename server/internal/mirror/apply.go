@@ -25,18 +25,24 @@ func Seats(st *league.State) map[string]string {
 }
 
 // Apply makes the State match the plan (docs/adr/0012): an idempotent
-// upsert by refs. FPL wins on everything it owns (names, settings, rosters,
-// the locked lineups, the schedule, the feed, trades, the waiver order);
-// owners, invites and scores stay ours. Applying the same plan twice
+// upsert by refs. FPL wins on everything it owns (names, settings other
+// than the waiver order rule and the trade review, rosters, the locked
+// lineups, the schedule, the feed, trades, the waiver order); owners,
+// invites and scores stay ours. Applying the same plan twice
 // changes nothing. now stamps teams that have no FPL join time.
 func Apply(st *league.State, p *Plan, w *league.World, now time.Time) {
 	l := st.League
-	// The waiver order rule is the commissioner's to change: a re-sync
-	// keeps it (a new import takes FPL's, reverse standings).
-	order := l.Settings.WaiverOrder
+	// The waiver order rule and the trade review (kind, period, veto
+	// threshold, ADR 0017) are the commissioner's to change: a re-sync
+	// keeps them (a new import takes FPL's: reverse standings, and the
+	// commissioner's review).
+	old := l.Settings
 	l.Name, l.Settings = p.Name, p.Settings
-	if order != "" {
-		l.Settings.WaiverOrder = order
+	if old.WaiverOrder != "" {
+		l.Settings.WaiverOrder = old.WaiverOrder
+	}
+	if old.TradeReview != "" {
+		l.Settings.TradeReview, l.Settings.ReviewHours, l.Settings.VetoThreshold = old.TradeReview, old.ReviewHours, old.VetoThreshold
 	}
 	if w.Gameweeks[p.Settings.EndGameweek].Finished {
 		l.Status = league.StatusComplete

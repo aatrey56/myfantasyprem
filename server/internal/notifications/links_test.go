@@ -22,6 +22,9 @@ func TestEveryNotificationLinksToAnAppRoute(t *testing.T) {
 		tr := league.Trade{ID: "trd_1", OfferingTeamID: "tmA", ReceivingTeamID: "tmB", Status: status, ReviewMode: "commissioner"}
 		all = append(all, TradeEvents(l, tr, name)...)
 	}
+	for _, status := range []string{league.TradeInReview, league.TradeVetoed, league.TradeFailed} {
+		all = append(all, TradeEvents(l, votedTrade(status), name)...)
+	}
 	all = append(all, WaiverEvents(l, []league.Claim{
 		{TeamID: "tmA", AddPlayerID: "1", Gameweek: 8, Status: league.ClaimWon},
 		{TeamID: "tmB", AddPlayerID: "1", Gameweek: 8, Status: league.ClaimLost},

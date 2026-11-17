@@ -11,7 +11,14 @@ import { PlayerName } from '../players/PlayerCardContext';
 import { PlayerAvatar } from '../PlayerRow';
 import { useLayout } from '@/hooks/useLayout';
 import { formatAgo, formatDateTime, formatRelative } from '@/lib/time';
-import { pendingOnFPL, sidesFor, tradeStatusLabel, voteLabel } from '@/lib/trade';
+import {
+  pendingOnFPL,
+  sidesFor,
+  tradeStatusLabel,
+  vetoControl,
+  vetoTally,
+  voteLabel,
+} from '@/lib/trade';
 import type { TradeResponse } from '@/api/moves-hooks';
 import { tint, useTheme } from '@/theme';
 
@@ -100,8 +107,9 @@ export function TradeCard({ trade, myTeamId, now, onAction, busy }: Props) {
     (trade.offeringTeam.id === myTeamId || trade.receivingTeam.id === myTeamId);
   const s = sidesFor(trade, myTeamId);
   const actions = new Set(trade.viewerActions);
+  const veto = vetoControl(trade, now);
   const commissioner = actions.has('review');
-  const memberActions = [...actions].some((a) => a !== 'review');
+  const memberActions = [...actions].some((a) => a !== 'review' && (a !== 'vote' || veto !== null));
   const review = trade.review;
   const reviewOpen = trade.status === 'in_review' && review && !onFPL;
   const title = involved
@@ -236,10 +244,8 @@ export function TradeCard({ trade, myTeamId, now, onAction, busy }: Props) {
               : 'In review'}
           </AppText>
           {review.mode === 'league_vote' ? (
-            <AppText variant="meta" muted>
-              {`· ${review.vetoVotes} of ${review.votesNeeded ?? '?'} veto votes · ${review.allowVotes} uphold${
-                review.myVote ? ` · you voted ${voteLabel(review.myVote).toLowerCase()}` : ''
-              }`}
+            <AppText variant="meta" muted testID="trade-veto-tally">
+              {`· ${vetoTally(review)}${review.myVote === 'veto' ? ' · you vetoed' : ''}`}
             </AppText>
           ) : review.mode === 'commissioner' ? (
             <AppText variant="meta" muted>
@@ -271,7 +277,7 @@ export function TradeCard({ trade, myTeamId, now, onAction, busy }: Props) {
               testID="trade-actions"
               style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}
             >
-              {actions.has('vote') ? (
+              {veto ? (
                 <AppText variant="eyebrow" muted style={{ width: '100%' }}>
                   League vote
                 </AppText>
@@ -302,27 +308,24 @@ export function TradeCard({ trade, myTeamId, now, onAction, busy }: Props) {
                   testID="trade-withdraw"
                 />
               ) : null}
-              {actions.has('vote') ? (
-                <>
-                  <Button
-                    label="Veto"
-                    icon={review?.myVote === 'veto' ? Check : undefined}
-                    accessibilityLabel={review?.myVote === 'veto' ? 'Veto, your vote' : 'Veto'}
-                    variant="destructive"
-                    onPress={() => onAction(trade, { kind: 'vote', vote: 'veto' })}
-                    disabled={busy || review?.myVote === 'veto'}
-                    testID="trade-vote-veto"
-                  />
-                  <Button
-                    label="Uphold"
-                    icon={review?.myVote === 'allow' ? Check : undefined}
-                    accessibilityLabel={review?.myVote === 'allow' ? 'Uphold, your vote' : 'Uphold'}
-                    variant="secondary"
-                    onPress={() => onAction(trade, { kind: 'vote', vote: 'allow' })}
-                    disabled={busy || review?.myVote === 'allow'}
-                    testID="trade-vote-uphold"
-                  />
-                </>
+              {veto === 'veto' ? (
+                <Button
+                  label="Veto"
+                  variant="destructive"
+                  onPress={() => onAction(trade, { kind: 'vote', vote: 'veto' })}
+                  disabled={busy}
+                  testID="trade-vote-veto"
+                />
+              ) : null}
+              {veto === 'withdraw' ? (
+                <Button
+                  label="Withdraw veto"
+                  icon={Check}
+                  variant="secondary"
+                  onPress={() => onAction(trade, { kind: 'vote', vote: 'withdraw' })}
+                  disabled={busy}
+                  testID="trade-vote-withdraw"
+                />
               ) : null}
             </View>
           ) : null}
@@ -402,9 +405,19 @@ export function confirmCopy(
         destructive: true,
       };
     case 'vote':
+      if (action.vote === 'withdraw') {
+        return {
+          title: 'Withdraw your veto?',
+          message: `The trade between ${other} no longer counts your veto. You can veto again until the review ends.`,
+          confirm: voteLabel(action.vote),
+        };
+      }
       return {
-        title: action.vote === 'veto' ? 'Vote to veto?' : 'Vote to uphold?',
-        message: `Your vote on the trade between ${other}. You can change it until the review ends.`,
+        title: action.vote === 'veto' ? 'Veto this trade?' : 'Vote to uphold?',
+        message:
+          action.vote === 'veto'
+            ? `Your veto counts toward ${trade.review?.votesNeeded ?? 'the'} needed to block the trade between ${other}. You can withdraw it until the review ends; otherwise the trade goes through when it ends.`
+            : `Your vote on the trade between ${other}. You can change it until the review ends.`,
         confirm: voteLabel(action.vote),
         destructive: action.vote === 'veto',
       };

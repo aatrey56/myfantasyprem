@@ -499,6 +499,7 @@ func (s *Server) CreateInvite(ctx context.Context, req CreateInviteRequestObject
 	if err != nil {
 		return failLeague[CreateInvitedefaultApplicationProblemPlusJSONResponse](ctx, err)
 	}
+	s.leagueChanged(ctx, req.LeagueId) // a commissioner move (ADR 0017): the Status banner refreshes
 	return CreateInvite201JSONResponse{
 		Body:    InviteResponse{Data: s.inviteBody(inv, &league.League{}, nil), Meta: metaAt(s.now())},
 		Headers: CreateInvite201ResponseHeaders{Location: "/v1/leagues/" + req.LeagueId + "/invites/" + inv.ID},
@@ -535,6 +536,7 @@ func (s *Server) RevokeInvite(ctx context.Context, req RevokeInviteRequestObject
 	if err := s.leagues.RevokeInvite(ctx, userFrom(ctx), req.LeagueId, req.InviteId); err != nil {
 		return failLeague[RevokeInvitedefaultApplicationProblemPlusJSONResponse](ctx, err)
 	}
+	s.leagueChanged(ctx, req.LeagueId) // a commissioner move (ADR 0017)
 	return RevokeInvite204Response{}, nil
 }
 

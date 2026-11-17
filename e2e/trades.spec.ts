@@ -14,7 +14,7 @@ for (const vp of [
   test.describe(`trade review (${vp.name})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test('votes read Veto / Uphold, commissioner powers sit apart on the right', async ({
+    test('members veto or withdraw their veto, commissioner powers sit apart on the right', async ({
       page,
     }) => {
       await page.goto(`${OFFICE}/players/trades`);
@@ -23,9 +23,12 @@ for (const vp of [
         .locator('[data-testid^="trade-trd_"]:visible:not([inert] *)')
         .filter({ has: page.getByTestId('trade-review') })
         .first();
-      await expect(card.getByTestId('trade-review')).toContainText('1 uphold');
+      // Time left and the vetoes against what blocks it: a third of the 8 managers outside it.
+      await expect(card.getByTestId('trade-review')).toContainText('Review ends in');
+      await expect(card.getByTestId('trade-veto-tally')).toHaveText('· 0 of 3 veto votes');
       await expect(card.getByTestId('trade-vote-veto')).toHaveText('Veto');
-      await expect(card.getByTestId('trade-vote-uphold')).toHaveText('Uphold');
+      await expect(card.getByTestId('trade-vote-withdraw')).toHaveCount(0);
+      await expect(card.getByTestId('trade-vote-uphold')).toHaveCount(0);
       await expect(card.getByText(/Vote veto|Vote uphold|allow/i)).toHaveCount(0);
 
       const panel = card.getByTestId('commissioner-actions');
@@ -35,7 +38,7 @@ for (const vp of [
       // The panel hugs the card's right edge, right of the member votes.
       const cardBox = (await card.boundingBox())!;
       const panelBox = (await panel.boundingBox())!;
-      const votes = (await card.getByTestId('trade-vote-uphold').boundingBox())!;
+      const votes = (await card.getByTestId('trade-vote-veto').boundingBox())!;
       if (vp.width < 768) {
         // Phone: the panel spans the card's content width, below the votes.
         const content = (await card.getByTestId('trade-actions').boundingBox())!;
@@ -55,12 +58,22 @@ for (const vp of [
       }
       expect(await overflowingElements(page)).toEqual([]);
 
-      await card.getByTestId('trade-vote-uphold').click();
+      await card.getByTestId('trade-vote-veto').click();
       const dialog = page.getByTestId('trade-confirm');
-      await expect(dialog).toContainText('Vote to uphold?');
+      await expect(dialog).toContainText('Veto this trade?');
+      await expect(dialog).toContainText('withdraw it until the review ends');
       await dialog.getByTestId('confirm-ok').click();
-      await expect(card.getByTestId('trade-review')).toContainText('2 uphold · you voted uphold');
-      await expect(card.getByTestId('trade-vote-uphold')).toBeDisabled();
+      await expect(card.getByTestId('trade-veto-tally')).toHaveText(
+        '· 1 of 3 veto votes · you vetoed',
+      );
+      await expect(card.getByTestId('trade-vote-veto')).toHaveCount(0);
+      await expect(card.getByTestId('trade-vote-withdraw')).toHaveText('Withdraw veto');
+
+      await card.getByTestId('trade-vote-withdraw').click();
+      await expect(dialog).toContainText('Withdraw your veto?');
+      await dialog.getByTestId('confirm-ok').click();
+      await expect(card.getByTestId('trade-veto-tally')).toHaveText('· 0 of 3 veto votes');
+      await expect(card.getByTestId('trade-vote-veto')).toHaveText('Veto');
     });
   });
 }

@@ -14,12 +14,15 @@ the FEED inbox, whatever the switches say.
 | Personal | `trade_accepted` / `trade_declined`  | your offer is accepted (or enters review) / declined         |
 | Personal | `trade_reviewed`                     | your trade is vetoed, or approved by review                  |
 | Personal | `trade_processed`                    | your trade goes through                                      |
+| Personal | `trade_failed`                       | your accepted trade could not execute (a player moved)       |
 | Personal | `waivers_due`                        | 1 hour before the league's waiver deadline                   |
 | Personal | `free_agency_closing`                | 1 hour before the gameweek deadline, while free agency open  |
 | Personal | `waiver_result`                      | each claim won or lost, with why                             |
 | Personal | `player_goal` … `player_clean_sheet` | your players: goal, assist, own goal, red, DC points (once), |
 |          |                                      | clean sheet (full time, or off after 60' with it intact)     |
 | Personal | `player_news`                        | injury or status news changes                                |
+| League   | `league_trade_in_review`             | a trade between two other teams is open to a veto vote       |
+| League   | `league_trade_vetoed`                | a trade between two other teams was vetoed                   |
 | League   | `league_trade_processed`             | any other trade processed in your league                     |
 | League   | `opponent_*`                         | the same live events and news for this week's opponent       |
 | Extra    | `lineup_invalid`                     | 1 hour before lock with an empty or invalid XI               |

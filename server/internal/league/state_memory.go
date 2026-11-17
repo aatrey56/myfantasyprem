@@ -113,6 +113,20 @@ func (m *Memory) Trades(_ context.Context, leagueID string) ([]Trade, error) {
 	return m.tradesLocked(leagueID), nil
 }
 
+func (m *Memory) Trade(_ context.Context, leagueID, tradeID string) (*Trade, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if x := m.extras[leagueID]; x != nil {
+		for _, t := range x.trades {
+			if t.ID == tradeID {
+				c := t.clone()
+				return &c, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
 func (m *Memory) tradesLocked(leagueID string) []Trade {
 	var out []Trade
 	for _, t := range m.extra(leagueID).trades {

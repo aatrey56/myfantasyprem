@@ -305,7 +305,7 @@ func TestLeagueVote(t *testing.T) {
 		if got.Status != league.TradeProcessed {
 			t.Fatalf("after the window = %+v", got)
 		}
-		if veto, allow := Tally(got); veto != 1 || allow != 1 {
+		if veto, allow := Tally(f.l, got); veto != 1 || allow != 1 {
 			t.Fatalf("tally %d/%d", veto, allow)
 		}
 	})

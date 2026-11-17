@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,8 +14,16 @@ import (
 
 	"github.com/aatrey56/myfantasyprem/server/internal/auth"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
+	"github.com/aatrey56/myfantasyprem/server/internal/leaguetest"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
+
+// issueFails is an auth store whose sign-in links fail to issue.
+type issueFails struct{ auth.Service }
+
+func (issueFails) IssueSignInLink(context.Context, string, string, string) (auth.SignInLink, error) {
+	return auth.SignInLink{}, errors.New("auth store down")
+}
 
 // signInLinkCodeOf is the code at the end of a sign-in link's URL.
 func signInLinkCodeOf(t *testing.T, url string) string {
@@ -70,11 +79,26 @@ func TestSeatSignInLink(t *testing.T) {
 				}
 				return out.Data
 			}
+			// A link that fails to issue is no commissioner move.
+			real := srv.auth
+			srv.auth = issueFails{real}
+			if rec := do(h, http.MethodPost, path, ""); rec.Code != http.StatusInternalServerError {
+				t.Fatalf("failed issue = %d %s", rec.Code, rec.Body)
+			}
+			srv.auth = real
+			if es, err := srv.leagues.Repo().Audit(context.Background(), l.ID, 0, 5); err != nil || len(es) != 0 {
+				t.Fatalf("log after a failed link = %+v %v", es, err)
+			}
 			first := issue()
 			if first.Owner.Id != jordan || first.Team.Id != seat.ID || !first.ExpiresAt.Equal(srv.now().Add(auth.SignInLinkTTL)) {
 				t.Errorf("link = %+v", first)
 			}
 			second := issue()
+			// Each link is a commissioner move: it lets the commissioner in as the manager.
+			if es, err := srv.leagues.Repo().Audit(context.Background(), l.ID, 0, 5); err != nil || len(es) != 2 ||
+				es[0].Action != league.AuditSignInLinkIssued || es[0].ActorID != commish || len(es[0].TeamIDs) != 1 || es[0].TeamIDs[0] != seat.ID {
+				t.Errorf("log after two links = %+v %v", es, err)
+			}
 			oldCode, code := signInLinkCodeOf(t, first.Url), signInLinkCodeOf(t, second.Url)
 
 			body := func(c string) string { return `{"code":"` + c + `"}` }
@@ -111,8 +135,8 @@ func TestSeatSignInLink(t *testing.T) {
 				}
 			}
 
-			// Limited per commissioner: the burst, then 429.
-			n := 2
+			// Limited per commissioner: the burst (the failed attempt counts), then 429.
+			n := 3
 			for ; n < 50; n++ {
 				if rec := do(h, http.MethodPost, path, ""); rec.Code == http.StatusTooManyRequests {
 					if rec.Header().Get("Retry-After") == "" {
@@ -340,4 +364,97 @@ func countSignInLinks(t *testing.T, srv *Server, pool *pgxpool.Pool, userID stri
 		t.Fatal(err)
 	}
 	return n
+}
+
+// issueThen is an auth store that runs then after each sign-in link it
+// issues: what another request did meanwhile.
+type issueThen struct {
+	auth.Service
+	then func()
+}
+
+func (s issueThen) IssueSignInLink(ctx context.Context, userID, leagueID, issuerID string) (auth.SignInLink, error) {
+	link, err := s.Service.IssueSignInLink(ctx, userID, leagueID, issuerID)
+	if err == nil {
+		s.then()
+	}
+	return link, err
+}
+
+// The commissioner is checked again in the transaction that records the
+// move: one who handed the role over while the link was being issued gets
+// 403 and leaves no entry, and only their own link is revoked, not the one
+// the new commissioner issued meanwhile.
+func TestSeatSignInLinkRechecksTheCommissioner(t *testing.T) {
+	for _, store := range []string{"memory", "postgres"} {
+		t.Run(store, func(t *testing.T) {
+			var pool *pgxpool.Pool
+			if store == "postgres" {
+				pool = storetest.New(t)
+			}
+			srv, _ := newTestServerOn(pool)
+			h := newHandler(testOptions(), newRoutes(testOptions(), srv))
+			l, seat, jordanTok := claimedSeat(t, srv, h)
+			ctx, commish, priya, jordan := context.Background(), l.CommissionerID, l.Teams[1].OwnerID, userOf(t, srv, jordanTok)
+			real := srv.auth
+			var theirs auth.SignInLink
+			srv.auth = issueThen{real, func() {
+				if _, err := srv.leagues.TransferCommissioner(ctx, commish, l.ID, priya); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				if theirs, err = real.IssueSignInLink(ctx, jordan, l.ID, priya); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			path := "/v1/leagues/" + l.ID + "/seats/" + seat.ID + "/signin-link"
+			decodeProblem(t, do(h, http.MethodPost, path, ""), http.StatusForbidden)
+			srv.auth = real
+			if es, err := srv.leagues.Repo().Audit(ctx, l.ID, 0, 5); err != nil || len(es) != 1 || es[0].Action != league.AuditCommissionerMoved {
+				t.Errorf("log = %+v %v", es, err)
+			}
+			if _, _, _, err := real.UseSignInLink(ctx, theirs.Code, func(context.Context, auth.SignInLinkGrant) error { return nil }); err != nil {
+				t.Errorf("the new commissioner's link was revoked: %v", err)
+			}
+		})
+	}
+}
+
+// Every commissioner move reports league.updated once it commits, so a
+// member on Status sees the banner without refreshing (docs/adr/0017):
+// creating and revoking an invite and issuing a sign-in link included.
+func TestCommissionerMovesReportLeagueUpdated(t *testing.T) {
+	srv, _ := newTestServer()
+	h := newHandler(testOptions(), newRoutes(testOptions(), srv))
+	l, seat, _ := claimedSeat(t, srv, h)
+	notes := &leaguetest.Notes{}
+	srv.notify = notes
+	updated := func(what string) {
+		t.Helper()
+		var n int
+		for _, c := range notes.Changes {
+			if c.Kind == league.ChangeLeague && c.LeagueID == l.ID {
+				n++
+			}
+		}
+		notes.Changes = nil
+		if n != 1 {
+			t.Errorf("%s: %d league.updated, want 1", what, n)
+		}
+	}
+	base := "/v1/leagues/" + l.ID
+	rec := do(h, http.MethodPost, base+"/invites", `{}`)
+	var inv InviteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &inv); err != nil || rec.Code != http.StatusCreated {
+		t.Fatalf("invite = %d %s", rec.Code, rec.Body)
+	}
+	updated("create invite")
+	if rec := do(h, http.MethodDelete, base+"/invites/"+inv.Data.Id, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d %s", rec.Code, rec.Body)
+	}
+	updated("revoke invite")
+	if rec := do(h, http.MethodPost, base+"/seats/"+seat.ID+"/signin-link", ""); rec.Code != http.StatusCreated {
+		t.Fatalf("sign-in link = %d %s", rec.Code, rec.Body)
+	}
+	updated("sign-in link")
 }

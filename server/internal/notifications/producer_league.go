@@ -10,6 +10,7 @@ import (
 	"github.com/aatrey56/myfantasyprem/server/internal/draft"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
 	"github.com/aatrey56/myfantasyprem/server/internal/stats"
+	"github.com/aatrey56/myfantasyprem/server/internal/trades"
 )
 
 // ownerOf returns the user owning teamID ("" for an open seat or none).
@@ -65,6 +66,20 @@ func TradeEvents(l *league.League, tr league.Trade, name Names) []Notification {
 		add(to, TradeOffered, "New trade offer", teamName(l, tr.OfferingTeamID)+" offers "+summary+".")
 	case league.TradeAccepted, league.TradeInReview:
 		add(from, TradeAccepted, "Trade accepted", teamName(l, tr.ReceivingTeamID)+" accepted "+summary+".")
+		if tr.Status == league.TradeInReview && tr.ReviewMode == league.ReviewLeagueVote && tr.ReviewEndsAt != nil && tr.RespondedAt != nil {
+			hours := int(tr.ReviewEndsAt.Sub(*tr.RespondedAt).Round(time.Hour).Hours())
+			needed := "1 veto vote blocks it"
+			if n := trades.VotesNeeded(l, tr); n > 1 {
+				needed = fmt.Sprintf("%d veto votes block it", n)
+			}
+			body := fmt.Sprintf("%s and %s agreed %s. You have %d hours to veto it; %s.",
+				teamName(l, tr.OfferingTeamID), teamName(l, tr.ReceivingTeamID), summary, hours, needed)
+			for _, t := range l.Teams {
+				if t.OwnerID != "" && t.OwnerID != from && t.OwnerID != to {
+					add(t.OwnerID, LeagueTradeInReview, "Trade open to a veto vote", body)
+				}
+			}
+		}
 	case league.TradeDeclined:
 		add(from, TradeDeclined, "Trade declined", teamName(l, tr.ReceivingTeamID)+" declined "+summary+".")
 	case league.TradeVetoed:
@@ -72,6 +87,28 @@ func TradeEvents(l *league.League, tr league.Trade, name Names) []Notification {
 		add(from, TradeAccepted, "Trade accepted", teamName(l, tr.ReceivingTeamID)+" accepted "+summary+".")
 		add(from, TradeReviewed, "Trade vetoed", "Your trade ("+summary+") was vetoed.")
 		add(to, TradeReviewed, "Trade vetoed", "Your trade ("+summary+") was vetoed.")
+		by := "The league"
+		if tr.DecidedBy != "" {
+			by = "The commissioner"
+		}
+		body := fmt.Sprintf("%s vetoed the trade between %s and %s: %s.", by, teamName(l, tr.OfferingTeamID),
+			teamName(l, tr.ReceivingTeamID), summary)
+		for _, t := range l.Teams {
+			if t.OwnerID != "" && t.OwnerID != from && t.OwnerID != to {
+				add(t.OwnerID, LeagueTradeVetoed, "Trade vetoed", body)
+			}
+		}
+	case league.TradeFailed:
+		// An accepted trade that could not execute; an offer that fell
+		// through before it was accepted (RespondedAt nil) says nothing.
+		if tr.RespondedAt != nil {
+			why := tradeFailures[tr.FailureReason]
+			if why == "" {
+				why = "it could not be completed"
+			}
+			add(from, TradeFailed, "Trade could not go through", "Your trade ("+summary+") did not happen: "+why+".")
+			add(to, TradeFailed, "Trade could not go through", "Your trade ("+summary+") did not happen: "+why+".")
+		}
 	case league.TradeProcessed:
 		// A trade with no review goes from offered to processed at once.
 		add(from, TradeAccepted, "Trade accepted", teamName(l, tr.ReceivingTeamID)+" accepted "+summary+".")
@@ -89,6 +126,12 @@ func TradeEvents(l *league.League, tr league.Trade, name Names) []Notification {
 		}
 	}
 	return out
+}
+
+var tradeFailures = map[string]string{
+	league.TradeFailNotOnRoster:   "a player had left his team",
+	league.TradeFailRosterInvalid: "a squad would no longer have the right positions",
+	league.TradeFailResynced:      "the league was re-synced from FPL Draft",
 }
 
 var claimReasons = map[string]string{
@@ -268,24 +311,36 @@ func (c *Changes) notify(ctx context.Context, ch league.Change) error {
 	default:
 		return nil
 	}
+	if ch.Kind == league.ChangeTrade {
+		return c.trade(ctx, ch)
+	}
 	st, err := c.Leagues.State(ctx, ch.LeagueID)
 	if err != nil || st == nil || st.League == nil {
 		return err
 	}
 	var ns []Notification
 	switch ch.Kind {
-	case league.ChangeTrade:
-		for _, tr := range st.Trades {
-			if tr.ID == ch.TradeID {
-				ns = TradeEvents(st.League, tr, c.names(ctx))
-			}
-		}
 	case league.ChangeWaivers:
 		ns = WaiverEvents(st.League, st.Claims, ch.Gameweek, c.names(ctx))
 	case league.ChangePick, league.ChangeDraft:
 		ns = PickEvent(st.League, st.Draft)
 	}
 	_, err = c.Notifier.Send(ctx, ns...)
+	return err
+}
+
+// trade reads the changed trade by id: State holds only open trades, and
+// the outcomes (vetoed, failed, processed, declined) are closed ones.
+func (c *Changes) trade(ctx context.Context, ch league.Change) error {
+	l, err := c.Leagues.Get(ctx, ch.LeagueID)
+	if err != nil || l == nil {
+		return err
+	}
+	tr, err := c.Leagues.Trade(ctx, ch.LeagueID, ch.TradeID)
+	if err != nil || tr == nil {
+		return err
+	}
+	_, err = c.Notifier.Send(ctx, TradeEvents(l, *tr, c.names(ctx))...)
 	return err
 }
 

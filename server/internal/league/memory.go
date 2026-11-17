@@ -19,6 +19,11 @@ type Memory struct {
 	sched    Scheduler
 	// scoring holds LockScores' locks by gameweek.
 	scoring map[int]chan struct{}
+	// audit is every league's commissioner log in Seq order; auditSeen is
+	// each member's seen-up-to Seq by league and user (audit_memory.go).
+	audit     map[string][]AuditEntry
+	auditSeen map[string]map[string]int64
+	nextSeq   int64
 }
 
 // SetScheduler makes Tx.Schedule hand jobs to s.
@@ -31,6 +36,10 @@ func (t memTx) Schedule(ctx context.Context, args JobArgs, at time.Time) error {
 	return t.m.sched.ScheduleTx(ctx, nil, args, at)
 }
 
+func (t memTx) ScheduleOn(ctx context.Context, s Scheduler, args JobArgs, at time.Time) error {
+	return s.ScheduleTx(ctx, nil, args, at)
+}
+
 var (
 	_ Repo = (*Memory)(nil)
 	_ Tx   = (*memTx)(nil)
@@ -38,7 +47,8 @@ var (
 
 // NewMemory returns an empty repository.
 func NewMemory() *Memory {
-	return &Memory{leagues: map[string]*League{}, games: map[string]*Game{}, extras: map[string]*memExtra{}}
+	return &Memory{leagues: map[string]*League{}, games: map[string]*Game{}, extras: map[string]*memExtra{},
+		audit: map[string][]AuditEntry{}, auditSeen: map[string]map[string]int64{}}
 }
 
 type memTx struct{ m *Memory }
@@ -237,6 +247,8 @@ func (t memTx) Delete(_ context.Context, leagueID string) error {
 	delete(t.m.leagues, leagueID)
 	delete(t.m.games, leagueID)
 	delete(t.m.extras, leagueID)
+	delete(t.m.audit, leagueID)
+	delete(t.m.auditSeen, leagueID)
 	return nil
 }
 

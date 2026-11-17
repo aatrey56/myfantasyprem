@@ -41,7 +41,7 @@ func tradeBody(l *league.League, w *league.World, n names, t league.Trade, userI
 		body.FailureReason = &f
 	}
 	if t.ReviewMode != "" {
-		veto, allow := trades.Tally(t)
+		veto, allow := trades.Tally(l, t)
 		r := TradeReviewState{Mode: TradeReview(t.ReviewMode), EndsAt: t.ReviewEndsAt, VetoVotes: veto, AllowVotes: allow}
 		if t.ReviewMode == league.ReviewLeagueVote {
 			r.VotesNeeded = ptr(trades.VotesNeeded(l, t))

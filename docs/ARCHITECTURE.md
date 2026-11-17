@@ -26,7 +26,8 @@ Rationale lives in the ADRs:
 [0011 realtime](adr/0011-realtime-websocket.md),
 [0012 FPL league import](adr/0012-fpl-league-import.md),
 [0013 claim-link sign-in](adr/0013-claim-link-sign-in.md),
-[0014 projections](adr/0014-projections.md). Background:
+[0014 projections](adr/0014-projections.md),
+[0017 trade veto votes and commissioner moves](adr/0017-trade-veto-vote-and-commissioner-moves.md). Background:
 [RESEARCH.md](research/RESEARCH.md) §6–§9, §12. Realtime:
 [realtime.md](realtime.md). Design: [design/BRIEF.md](design/BRIEF.md).
 
@@ -261,7 +262,10 @@ trades             (id trd_ PK, league_id, offering_team_id, receiving_team_id, 
                     review_mode NULL, decided_by NULL, decision_reason NULL, failure_reason NULL,
                     effective_gw NULL)
 trade_items        (trade_id → trades, player_id → players, from_team_id, ord)  PK(trade_id, player_id)
-trade_votes        (trade_id → trades, team_id → teams, vote)  PK(trade_id, team_id)
+trade_votes        (trade_id → trades, team_id → teams, vote)  PK(trade_id, team_id)  -- a withdrawn veto deletes its row
+commissioner_moves (seq identity, id cmv_, league_id, actor_id NULL, action, summary, team_ids text[],
+                    details jsonb NULL, created_at)  -- written in the transaction of the commissioner's action
+commissioner_moves_seen (league_id, user_id, seen_seq)  PK(league_id, user_id)  -- the Status banner's marker
 trade_block        (league_id → leagues, team_id → teams, player_id, note ≤ 140, wanted text[], added_at)
                    PK(league_id, player_id)                             -- public to members (migration 00015)
 team_gw_scores     (team_id, gameweek, points, bench_points, autosubs jsonb, state, rev)
@@ -333,7 +337,10 @@ with the same functions, so they always agree with the stats.
   checks that list against the spec.
 - Roles are per league: member or commissioner. Team actions (lineups,
   claims, picks, trade responses) need the team's owner; the commissioner
-  may also pick for the team on the clock and reviews trades.
+  may also pick for the team on the clock and reviews trades. Every such
+  use is logged as a commissioner move, in the action's own transaction
+  (ADR 0017); `GET /v1/leagues/{id}/commissioner-moves` lists them to any
+  member, with a per-member seen-up-to marker for the Status banner.
 - Deleting an account ([account-deletion.md](account-deletion.md))
   cancels the user's pending claims and open offers, revokes every
   session, removes the user's pre-draft teams and orphans drafted ones
@@ -597,7 +604,7 @@ the rest in `statuspage`; `httpapi` gathers the inputs.
 | ----------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Poller                  | 30 s – 6 h by gameweek state (a goroutine, not River)       | Stats snapshot, recompute affected teams, `matchups.updated`, `score.corrected`                                                                                                                          |
 | `draft_clock`           | Every pick deadline (River, scheduled with the pick)        | Autopicks for the team on the clock and turns its autopick on                                                                                                                                            |
-| `trade_review`          | `review.endsAt` (River, scheduled on acceptance)            | Processes or vetoes the trade (commissioner mode: approved if undecided)                                                                                                                                 |
+| `trade_review`          | `review.endsAt` (River, scheduled on acceptance)            | Processes or vetoes the trade (league vote: processed unless the vetoes reached the threshold; commissioner mode: approved if undecided)                                                                 |
 | `tick` (periodic, 15 s) | `JOBS_TICK`, River's leader; also on start                  | Starts due drafts; settles expired clocks; announces lineup locks (`lineup.locked`); runs waivers at deadline − 24 h (`waivers.processed`); expires offers at the next waiver run; closes review windows |
 | `fpl_import`            | On `POST /v1/imports` (River, inserted with the row)        | Fetches the FPL league, plans, applies in one transaction, rescores, verifies, stores the report (ADR 0012)                                                                                              |
 | `fpl_resync`            | On the commissioner's `POST /sync` (one pending per league) | Resets the imported league to FPL's current state (cancels open trades and claims), rescores, verifies, writes the notice                                                                                |

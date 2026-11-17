@@ -159,6 +159,15 @@ func TestResyncResetsToFPLAndCancelsPendingMoves(t *testing.T) {
 		if _, err := e.svc.RequestResync(ctx, owner, lid, false); slug(err) != "invalid-request" {
 			t.Errorf("unconfirmed: %v", err)
 		}
+		// A request whose job cannot be queued is no commissioner move, and
+		// leaves nothing pending.
+		e.svc.Sched = schedFails{}
+		if _, err := e.svc.RequestResync(ctx, owner, lid, true); err == nil {
+			t.Fatal("re-sync with a failing queue succeeded")
+		}
+		if es, err := e.svc.Leagues.Audit(ctx, lid, 0, 10); err != nil || len(es) != 0 {
+			t.Fatalf("log after a failed request = %+v %v", es, err)
+		}
 		rec := &recording{}
 		e.svc.Sched = rec
 		v, err := e.svc.RequestResync(ctx, owner, lid, true)
@@ -171,6 +180,12 @@ func TestResyncResetsToFPLAndCancelsPendingMoves(t *testing.T) {
 		}
 		if _, err := e.svc.RequestResync(ctx, owner, lid, true); slug(err) != "sync-pending" {
 			t.Errorf("second request: %v", err)
+		}
+		// One commissioner move, for the request that was accepted.
+		if es, err := e.svc.Leagues.Audit(ctx, lid, 0, 10); err != nil || len(es) != 1 ||
+			es[0].Action != league.AuditLeagueResynced || es[0].ActorID != owner ||
+			es[0].Summary != "Requested a re-sync of the league from FPL Draft." {
+			t.Errorf("log after a re-sync request = %+v %v", es, err)
 		}
 		if _, err := e.svc.RequestCheck(ctx, owner, lid); slug(err) != "sync-pending" {
 			t.Errorf("check while a re-sync is pending: %v", err)
@@ -314,6 +329,36 @@ func TestFailedResyncKeepsTheLeague(t *testing.T) {
 		// The next request is allowed at once.
 		if _, err := e.svc.RequestResync(ctx, owner, st.League.ID, true); err != nil {
 			t.Errorf("request after a failure: %v", err)
+		}
+	})
+}
+
+// The trade review is the commissioner's to change (ADR 0017): an imported
+// league switched to a league vote stays on it, with its period and
+// threshold, through a re-sync (FPL's import sets commissioner review).
+func TestResyncKeepsTheTradeReview(t *testing.T) {
+	realEnvs(t, func(t *testing.T, e *env) {
+		owner, imported, _ := importReal(t, e)
+		lid := imported.League.ID
+		if imported.League.Settings.TradeReview != league.ReviewCommissioner {
+			t.Fatalf("imported review = %q", imported.League.Settings.TradeReview)
+		}
+		review, hours, threshold := league.ReviewLeagueVote, 48, 2.0/3
+		ms := league.NewService(e.leagues, e.now)
+		if _, err := ms.Update(ctx, owner, lid, nil, league.SettingsInput{TradeReview: &review, ReviewHours: &hours,
+			VetoThreshold: &threshold}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.RequestResync(ctx, owner, lid, true); err != nil {
+			t.Fatal(err)
+		}
+		*e.clock = e.clock.Add(time.Minute)
+		if err := e.svc.Resync(ctx, lid); err != nil {
+			t.Fatal(err)
+		}
+		s := e.state(t, lid).League.Settings
+		if s.TradeReview != review || s.ReviewHours != hours || s.VetoThreshold != threshold {
+			t.Errorf("after the re-sync: review %q, %d hours, threshold %v", s.TradeReview, s.ReviewHours, s.VetoThreshold)
 		}
 	})
 }

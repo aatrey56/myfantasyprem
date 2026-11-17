@@ -7,6 +7,7 @@ import {
   type PathParams,
 } from 'msw';
 
+import { settingsChange } from './commissioner-moves';
 import * as data from './data';
 import { MockError } from './errors';
 import type { ImportedLeague } from './imported';
@@ -770,13 +771,11 @@ const leagueHandlers = [
       const lockedField = started
         ? s?.teamCount !== undefined
           ? 'teamCount'
-          : s?.trades?.review !== undefined
-            ? 'trades.review'
-            : s?.draft !== undefined
-              ? 'draft'
-              : s?.startGameweek !== undefined
-                ? 'startGameweek'
-                : null
+          : s?.draft !== undefined
+            ? 'draft'
+            : s?.startGameweek !== undefined
+              ? 'startGameweek'
+              : null
         : null;
       if (lockedField) {
         return problem(
@@ -798,6 +797,7 @@ const leagueHandlers = [
         league.rename(name);
       }
       const settings = league.settings;
+      const settingsBefore = structuredClone(settings);
       if (s?.teamCount !== undefined) {
         if (s.teamCount < league.members().length)
           return problem(
@@ -826,6 +826,16 @@ const leagueHandlers = [
         if (s.waivers.order !== 'reverse_standings' && s.waivers.order !== 'rolling')
           return problem(422, 'Invalid request', 'Unknown waiver order.', 'invalid-request');
         settings.waivers.order = s.waivers.order;
+      }
+      const change = settingsChange(settingsBefore, settings);
+      if (change && data.isInSeason(league)) {
+        league.moves.add({
+          action: 'settings_changed',
+          summary: change.summary,
+          actor: league.commissionerRef(),
+          details: { before: change.before, after: change.after },
+          createdAt: new Date().toISOString(),
+        });
       }
       return ok(leagueBody(league));
     }),
@@ -1859,6 +1869,54 @@ function tradeAction(action: 'accept' | 'decline' | 'withdraw') {
   );
 }
 
+const commissionerMoveHandlers = [
+  http.get<L, never, DefaultBodyType>(
+    '*/v1/leagues/:leagueId/commissioner-moves',
+    ({ params, request }) => {
+      const found = findLeague(params.leagueId);
+      if ('error' in found) return found.error;
+      const q = new URL(request.url).searchParams;
+      const limit = parseLimit(q.get('limit'));
+      if (limit === undefined) return badRequest('limit must be between 1 and 100.');
+      const cursor = q.get('cursor');
+      const l = found.league;
+      if (!data.isInSeason(l))
+        return HttpResponse.json({ data: [], meta: { ...meta(), nextCursor: null } });
+      const offset = cursor ? Number.parseInt(atob(cursor), 10) : 0;
+      const { slice, next } = l.moves.list(offset, limit);
+      return HttpResponse.json({
+        data: slice,
+        meta: { ...meta(), nextCursor: next === null ? null : btoa(String(next)) },
+      });
+    },
+  ),
+  http.get<L, never, DefaultBodyType>(
+    '*/v1/leagues/:leagueId/commissioner-moves/summary',
+    ({ params }) => {
+      const found = findLeague(params.leagueId);
+      if ('error' in found) return found.error;
+      const l = found.league;
+      return ok(data.isInSeason(l) ? l.moves.summary() : { unseenCount: 0, latest: null });
+    },
+  ),
+  http.post<L, Schemas['CommissionerMovesSeenRequest'], DefaultBodyType>(
+    '*/v1/leagues/:leagueId/commissioner-moves/seen',
+    guarded(async ({ params, request }) => {
+      const found = findLeague(params.leagueId);
+      if ('error' in found) return found.error;
+      const body = await jsonBody<Schemas['CommissionerMovesSeenRequest']>(request);
+      if (body?.throughId !== undefined) {
+        const bad = badId('throughId', 'cmv', body.throughId);
+        if (bad) return bad;
+      }
+      const l = found.league;
+      return ok(
+        data.isInSeason(l) ? l.moves.markSeen(body?.throughId) : { unseenCount: 0, latest: null },
+      );
+    }),
+  ),
+];
+
 const tradeHandlers = [
   http.get<L, never, DefaultBodyType>('*/v1/leagues/:leagueId/trades', ({ params, request }) => {
     const found = findLeague(params.leagueId);
@@ -1914,8 +1972,8 @@ const tradeHandlers = [
       const found = inSeason(params.leagueId);
       if ('error' in found) return found.error;
       const body = await jsonBody<Schemas['TradeVoteRequest']>(request);
-      if (body?.vote !== 'veto' && body?.vote !== 'allow')
-        return badRequest('vote must be veto or allow.');
+      if (body?.vote !== 'veto' && body?.vote !== 'allow' && body?.vote !== 'withdraw')
+        return badRequest('vote must be veto, allow or withdraw.');
       return ok(found.league.voteOnTrade(params.tradeId, body.vote));
     }),
   ),
@@ -2158,6 +2216,7 @@ export const handlers = [
   ...lineupHandlers,
   ...waiverHandlers,
   ...tradeHandlers,
+  ...commissionerMoveHandlers,
   ...realtimeHandlers,
   ...notificationHandlers(ok, noContent, created, (detail) =>
     problem(422, 'Invalid request', detail, 'invalid-request'),
