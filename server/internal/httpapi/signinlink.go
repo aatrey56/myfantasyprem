@@ -105,6 +105,7 @@ func (s *Server) CreateSeatSignInLink(ctx context.Context, req CreateSeatSignInL
 		}
 		return failLeague[resp](ctx, err)
 	}
+	s.leagueChanged(ctx, l.ID) // a commissioner move (ADR 0017)
 	n, err := s.namesFor(ctx, l)
 	if err != nil {
 		return nil, err

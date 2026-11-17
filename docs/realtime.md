@@ -88,7 +88,7 @@ REST, never from the socket alone.
 | `trade.updated`       | Any trade state change, review vote or decision                                                                                   | The two teams; the whole league once it is accepted | The `Trade` (with the receiver's own actions) |
 | `waivers.processed`   | The waiver run for a gameweek finished                                                                                            | League members                                      | The gameweek; refetch claims and the feed     |
 | `lineup.locked`       | The gameweek deadline passed (announced by the jobs' tick, within `JOBS_TICK`)                                                    | League members                                      | The gameweek                                  |
-| `league.updated`      | Settings, members or names changed                                                                                                | League members                                      | Nothing; refetch the league                   |
+| `league.updated`      | Settings, members, names or invites changed, or another commissioner move (a sign-in link)                                        | League members                                      | Nothing; refetch the league                   |
 | `trade_block.updated` | A team put a player on the trade block, changed or removed his entry, or he left the team (drop, waiver run, processed trade)     | League members                                      | Nothing; refetch the trade block              |
 
 The trade block, player news and tags (migration 00015, see

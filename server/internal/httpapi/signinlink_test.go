@@ -14,6 +14,7 @@ import (
 
 	"github.com/aatrey56/myfantasyprem/server/internal/auth"
 	"github.com/aatrey56/myfantasyprem/server/internal/league"
+	"github.com/aatrey56/myfantasyprem/server/internal/leaguetest"
 	"github.com/aatrey56/myfantasyprem/server/internal/store/storetest"
 )
 
@@ -417,4 +418,43 @@ func TestSeatSignInLinkRechecksTheCommissioner(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Every commissioner move reports league.updated once it commits, so a
+// member on Status sees the banner without refreshing (docs/adr/0017):
+// creating and revoking an invite and issuing a sign-in link included.
+func TestCommissionerMovesReportLeagueUpdated(t *testing.T) {
+	srv, _ := newTestServer()
+	h := newHandler(testOptions(), newRoutes(testOptions(), srv))
+	l, seat, _ := claimedSeat(t, srv, h)
+	notes := &leaguetest.Notes{}
+	srv.notify = notes
+	updated := func(what string) {
+		t.Helper()
+		var n int
+		for _, c := range notes.Changes {
+			if c.Kind == league.ChangeLeague && c.LeagueID == l.ID {
+				n++
+			}
+		}
+		notes.Changes = nil
+		if n != 1 {
+			t.Errorf("%s: %d league.updated, want 1", what, n)
+		}
+	}
+	base := "/v1/leagues/" + l.ID
+	rec := do(h, http.MethodPost, base+"/invites", `{}`)
+	var inv InviteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &inv); err != nil || rec.Code != http.StatusCreated {
+		t.Fatalf("invite = %d %s", rec.Code, rec.Body)
+	}
+	updated("create invite")
+	if rec := do(h, http.MethodDelete, base+"/invites/"+inv.Data.Id, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d %s", rec.Code, rec.Body)
+	}
+	updated("revoke invite")
+	if rec := do(h, http.MethodPost, base+"/seats/"+seat.ID+"/signin-link", ""); rec.Code != http.StatusCreated {
+		t.Fatalf("sign-in link = %d %s", rec.Code, rec.Body)
+	}
+	updated("sign-in link")
 }
