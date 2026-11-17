@@ -149,6 +149,8 @@ func Actions(t league.Trade, l *league.League, userID, teamID string) []string {
 
 // VotesNeeded is the number of veto votes that block a trade in a league
 // vote: ceil(threshold × managers not in the trade), at least one. The
+// threshold is the trade's own, frozen when it was accepted (the league's
+// for a trade from before it was kept); the managers are counted now. The
 // product is rounded to 6 places first, so a threshold of a third that went
 // through a float32 (the contract's number) does not tip 3.0000001 up to 4.
 func VotesNeeded(l *league.League, t league.Trade) int {
@@ -158,7 +160,11 @@ func VotesNeeded(l *league.League, t league.Trade) int {
 			eligible++
 		}
 	}
-	return max(1, int(math.Ceil(math.Round(l.Settings.VetoThreshold*float64(eligible)*1e6)/1e6)))
+	threshold := l.Settings.VetoThreshold
+	if t.VetoThreshold != nil {
+		threshold = *t.VetoThreshold
+	}
+	return max(1, int(math.Ceil(math.Round(threshold*float64(eligible)*1e6)/1e6)))
 }
 
 // Tally counts the votes.
@@ -464,6 +470,12 @@ func (s *Service) Accept(ctx context.Context, actor, leagueID, tradeID string) (
 		}
 		ends := now.Add(time.Duration(min(max(st.League.Settings.ReviewHours, 1), league.MaxReviewHours)) * time.Hour)
 		t.Status, t.ReviewMode, t.ReviewEndsAt = league.TradeInReview, mode, &ends
+		if mode == league.ReviewLeagueVote {
+			// Frozen with the mode and the window: a later change of the
+			// threshold does not change a vote already under way.
+			th := st.League.Settings.VetoThreshold
+			t.VetoThreshold = &th
+		}
 		*ch = append(*ch, league.Change{LeagueID: st.League.ID, Kind: league.ChangeTrade, TradeID: t.ID})
 		return t.ID, tx.Schedule(ctx, ReviewArgs{LeagueID: st.League.ID, TradeID: t.ID, EndsAt: ends}, ends)
 	})

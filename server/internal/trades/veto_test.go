@@ -443,3 +443,56 @@ func TestInReviewTradeKeepsItsModeWhenTheLeagueChanges(t *testing.T) {
 		}
 	})
 }
+
+// The veto threshold is frozen when a trade is accepted, like its review
+// mode and window: changing the league's threshold mid-vote changes neither
+// a vote nor the window's end of a trade already in review. The managers
+// are still counted when the votes are.
+func TestVetoThresholdIsFrozenAtAccept(t *testing.T) {
+	leaguetest.Each(t, func(t *testing.T, e *leaguetest.Env) {
+		f := voteFixture(t, e)
+		ctx, s := e.Ctx, f.s
+		tr := f.accepted(t, scoring.MID) // a third of 10: 4
+		if tr.VetoThreshold == nil || *tr.VetoThreshold != league.DefaultVetoThreshold {
+			t.Fatalf("accepted with threshold %v", tr.VetoThreshold)
+		}
+		quarter := 0.25 // ceil(2.5) = 3 of 10
+		l, err := e.Leagues.Update(ctx, f.users[0], f.l.ID, nil, league.SettingsInput{VetoThreshold: &quarter})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := VotesNeeded(l, f.trade(t, tr.ID)); n != 4 {
+			t.Fatalf("votes needed after the change = %d, want the frozen 4", n)
+		}
+		// Three vetoes would block it under the new threshold; not this one.
+		for i := 2; i <= 4; i++ {
+			if _, _, err := s.Vote(ctx, f.users[i], f.l.ID, tr.ID, VoteVeto); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := f.trade(t, tr.ID); got.Status != league.TradeInReview {
+			t.Fatalf("after 3 vetoes = %s, want in review (4 needed)", got.Status)
+		}
+		// Nor at the window's end: it executes.
+		e.Clock.Set(*tr.ReviewEndsAt)
+		if n, err := s.CloseDue(ctx, f.l.ID); n != 1 || err != nil {
+			t.Fatalf("close: %d %v", n, err)
+		}
+		if got := f.trade(t, tr.ID); got.Status != league.TradeProcessed {
+			t.Fatalf("at the window's end = %s, want processed", got.Status)
+		}
+
+		// A trade accepted after the change uses the new threshold.
+		next := f.accepted(t, scoring.FWD)
+		if next.VetoThreshold == nil || *next.VetoThreshold != quarter || VotesNeeded(l, next) != 3 {
+			t.Fatalf("accepted after the change: threshold %v, %d needed", next.VetoThreshold, VotesNeeded(l, next))
+		}
+		// A trade from before the threshold was kept counts against the league's.
+		legacy := next
+		legacy.VetoThreshold = nil
+		if n := VotesNeeded(l, legacy); n != 3 {
+			t.Fatalf("legacy trade: %d needed, want 3", n)
+		}
+	})
+}
+

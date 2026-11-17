@@ -274,8 +274,35 @@ func TestMigrationSwitchesDefaultTradeReview(t *testing.T) {
 		mustExec(`INSERT INTO leagues (id, name, season, status) VALUES ($1, 'L', '2026-27', 'in_season')`, id)
 		mustExec(`INSERT INTO league_settings (league_id, version, settings) VALUES ($1, 1, $2)`, id, l.settings)
 	}
+	// Trades in the vote league: one in a vote, one in commissioner review,
+	// one already processed.
+	const voteLeague = "lg_01k7m2xq8rfv3c9a4t6wbn5hd4"
+	mustExec(`INSERT INTO teams (id, league_id, name, joined_at) VALUES
+	    ('tm_01k7m2xq8rfv3c9a4t6wbn5ht1', $1, 'A', now()), ('tm_01k7m2xq8rfv3c9a4t6wbn5ht2', $1, 'B', now())`, voteLeague)
+	trades := map[string]struct {
+		status, mode string
+		frozen       *float64
+	}{
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht1": {"in_review", "league_vote", ptr(0.25)},
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht2": {"in_review", "commissioner", nil},
+		"trd_01k7m2xq8rfv3c9a4t6wbn5ht3": {"processed", "league_vote", nil},
+	}
+	for id, tr := range trades {
+		mustExec(`INSERT INTO trades (id, league_id, offering_team_id, receiving_team_id, status, created_at, review_mode)
+		    VALUES ($1, $2, 'tm_01k7m2xq8rfv3c9a4t6wbn5ht1', 'tm_01k7m2xq8rfv3c9a4t6wbn5ht2', $3, now(), $4)`, id, voteLeague, tr.status, tr.mode)
+	}
 	if err := store.Migrate(ctx, url); err != nil {
 		t.Fatal(err)
+	}
+	// A trade already in a vote keeps the league's threshold from then on.
+	for id, tr := range trades {
+		var got *float64
+		if err := pool.QueryRow(ctx, `SELECT veto_threshold FROM trades WHERE id = $1`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if (got == nil) != (tr.frozen == nil) || got != nil && *got != *tr.frozen {
+			t.Errorf("%s %s trade: veto threshold %v, want %v", tr.status, tr.mode, got, tr.frozen)
+		}
 	}
 	for id, l := range leagues {
 		var (
@@ -301,3 +328,5 @@ func TestMigrationSwitchesDefaultTradeReview(t *testing.T) {
 		t.Errorf("teamCount after migration = %d, %v", teams, err)
 	}
 }
+
+func ptr[T any](v T) *T { return &v }
