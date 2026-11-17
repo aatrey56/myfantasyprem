@@ -10,12 +10,22 @@ type Summary = Schemas['CommissionerMovesSummaryResponse'];
 const path = (leagueId: string) => ({ path: { leagueId } });
 
 /**
+ * How often the banner's summary refetches while its screen is visible: the
+ * fallback for a realtime event missed (delivery is best effort) or a
+ * socket that is down.
+ */
+export const SUMMARY_REFRESH_MS = 2 * 60_000;
+
+/**
  * What the Status banner needs: how many commissioner moves the signed-in
  * member has not seen and the newest of them. The marker lives on the
- * server, so the banner follows them across devices (docs/adr/0017).
+ * server, so the banner follows them across devices (docs/adr/0017). Every
+ * move sends a realtime event that refetches it (league.updated and the
+ * others under the league's key); it also refetches when the screen comes
+ * back into view and every SUMMARY_REFRESH_MS while it is in view.
  */
 export function useCommissionerMovesSummary(leagueId: string, enabled = true) {
-  const { subscribed } = useScreenFocus(queryKeys.commissionerMovesSummary(leagueId));
+  const { subscribed, focused } = useScreenFocus(queryKeys.commissionerMovesSummary(leagueId));
   return useQuery({
     queryKey: queryKeys.commissionerMovesSummary(leagueId),
     queryFn: () =>
@@ -24,6 +34,7 @@ export function useCommissionerMovesSummary(leagueId: string, enabled = true) {
       ),
     enabled,
     subscribed,
+    refetchInterval: focused ? SUMMARY_REFRESH_MS : false,
   });
 }
 
