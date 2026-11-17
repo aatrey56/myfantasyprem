@@ -2,6 +2,15 @@ import { expect, test, type Locator, type Page } from './fixtures';
 
 import { LEAGUE, signIn, startWithScenario } from './helpers';
 
+/**
+ * Account, once the profile card has loaded: it sits above Settings, so a
+ * click on "Show owners as" before then can land on a pill that moves.
+ */
+async function openAccount(page: Page) {
+  await page.goto('/account');
+  await expect(page.getByTestId('account-name').first()).toBeVisible();
+}
+
 // OwnerChip.tsx's OWNER_CHIP_MAX_WIDTH.
 const OWNER_CHIP_MAX_WIDTH = 96;
 
@@ -87,7 +96,7 @@ for (const vp of [
 
     test('Show owners as: Team, Manager or First name, kept after a reload', async ({ page }) => {
       await startWithScenario(page, 'shared-owners');
-      await page.goto('/account');
+      await openAccount(page);
       const setting = visible(page, 'owner-label-setting');
       await expect(setting).toContainText('Show owners as');
       const picks = {
@@ -110,7 +119,7 @@ for (const vp of [
         { pick: picks.team, names: ['Riverside Rovers', 'Cole Miners FC'] },
       ];
       for (const mode of modes) {
-        await page.goto('/account');
+        await openAccount(page);
         await mode.pick.click();
         await expect(mode.pick).toHaveAttribute('aria-checked', 'true');
         const detail = await openFixtureWithMine(page);
@@ -131,8 +140,9 @@ for (const vp of [
       }
 
       // Kept on the device: a fresh load still shows the manager's name.
-      await page.goto('/account');
+      await openAccount(page);
       await picks.manager.click();
+      await expect(picks.manager).toHaveAttribute('aria-checked', 'true');
       await page.reload();
       await expect(visible(page, 'owner-label-setting')).toBeVisible();
       const detail = await openFixtureWithMine(page);
