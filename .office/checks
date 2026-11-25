@@ -1,6 +1,8 @@
+# Fast gate checks for office workers: one shell command per line, all must exit 0, within the
+# office's checkTimeoutMin (10 min) per line. Kept to the fast ones: an audit of 13 Oct–16 Nov found
+# 28 of 50 worker rejections were this limit on the slow lines.
+# test:go:db, the web build + prod-bundle check, and Playwright run in GitHub CI
+# (.github/workflows/ci.yml: app, go, e2e) on every PR instead.
 npm ci
 npm run gen && test -z "$(git status --porcelain)"
 npm run check
-npm run test:go:db
-npm run build:web && npm run verify:prod-bundle
-npm run build:web:mocks && npx playwright test
